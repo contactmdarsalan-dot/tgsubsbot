@@ -176,36 +176,53 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 # ============== TELEGRAM HELPERS ==============
 
-async def send_telegram_message(chat_id: str, message: str):
-    if not TELEGRAM_BOT_TOKEN:
+async def get_bot_settings():
+    """Get bot settings from database"""
+    settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0})
+    return settings or {}
+
+async def send_telegram_message(chat_id: str, message: str, bot_token: str = None):
+    """Send message via Telegram Bot API"""
+    if not bot_token:
+        settings = await get_bot_settings()
+        bot_token = settings.get("telegram_bot_token", "")
+    
+    if not bot_token:
         logger.warning("Telegram bot token not configured")
         return False
     try:
-        async with httpx.AsyncClient() as client:
-            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-            response = await client.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"})
+        async with httpx.AsyncClient() as http_client:
+            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            response = await http_client.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"})
+            logger.info(f"Telegram sendMessage response: {response.status_code} - {response.text}")
             return response.status_code == 200
     except Exception as e:
         logger.error(f"Failed to send telegram message: {e}")
         return False
 
 async def add_to_channel(user_id: str):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
+    """Add user to private channel by sending invite link"""
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    channel_id = settings.get("telegram_channel_id", "")
+    
+    if not bot_token or not channel_id:
+        logger.warning("Bot token or channel ID not configured")
         return False
     try:
-        # Create invite link for private channel
-        async with httpx.AsyncClient() as client:
-            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/createChatInviteLink"
-            response = await client.post(url, json={
-                "chat_id": TELEGRAM_CHANNEL_ID,
+        async with httpx.AsyncClient() as http_client:
+            url = f"https://api.telegram.org/bot{bot_token}/createChatInviteLink"
+            response = await http_client.post(url, json={
+                "chat_id": channel_id,
                 "member_limit": 1,
                 "expire_date": int((datetime.now(timezone.utc) + timedelta(hours=24)).timestamp())
             })
+            logger.info(f"Create invite link response: {response.status_code} - {response.text}")
             if response.status_code == 200:
                 data = response.json()
                 invite_link = data.get("result", {}).get("invite_link")
                 if invite_link:
-                    await send_telegram_message(user_id, f"Welcome! Join our premium channel: {invite_link}")
+                    await send_telegram_message(user_id, f"Welcome! Join our premium channel: {invite_link}", bot_token)
                     return True
         return False
     except Exception as e:
@@ -213,20 +230,27 @@ async def add_to_channel(user_id: str):
         return False
 
 async def remove_from_channel(user_id: str):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
+    """Remove user from private channel"""
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    channel_id = settings.get("telegram_channel_id", "")
+    
+    if not bot_token or not channel_id:
         return False
     try:
-        async with httpx.AsyncClient() as client:
-            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/banChatMember"
-            response = await client.post(url, json={
-                "chat_id": TELEGRAM_CHANNEL_ID,
+        async with httpx.AsyncClient() as http_client:
+            url = f"https://api.telegram.org/bot{bot_token}/banChatMember"
+            response = await http_client.post(url, json={
+                "chat_id": channel_id,
                 "user_id": int(user_id),
                 "until_date": int((datetime.now(timezone.utc) + timedelta(seconds=30)).timestamp())
             })
+            logger.info(f"Ban member response: {response.status_code} - {response.text}")
             return response.status_code == 200
     except Exception as e:
         logger.error(f"Failed to remove user from channel: {e}")
         return False
+
 
 # ============== AUTH ROUTES ==============
 
