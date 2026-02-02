@@ -84,6 +84,7 @@ class SubscriptionPlan(BaseModel):
     duration_days: int
     features: List[str] = []
     is_active: bool = True
+    channel_id: str = ""  # Each plan can have its own channel
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class SubscriberCreate(BaseModel):
