@@ -380,17 +380,19 @@ async def create_subscriber(subscriber: SubscriberCreate, background_tasks: Back
     
     await db.subscribers.insert_one(doc)
     
-    # Send welcome message and channel invite
-    background_tasks.add_task(add_to_channel, subscriber.telegram_user_id)
+    # Send welcome message and channel invite (use plan's channel if set)
+    plan_channel = plan.get("channel_id", "")
+    background_tasks.add_task(add_to_channel, subscriber.telegram_user_id, plan_channel, plan["name"])
+    
     website_link = settings.get("website_link", "")
     if website_link:
         background_tasks.add_task(send_telegram_message, subscriber.telegram_user_id, 
-            f"Welcome to our premium subscription! Check out our services: {website_link}")
+            f"🌟 Check out our services: {website_link}")
     
     return sub_obj
 
 @api_router.put("/subscribers/{subscriber_id}/renew")
-async def renew_subscriber(subscriber_id: str, plan_id: str, user = Depends(get_current_user)):
+async def renew_subscriber(subscriber_id: str, plan_id: str, background_tasks: BackgroundTasks, user = Depends(get_current_user)):
     subscriber = await db.subscribers.find_one({"id": subscriber_id}, {"_id": 0})
     if not subscriber:
         raise HTTPException(status_code=404, detail="Subscriber not found")
