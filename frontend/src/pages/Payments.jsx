@@ -437,6 +437,64 @@ export default function Payments() {
           )}
         </CardContent>
       </Card>
+
+      {/* Screenshot Modal */}
+      <Dialog open={screenshotModal.open} onOpenChange={(open) => setScreenshotModal({ ...screenshotModal, open })}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-xl font-bold flex items-center gap-2">
+              <Image className="w-5 h-5" />
+              Payment Screenshot
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {screenshotModal.payment && (
+              <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                <div>
+                  <p className="font-medium">
+                    {screenshotModal.payment.telegram_username 
+                      ? `@${screenshotModal.payment.telegram_username}` 
+                      : screenshotModal.payment.telegram_user_id}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{screenshotModal.payment.plan_name}</p>
+                </div>
+                <p className="font-mono font-bold text-lg">₹{screenshotModal.payment.amount}</p>
+              </div>
+            )}
+            
+            <div className="border rounded-lg overflow-hidden bg-muted/30">
+              {screenshotModal.url ? (
+                <img 
+                  src={screenshotModal.url} 
+                  alt="Payment Screenshot" 
+                  className="w-full h-auto max-h-[400px] object-contain"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div className="hidden flex-col items-center justify-center py-8 text-muted-foreground">
+                <XCircle className="w-8 h-8 mb-2" />
+                <p>Failed to load image</p>
+              </div>
+            </div>
+            
+            {screenshotModal.payment?.status === "pending" && (
+              <Button 
+                className="w-full btn-hover" 
+                onClick={() => {
+                  handleVerify(screenshotModal.payment.id);
+                  setScreenshotModal({ open: false, url: "", payment: null });
+                }}
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Verify Payment
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
