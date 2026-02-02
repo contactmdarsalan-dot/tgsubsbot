@@ -56,6 +56,7 @@ class UserCreate(BaseModel):
     email: str
     password: str
     name: str
+    phone: str = ""
 
 class UserLogin(BaseModel):
     email: str
@@ -66,7 +67,20 @@ class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     email: str
     name: str
+    phone: str = ""
+    # Dashboard subscription fields
+    dashboard_plan: str = ""  # 1month, 6month, 12month, lifetime
+    dashboard_subscription_end: Optional[datetime] = None
+    dashboard_subscription_status: str = "inactive"  # active, inactive, trial
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+# Dashboard subscription plans (for the SaaS)
+DASHBOARD_PLANS = {
+    "1month": {"name": "1 Month", "price": 4999, "days": 30},
+    "6month": {"name": "6 Months", "price": 24999, "days": 180},
+    "12month": {"name": "12 Months", "price": 44999, "days": 365},
+    "lifetime": {"name": "Lifetime", "price": 0, "days": 36500}  # 100 years
+}
 
 class SubscriptionPlanCreate(BaseModel):
     name: str
