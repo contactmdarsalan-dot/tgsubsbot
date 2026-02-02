@@ -873,6 +873,56 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             help_msg += "/help - Show this help message"
             await send_telegram_message(chat_id, help_msg)
         
+        # Handle photo/screenshot uploads
+        photo = message.get("photo")
+        if photo:
+            # Get the largest photo (last in array)
+            file_id = photo[-1].get("file_id")
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            if file_id and bot_token:
+                # Get file path from Telegram
+                try:
+                    async with httpx.AsyncClient() as http_client:
+                        file_response = await http_client.get(
+                            f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+                        )
+                        if file_response.status_code == 200:
+                            file_data = file_response.json()
+                            file_path = file_data.get("result", {}).get("file_path", "")
+                            
+                            if file_path:
+                                # Create the full URL for the screenshot
+                                screenshot_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+                                
+                                # Find user's pending payment and update with screenshot
+                                pending_payment = await db.payments.find_one({
+                                    "telegram_user_id": chat_id,
+                                    "status": "pending"
+                                }, sort=[("created_at", -1)])
+                                
+                                if pending_payment:
+                                    await db.payments.update_one(
+                                        {"id": pending_payment["id"]},
+                                        {"$set": {"screenshot_url": screenshot_url, "screenshot_file_id": file_id}}
+                                    )
+                                    
+                                    msg = "✅ <b>Screenshot Received!</b>\n\n"
+                                    msg += "📸 Your payment screenshot has been saved.\n"
+                                    msg += "⏳ Admin will verify it shortly.\n\n"
+                                    msg += f"📱 Your ID: <code>{chat_id}</code>"
+                                    await send_telegram_message(chat_id, msg, bot_token)
+                                    logger.info(f"Screenshot saved for payment {pending_payment['id']}")
+                                else:
+                                    msg = "⚠️ No pending payment found.\n\n"
+                                    msg += "Please first select a plan and click 'I've Paid' button.\n"
+                                    msg += "Then send your payment screenshot."
+                                    buttons = [[{"text": "📦 View Plans", "callback_data": "back_plans"}]]
+                                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                except Exception as e:
+                    logger.error(f"Error processing screenshot: {e}")
+        
         return {"ok": True}
     except Exception as e:
         logger.error(f"Webhook error: {e}")
