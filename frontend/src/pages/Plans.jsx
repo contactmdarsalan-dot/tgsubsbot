@@ -277,7 +277,7 @@ export default function Plans() {
                   </ul>
                 )}
 
-                <div className="flex gap-2 pt-4">
+                <div className="flex gap-2 pt-4 relative z-10">
                   <Button
                     variant="outline"
                     size="sm"
