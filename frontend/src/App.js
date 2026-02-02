@@ -46,7 +46,7 @@ const PricingRoute = () => {
   }
   
   const subStatus = user.dashboard_subscription_status;
-  const isFirstUser = localStorage.getItem("isFirstUser") === "true";
+  const isAdmin = user.isAdmin || localStorage.getItem("isFirstUser") === "true";
   
   // If already subscribed or admin, go to dashboard
   if (subStatus === "active" || isFirstUser) {
