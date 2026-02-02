@@ -389,6 +389,13 @@ async def request_dashboard_subscription(data: dict, user = Depends(get_current_
     
     return {"message": "Subscription request submitted", "request_id": request_obj["id"]}
 
+@api_router.get("/auth/check-admin")
+async def check_if_admin(user = Depends(get_current_user)):
+    """Check if current user is admin (first registered user)"""
+    first_user = await db.users.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
+    is_admin = first_user and first_user["id"] == user["id"]
+    return {"is_admin": is_admin}
+
 @api_router.get("/dashboard-subscription/requests")
 async def get_subscription_requests(user = Depends(get_current_user)):
     """Get all subscription requests (admin only - first user is admin)"""
