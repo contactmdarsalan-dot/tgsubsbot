@@ -38,6 +38,9 @@ import {
   XCircle,
   QrCode,
   IndianRupee,
+  Image,
+  Eye,
+  X,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
