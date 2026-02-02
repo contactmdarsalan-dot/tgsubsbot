@@ -421,7 +421,27 @@ async def renew_subscriber(subscriber_id: str, plan_id: str, background_tasks: B
         }}
     )
     
+    # Send renewal notification with channel invite
+    plan_channel = plan.get("channel_id", "")
+    background_tasks.add_task(send_renewal_notification, subscriber["telegram_user_id"], plan, plan_channel, end_date)
+    
     return {"message": "Subscription renewed"}
+
+async def send_renewal_notification(user_id: str, plan: dict, plan_channel: str, end_date: datetime):
+    """Send renewal notification with channel invite"""
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    msg = f"🎉 <b>Subscription Renewed!</b>\n\n"
+    msg += f"📦 Plan: <b>{plan['name']}</b>\n"
+    msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n"
+    msg += f"📅 Valid till: <b>{end_date.strftime('%d %b %Y')}</b>\n\n"
+    msg += "Thank you for continuing with us! 🙏"
+    
+    await send_telegram_message(user_id, msg, bot_token)
+    
+    # Send new channel invite
+    await add_to_channel(user_id, plan_channel, plan['name'])
 
 @api_router.delete("/subscribers/{subscriber_id}")
 async def delete_subscriber(subscriber_id: str, background_tasks: BackgroundTasks, user = Depends(get_current_user)):
@@ -429,8 +449,12 @@ async def delete_subscriber(subscriber_id: str, background_tasks: BackgroundTask
     if not subscriber:
         raise HTTPException(status_code=404, detail="Subscriber not found")
     
+    # Get plan to find channel
+    plan = await db.plans.find_one({"id": subscriber.get("plan_id")}, {"_id": 0})
+    plan_channel = plan.get("channel_id", "") if plan else ""
+    
     await db.subscribers.delete_one({"id": subscriber_id})
-    background_tasks.add_task(remove_from_channel, subscriber["telegram_user_id"])
+    background_tasks.add_task(remove_from_channel, subscriber["telegram_user_id"], plan_channel)
     
     return {"message": "Subscriber removed"}
 
