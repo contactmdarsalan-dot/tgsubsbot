@@ -202,11 +202,12 @@ async def send_telegram_message(chat_id: str, message: str, bot_token: str = Non
         logger.error(f"Failed to send telegram message: {e}")
         return False
 
-async def add_to_channel(user_id: str):
+async def add_to_channel(user_id: str, plan_channel_id: str = None, plan_name: str = ""):
     """Add user to private channel by sending invite link"""
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
-    channel_id = settings.get("telegram_channel_id", "")
+    # Use plan's channel if provided, otherwise use default
+    channel_id = plan_channel_id if plan_channel_id else settings.get("telegram_channel_id", "")
     
     if not bot_token or not channel_id:
         logger.warning("Bot token or channel ID not configured")
@@ -224,18 +225,22 @@ async def add_to_channel(user_id: str):
                 data = response.json()
                 invite_link = data.get("result", {}).get("invite_link")
                 if invite_link:
-                    await send_telegram_message(user_id, f"Welcome! Join our premium channel: {invite_link}", bot_token)
+                    msg = f"🎉 <b>Welcome!</b>\n\n"
+                    if plan_name:
+                        msg += f"📦 Plan: <b>{plan_name}</b>\n\n"
+                    msg += f"🔗 Join your premium channel:\n{invite_link}"
+                    await send_telegram_message(user_id, msg, bot_token)
                     return True
         return False
     except Exception as e:
         logger.error(f"Failed to add user to channel: {e}")
         return False
 
-async def remove_from_channel(user_id: str):
+async def remove_from_channel(user_id: str, plan_channel_id: str = None):
     """Remove user from private channel"""
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
-    channel_id = settings.get("telegram_channel_id", "")
+    channel_id = plan_channel_id if plan_channel_id else settings.get("telegram_channel_id", "")
     
     if not bot_token or not channel_id:
         return False
