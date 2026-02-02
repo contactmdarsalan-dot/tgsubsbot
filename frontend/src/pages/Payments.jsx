@@ -54,6 +54,7 @@ export default function Payments() {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [screenshotModal, setScreenshotModal] = useState({ open: false, url: "", payment: null });
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({
