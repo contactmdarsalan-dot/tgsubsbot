@@ -9,6 +9,7 @@ import Payments from "./pages/Payments";
 import Automation from "./pages/Automation";
 import Settings from "./pages/Settings";
 import Pricing from "./pages/Pricing";
+import AdminSubscriptions from "./pages/AdminSubscriptions";
 import Layout from "./components/Layout";
 
 const ProtectedRoute = ({ children }) => {
