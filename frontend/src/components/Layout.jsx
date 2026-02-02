@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -10,6 +10,7 @@ import {
   LogOut,
   Menu,
   X,
+  Crown,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -20,6 +21,10 @@ const navItems = [
   { path: "/payments", label: "Payments", icon: CreditCard },
   { path: "/automation", label: "Automation", icon: Bell },
   { path: "/settings", label: "Settings", icon: Settings },
+];
+
+const adminNavItems = [
+  { path: "/admin-subs", label: "SaaS Subs", icon: Crown, adminOnly: true },
 ];
 
 export default function Layout() {
