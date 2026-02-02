@@ -10,7 +10,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "../components/ui/dialog";
 import { Switch } from "../components/ui/switch";
 import { toast } from "sonner";
@@ -61,11 +60,8 @@ export default function Plans() {
         is_active: form.is_active,
       };
 
-      console.log("Submitting plan:", payload, "Editing:", editingPlan);
-
       if (editingPlan) {
-        const response = await axios.put(`${API}/plans/${editingPlan.id}`, payload, getAuthHeaders());
-        console.log("Update response:", response);
+        await axios.put(`${API}/plans/${editingPlan.id}`, payload, getAuthHeaders());
         toast.success("Plan updated successfully");
       } else {
         await axios.post(`${API}/plans`, payload, getAuthHeaders());
@@ -76,13 +72,11 @@ export default function Plans() {
       resetForm();
       fetchPlans();
     } catch (error) {
-      console.error("Submit error:", error);
       toast.error(error.response?.data?.detail || "Failed to save plan");
     }
   };
 
   const handleEdit = (plan) => {
-    console.log("Editing plan:", plan);
     setEditingPlan(plan);
     setForm({
       name: plan.name,
@@ -91,21 +85,23 @@ export default function Plans() {
       features: Array.isArray(plan.features) ? plan.features.join("\n") : "",
       is_active: plan.is_active,
     });
-    setTimeout(() => setDialogOpen(true), 100);
+    setDialogOpen(true);
   };
 
   const handleDelete = async (planId) => {
     if (!window.confirm("Are you sure you want to delete this plan?")) return;
     try {
-      console.log("Deleting plan:", planId);
-      const response = await axios.delete(`${API}/plans/${planId}`, getAuthHeaders());
-      console.log("Delete response:", response);
+      await axios.delete(`${API}/plans/${planId}`, getAuthHeaders());
       toast.success("Plan deleted");
       fetchPlans();
     } catch (error) {
-      console.error("Delete error:", error);
       toast.error(error.response?.data?.detail || "Failed to delete plan");
     }
+  };
+
+  const handleCreateNew = () => {
+    resetForm();
+    setDialogOpen(true);
   };
 
   const resetForm = () => {
@@ -117,6 +113,13 @@ export default function Plans() {
       features: "",
       is_active: true,
     });
+  };
+
+  const handleDialogClose = (open) => {
+    setDialogOpen(open);
+    if (!open) {
+      resetForm();
+    }
   };
 
   if (loading) {
@@ -139,95 +142,92 @@ export default function Plans() {
             Manage your subscription tiers and pricing
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) resetForm();
-        }}>
-          <DialogTrigger asChild>
-            <Button className="btn-hover" data-testid="create-plan-btn">
-              <Plus className="w-4 h-4 mr-2" />
-              Create Plan
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle className="font-heading text-xl font-bold">
-                {editingPlan ? "Edit Plan" : "Create New Plan"}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+        <Button className="btn-hover" data-testid="create-plan-btn" onClick={handleCreateNew}>
+          <Plus className="w-4 h-4 mr-2" />
+          Create Plan
+        </Button>
+      </div>
+
+      {/* Dialog - Moved outside of header */}
+      <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-xl font-bold">
+              {editingPlan ? "Edit Plan" : "Create New Plan"}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Plan Name</Label>
+              <Input
+                id="name"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g., Premium Monthly"
+                required
+                data-testid="plan-name-input"
+                className="bg-muted/50 border-transparent focus:border-primary"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Plan Name</Label>
+                <Label htmlFor="price">Price (₹)</Label>
                 <Input
-                  id="name"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g., Premium Monthly"
+                  id="price"
+                  type="number"
+                  value={form.price}
+                  onChange={(e) => setForm({ ...form, price: e.target.value })}
+                  placeholder="299"
                   required
-                  data-testid="plan-name-input"
+                  data-testid="plan-price-input"
                   className="bg-muted/50 border-transparent focus:border-primary"
                 />
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="price">Price (₹)</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    value={form.price}
-                    onChange={(e) => setForm({ ...form, price: e.target.value })}
-                    placeholder="299"
-                    required
-                    data-testid="plan-price-input"
-                    className="bg-muted/50 border-transparent focus:border-primary"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="duration">Duration (Days)</Label>
-                  <Input
-                    id="duration"
-                    type="number"
-                    value={form.duration_days}
-                    onChange={(e) => setForm({ ...form, duration_days: e.target.value })}
-                    placeholder="30"
-                    required
-                    data-testid="plan-duration-input"
-                    className="bg-muted/50 border-transparent focus:border-primary"
-                  />
-                </div>
-              </div>
-
               <div className="space-y-2">
-                <Label htmlFor="features">Features (one per line)</Label>
-                <textarea
-                  id="features"
-                  value={form.features}
-                  onChange={(e) => setForm({ ...form, features: e.target.value })}
-                  placeholder="Access to premium channel&#10;Daily signals&#10;24/7 support"
-                  rows={4}
-                  data-testid="plan-features-input"
-                  className="w-full px-3 py-2 bg-muted/50 border-transparent focus:border-primary rounded-md text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                <Label htmlFor="duration">Duration (Days)</Label>
+                <Input
+                  id="duration"
+                  type="number"
+                  value={form.duration_days}
+                  onChange={(e) => setForm({ ...form, duration_days: e.target.value })}
+                  placeholder="30"
+                  required
+                  data-testid="plan-duration-input"
+                  className="bg-muted/50 border-transparent focus:border-primary"
                 />
               </div>
+            </div>
 
-              <div className="flex items-center justify-between">
-                <Label htmlFor="active">Active</Label>
-                <Switch
-                  id="active"
-                  checked={form.is_active}
-                  onCheckedChange={(checked) => setForm({ ...form, is_active: checked })}
-                  data-testid="plan-active-switch"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="features">Features (one per line)</Label>
+              <textarea
+                id="features"
+                value={form.features}
+                onChange={(e) => setForm({ ...form, features: e.target.value })}
+                placeholder="Access to premium channel&#10;Daily signals&#10;24/7 support"
+                rows={4}
+                data-testid="plan-features-input"
+                className="w-full px-3 py-2 bg-muted/50 border-transparent focus:border-primary rounded-md text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
 
-              <Button type="submit" className="w-full btn-hover" data-testid="plan-submit-btn">
-                {editingPlan ? "Update Plan" : "Create Plan"}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="active">Active</Label>
+              <Switch
+                id="active"
+                checked={form.is_active}
+                onCheckedChange={(checked) => setForm({ ...form, is_active: checked })}
+                data-testid="plan-active-switch"
+              />
+            </div>
+
+            <Button type="submit" className="w-full btn-hover" data-testid="plan-submit-btn">
+              {editingPlan ? "Update Plan" : "Create Plan"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Plans Grid */}
       {plans.length > 0 ? (
@@ -266,7 +266,7 @@ export default function Plans() {
                   <span className="text-sm">{plan.duration_days} days</span>
                 </div>
 
-                {plan.features.length > 0 && (
+                {plan.features && plan.features.length > 0 && (
                   <ul className="space-y-2 pt-2 border-t border-border">
                     {plan.features.map((feature, i) => (
                       <li key={i} className="flex items-center gap-2 text-sm">
@@ -310,7 +310,7 @@ export default function Plans() {
             <p className="text-muted-foreground text-center mb-4">
               Create your first subscription plan to get started
             </p>
-            <Button onClick={() => setDialogOpen(true)} data-testid="empty-create-plan-btn">
+            <Button onClick={handleCreateNew} data-testid="empty-create-plan-btn">
               <Plus className="w-4 h-4 mr-2" />
               Create Plan
             </Button>
