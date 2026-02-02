@@ -210,10 +210,25 @@ export default function Plans() {
                 value={form.features}
                 onChange={(e) => setForm({ ...form, features: e.target.value })}
                 placeholder="Access to premium channel&#10;Daily signals&#10;24/7 support"
-                rows={4}
+                rows={3}
                 data-testid="plan-features-input"
                 className="w-full px-3 py-2 bg-muted/50 border-transparent focus:border-primary rounded-md text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="channel_id">Channel ID (Optional)</Label>
+              <Input
+                id="channel_id"
+                value={form.channel_id}
+                onChange={(e) => setForm({ ...form, channel_id: e.target.value })}
+                placeholder="-1001234567890"
+                data-testid="plan-channel-input"
+                className="bg-muted/50 border-transparent focus:border-primary font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave empty to use default channel. Each plan can have its own channel.
+              </p>
             </div>
 
             <div className="flex items-center justify-between">
