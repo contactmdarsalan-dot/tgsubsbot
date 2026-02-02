@@ -93,11 +93,14 @@ export default function Plans() {
   const handleDelete = async (planId) => {
     if (!window.confirm("Are you sure you want to delete this plan?")) return;
     try {
-      await axios.delete(`${API}/plans/${planId}`, getAuthHeaders());
+      console.log("Deleting plan:", planId);
+      const response = await axios.delete(`${API}/plans/${planId}`, getAuthHeaders());
+      console.log("Delete response:", response);
       toast.success("Plan deleted");
       fetchPlans();
     } catch (error) {
-      toast.error("Failed to delete plan");
+      console.error("Delete error:", error);
+      toast.error(error.response?.data?.detail || "Failed to delete plan");
     }
   };
 
