@@ -38,21 +38,22 @@ export default function Login() {
       
       // Check if this is the first user (admin)
       try {
-        const usersCheck = await axios.get(`${API}/dashboard-subscription/requests`, {
+        const adminCheck = await axios.get(`${API}/auth/check-admin`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        // If can see all requests, is admin
-        localStorage.setItem("isFirstUser", "true");
+        const isAdmin = adminCheck.data.is_admin;
+        localStorage.setItem("isFirstUser", isAdmin ? "true" : "false");
+        
+        toast.success(isLogin ? "Welcome back!" : "Account created successfully!");
+        
+        // Redirect based on subscription status or admin
+        if (isAdmin || user.dashboard_subscription_status === "active") {
+          navigate("/");
+        } else {
+          navigate("/pricing");
+        }
       } catch {
         localStorage.setItem("isFirstUser", "false");
-      }
-
-      toast.success(isLogin ? "Welcome back!" : "Account created successfully!");
-      
-      // Redirect based on subscription status
-      if (user.dashboard_subscription_status === "active" || localStorage.getItem("isFirstUser") === "true") {
-        navigate("/");
-      } else {
         navigate("/pricing");
       }
     } catch (error) {
