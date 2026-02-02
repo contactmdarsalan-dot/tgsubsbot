@@ -76,7 +76,7 @@ export default function Layout() {
 
           {/* Navigation */}
           <nav className="flex-1 p-4 space-y-1">
-            {navItems.map((item) => {
+            {allNavItems.map((item) => {
               const isActive = location.pathname === item.path;
               const Icon = item.icon;
               return (
@@ -84,12 +84,12 @@ export default function Layout() {
                   key={item.path}
                   to={item.path}
                   onClick={() => setSidebarOpen(false)}
-                  data-testid={`nav-${item.label.toLowerCase()}`}
+                  data-testid={`nav-${item.label.toLowerCase().replace(' ', '-')}`}
                   className={`flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-colors duration-200 ${
                     isActive
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  }`}
+                  } ${item.adminOnly ? "border border-dashed border-primary/30" : ""}`}
                 >
                   <Icon className="w-5 h-5" strokeWidth={1.5} />
                   {item.label}
