@@ -1,0 +1,160 @@
+{
+  "summary": {
+    "total_tests": 25,
+    "passed_tests": 25,
+    "success_rate": 100.0,
+    "timestamp": "2026-02-02T03:41:48.484931"
+  },
+  "detailed_results": [
+    {
+      "test": "User Registration",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:47.316110"
+    },
+    {
+      "test": "Token Retrieved",
+      "success": true,
+      "details": "Authentication token obtained",
+      "timestamp": "2026-02-02T03:41:47.316664"
+    },
+    {
+      "test": "User Login",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:47.582014"
+    },
+    {
+      "test": "Get Current User",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:47.621667"
+    },
+    {
+      "test": "Create Plan",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:47.672171"
+    },
+    {
+      "test": "Plan ID Retrieved",
+      "success": true,
+      "details": "Plan ID: dedf2b9f-21b5-4c75-8db8-09fee3a8d445",
+      "timestamp": "2026-02-02T03:41:47.672743"
+    },
+    {
+      "test": "Get All Plans",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:47.712321"
+    },
+    {
+      "test": "Get Active Plans",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:47.747216"
+    },
+    {
+      "test": "Update Plan",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:47.786129"
+    },
+    {
+      "test": "Create Subscriber",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:47.836215"
+    },
+    {
+      "test": "Get All Subscribers",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:47.878686"
+    },
+    {
+      "test": "Get Active Subscribers",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:47.917864"
+    },
+    {
+      "test": "Renew Subscriber",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:47.953992"
+    },
+    {
+      "test": "Create Manual Payment",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:48.007996"
+    },
+    {
+      "test": "Get All Payments",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:48.048455"
+    },
+    {
+      "test": "Get Pending Payments",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:48.082026"
+    },
+    {
+      "test": "Verify Manual Payment",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:48.118545"
+    },
+    {
+      "test": "Get Settings",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:48.155735"
+    },
+    {
+      "test": "Update Settings",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:48.213252"
+    },
+    {
+      "test": "Get Analytics",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:48.262533"
+    },
+    {
+      "test": "Create Template",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:48.314161"
+    },
+    {
+      "test": "Get All Templates",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:48.351132"
+    },
+    {
+      "test": "Update Template",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:48.389680"
+    },
+    {
+      "test": "Delete Subscriber 4cf6cab3-2788-4ddb-901f-322b2363e4e4",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:48.425618"
+    },
+    {
+      "test": "Delete Plan dedf2b9f-21b5-4c75-8db8-09fee3a8d445",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-02-02T03:41:48.484088"
+    }
+  ]
+}
