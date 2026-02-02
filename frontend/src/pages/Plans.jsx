@@ -114,6 +114,7 @@ export default function Plans() {
       price: "",
       duration_days: "",
       features: "",
+      channel_id: "",
       is_active: true,
     });
   };
