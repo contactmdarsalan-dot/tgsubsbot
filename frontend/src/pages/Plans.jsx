@@ -85,6 +85,7 @@ export default function Plans() {
       price: plan.price.toString(),
       duration_days: plan.duration_days.toString(),
       features: Array.isArray(plan.features) ? plan.features.join("\n") : "",
+      channel_id: plan.channel_id || "",
       is_active: plan.is_active,
     });
     setDialogOpen(true);
