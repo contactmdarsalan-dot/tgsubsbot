@@ -281,14 +281,26 @@ async def register(user: UserCreate):
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    user_obj = User(email=user.email, name=user.name)
+    user_obj = User(email=user.email, name=user.name, phone=user.phone)
     doc = user_obj.model_dump()
     doc["password_hash"] = hash_password(user.password)
     doc["created_at"] = doc["created_at"].isoformat()
+    if doc.get("dashboard_subscription_end"):
+        doc["dashboard_subscription_end"] = doc["dashboard_subscription_end"].isoformat()
     
     await db.users.insert_one(doc)
     token = create_token(user_obj.id)
-    return {"token": token, "user": {"id": user_obj.id, "email": user_obj.email, "name": user_obj.name}}
+    return {
+        "token": token, 
+        "user": {
+            "id": user_obj.id, 
+            "email": user_obj.email, 
+            "name": user_obj.name,
+            "dashboard_subscription_status": "inactive",
+            "dashboard_plan": "",
+            "dashboard_subscription_end": None
+        }
+    }
 
 @api_router.post("/auth/login")
 async def login(user: UserLogin):
@@ -296,12 +308,136 @@ async def login(user: UserLogin):
     if not existing or not verify_password(user.password, existing.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
+    # Check subscription status
+    sub_status = existing.get("dashboard_subscription_status", "inactive")
+    sub_end = existing.get("dashboard_subscription_end")
+    
+    if sub_end and isinstance(sub_end, str):
+        sub_end = datetime.fromisoformat(sub_end)
+    
+    # Check if subscription expired
+    if sub_status == "active" and sub_end and datetime.now(timezone.utc) > sub_end:
+        sub_status = "inactive"
+        await db.users.update_one({"id": existing["id"]}, {"$set": {"dashboard_subscription_status": "inactive"}})
+    
     token = create_token(existing["id"])
-    return {"token": token, "user": {"id": existing["id"], "email": existing["email"], "name": existing["name"]}}
+    return {
+        "token": token, 
+        "user": {
+            "id": existing["id"], 
+            "email": existing["email"], 
+            "name": existing["name"],
+            "dashboard_subscription_status": sub_status,
+            "dashboard_plan": existing.get("dashboard_plan", ""),
+            "dashboard_subscription_end": sub_end.isoformat() if sub_end else None
+        }
+    }
 
 @api_router.get("/auth/me")
 async def get_me(user = Depends(get_current_user)):
-    return {"id": user["id"], "email": user["email"], "name": user["name"]}
+    sub_end = user.get("dashboard_subscription_end")
+    if sub_end and isinstance(sub_end, str):
+        sub_end = datetime.fromisoformat(sub_end)
+    
+    return {
+        "id": user["id"], 
+        "email": user["email"], 
+        "name": user["name"],
+        "dashboard_subscription_status": user.get("dashboard_subscription_status", "inactive"),
+        "dashboard_plan": user.get("dashboard_plan", ""),
+        "dashboard_subscription_end": sub_end.isoformat() if sub_end else None
+    }
+
+# ============== DASHBOARD SUBSCRIPTION ROUTES ==============
+
+@api_router.get("/dashboard-plans")
+async def get_dashboard_plans():
+    """Get available dashboard subscription plans"""
+    return {
+        "plans": [
+            {"id": "1month", "name": "1 Month", "price": 4999, "duration": "30 days", "popular": False},
+            {"id": "6month", "name": "6 Months", "price": 24999, "duration": "180 days", "popular": True, "save": "17%"},
+            {"id": "12month", "name": "12 Months", "price": 44999, "duration": "365 days", "popular": False, "save": "25%"},
+            {"id": "lifetime", "name": "Lifetime", "price": 0, "duration": "Forever", "contact": True}
+        ]
+    }
+
+@api_router.post("/dashboard-subscription/request")
+async def request_dashboard_subscription(data: dict, user = Depends(get_current_user)):
+    """Request dashboard subscription - creates pending request"""
+    plan_id = data.get("plan_id")
+    if plan_id not in DASHBOARD_PLANS and plan_id != "lifetime":
+        raise HTTPException(status_code=400, detail="Invalid plan")
+    
+    plan_info = DASHBOARD_PLANS.get(plan_id, {})
+    
+    # Create subscription request
+    request_obj = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "user_name": user["name"],
+        "plan_id": plan_id,
+        "plan_name": plan_info.get("name", "Lifetime"),
+        "amount": plan_info.get("price", 0),
+        "status": "pending",  # pending, approved, rejected
+        "screenshot_url": data.get("screenshot_url", ""),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.dashboard_subscriptions.insert_one(request_obj)
+    
+    return {"message": "Subscription request submitted", "request_id": request_obj["id"]}
+
+@api_router.get("/dashboard-subscription/requests")
+async def get_subscription_requests(user = Depends(get_current_user)):
+    """Get all subscription requests (admin only - first user is admin)"""
+    # Check if first user (admin)
+    first_user = await db.users.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
+    if not first_user or first_user["id"] != user["id"]:
+        # Only show own requests
+        requests = await db.dashboard_subscriptions.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
+    else:
+        # Admin sees all
+        requests = await db.dashboard_subscriptions.find({}, {"_id": 0}).to_list(100)
+    
+    return requests
+
+@api_router.put("/dashboard-subscription/approve/{request_id}")
+async def approve_subscription(request_id: str, user = Depends(get_current_user)):
+    """Approve subscription request (admin only)"""
+    # Check if admin (first user)
+    first_user = await db.users.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
+    if not first_user or first_user["id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    request = await db.dashboard_subscriptions.find_one({"id": request_id}, {"_id": 0})
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    plan_id = request["plan_id"]
+    plan_info = DASHBOARD_PLANS.get(plan_id, {})
+    days = plan_info.get("days", 30)
+    
+    end_date = datetime.now(timezone.utc) + timedelta(days=days)
+    
+    # Update user subscription
+    await db.users.update_one(
+        {"id": request["user_id"]},
+        {"$set": {
+            "dashboard_plan": plan_id,
+            "dashboard_subscription_status": "active",
+            "dashboard_subscription_end": end_date.isoformat()
+        }}
+    )
+    
+    # Update request status
+    await db.dashboard_subscriptions.update_one(
+        {"id": request_id},
+        {"$set": {"status": "approved", "approved_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    return {"message": "Subscription approved"}
 
 # ============== PLANS ROUTES ==============
 
