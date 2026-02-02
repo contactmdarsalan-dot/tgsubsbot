@@ -362,6 +362,7 @@ export default function Payments() {
                     <TableHead className="font-heading font-bold">User</TableHead>
                     <TableHead className="font-heading font-bold">Plan</TableHead>
                     <TableHead className="font-heading font-bold">Amount</TableHead>
+                    <TableHead className="font-heading font-bold">Screenshot</TableHead>
                     <TableHead className="font-heading font-bold">Status</TableHead>
                     <TableHead className="font-heading font-bold">Date</TableHead>
                     <TableHead className="font-heading font-bold text-right">Actions</TableHead>
@@ -383,6 +384,25 @@ export default function Payments() {
                       <TableCell className="font-medium">{payment.plan_name || "-"}</TableCell>
                       <TableCell className="font-mono font-medium">
                         ₹{payment.amount.toLocaleString("en-IN")}
+                      </TableCell>
+                      <TableCell>
+                        {payment.screenshot_url ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setScreenshotModal({ open: true, url: payment.screenshot_url, payment })}
+                            className="gap-1"
+                            data-testid={`view-screenshot-${payment.id}`}
+                          >
+                            <Eye className="w-4 h-4" />
+                            View
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            Waiting
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>{getStatusBadge(payment.status)}</TableCell>
                       <TableCell className="font-mono text-sm">{formatDate(payment.created_at)}</TableCell>
