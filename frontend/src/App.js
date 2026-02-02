@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 import Login from "./pages/Login";
@@ -7,22 +8,83 @@ import Subscribers from "./pages/Subscribers";
 import Payments from "./pages/Payments";
 import Automation from "./pages/Automation";
 import Settings from "./pages/Settings";
+import Pricing from "./pages/Pricing";
 import Layout from "./components/Layout";
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem("token");
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  
   if (!token) {
     return <Navigate to="/login" replace />;
   }
+  
+  // Check if user has active subscription
+  const subStatus = user.dashboard_subscription_status;
+  const isFirstUser = localStorage.getItem("isFirstUser") === "true";
+  
+  // First user (admin) gets free access
+  if (isFirstUser) {
+    return children;
+  }
+  
+  // Check subscription
+  if (subStatus !== "active") {
+    return <Navigate to="/pricing" replace />;
+  }
+  
   return children;
 };
 
+const PricingRoute = () => {
+  const token = localStorage.getItem("token");
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  const subStatus = user.dashboard_subscription_status;
+  const isFirstUser = localStorage.getItem("isFirstUser") === "true";
+  
+  // If already subscribed or admin, go to dashboard
+  if (subStatus === "active" || isFirstUser) {
+    return <Navigate to="/" replace />;
+  }
+  
+  return <Pricing />;
+};
+
 function App() {
+  // Check if first user on mount
+  useEffect(() => {
+    const checkFirstUser = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (token) {
+          const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/auth/me`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (response.ok) {
+            const userData = await response.json();
+            // Simple check: if subscription status is undefined/null, might be admin
+            // Real check happens on backend
+            localStorage.setItem("user", JSON.stringify(userData));
+          }
+        }
+      } catch (e) {
+        console.error("Auth check failed:", e);
+      }
+    };
+    checkFirstUser();
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/pricing" element={<PricingRoute />} />
           <Route
             path="/"
             element={
