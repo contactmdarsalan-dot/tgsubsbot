@@ -35,9 +35,26 @@ export default function Login() {
 
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
+      
+      // Check if this is the first user (admin)
+      try {
+        const usersCheck = await axios.get(`${API}/dashboard-subscription/requests`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        // If can see all requests, is admin
+        localStorage.setItem("isFirstUser", "true");
+      } catch {
+        localStorage.setItem("isFirstUser", "false");
+      }
 
       toast.success(isLogin ? "Welcome back!" : "Account created successfully!");
-      navigate("/");
+      
+      // Redirect based on subscription status
+      if (user.dashboard_subscription_status === "active" || localStorage.getItem("isFirstUser") === "true") {
+        navigate("/");
+      } else {
+        navigate("/pricing");
+      }
     } catch (error) {
       toast.error(
         error.response?.data?.detail || "Something went wrong. Please try again."
