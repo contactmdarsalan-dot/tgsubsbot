@@ -1,0 +1,156 @@
+{
+  "identity": {
+    "persona": "E1: The Anti-AI Designer",
+    "principles": [
+      "Fusion over Imitation: Mix disparate disciplines.",
+      "Emotion First: Design for 'Control' and 'Growth'.",
+      "Content is King: Data is the story.",
+      "Zoom In: Big, bold numbers for KPIs.",
+      "Negative Space: Breathing room between dense data.",
+      "Contrast: High contrast for readability and impact."
+    ],
+    "anti_patterns": [
+      "Purple/Teal for CTAs (Use Electric Blue instead).",
+      "Inter everywhere (Use Barlow Condensed for Headings).",
+      "Center-Everything (Use Asymmetry).",
+      "Gradient Overload (Use solid colors + texture)."
+    ]
+  },
+  "typography": {
+    "headings": {
+      "font_family": "Barlow Condensed, sans-serif",
+      "weights": ["700", "900"],
+      "usage": "Page titles, Card headers, Big KPI numbers",
+      "letter_spacing": "tracking-tight"
+    },
+    "body": {
+      "font_family": "Inter, sans-serif",
+      "weights": ["400", "500"],
+      "usage": "General text, labels, table data"
+    },
+    "mono": {
+      "font_family": "JetBrains Mono, monospace",
+      "weights": ["500"],
+      "usage": "Financial data, IDs, Dates, Code snippets"
+    },
+    "installation": "Import from Google Fonts: https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;900&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap"
+  },
+  "colors": {
+    "theme": "Performance Pro (Light Variant)",
+    "palette": {
+      "background": "#FFFFFF",
+      "foreground": "#0F172A",
+      "card": "#FFFFFF",
+      "card_foreground": "#0F172A",
+      "popover": "#FFFFFF",
+      "popover_foreground": "#0F172A",
+      "primary": "#2563EB",
+      "primary_foreground": "#FFFFFF",
+      "secondary": "#F1F5F9",
+      "secondary_foreground": "#0F172A",
+      "muted": "#F8FAFC",
+      "muted_foreground": "#64748B",
+      "accent": "#F1F5F9",
+      "accent_foreground": "#0F172A",
+      "destructive": "#EF4444",
+      "destructive_foreground": "#FFFFFF",
+      "border": "#E2E8F0",
+      "input": "#E2E8F0",
+      "ring": "#2563EB",
+      "success": "#10B981",
+      "warning": "#F59E0B"
+    },
+    "rules": [
+      "Never use pure #000000. Use #0F172A (Slate 900).",
+      "Primary color (Electric Blue) ONLY for main CTAs.",
+      "Use 'Success Green' for Revenue and Active status.",
+      "Use 'Destructive Red' for Expired/Failed status."
+    ]
+  },
+  "layout": {
+    "grid_system": "Bento Grid Mode B (High Density)",
+    "spacing": {
+      "container_padding": "p-6 md:p-8 lg:p-12",
+      "gap": "gap-4 md:gap-6",
+      "internal_padding": "p-6"
+    },
+    "strategies": {
+      "dashboard": "Grid with 'Grid Borders' style (exposed skeleton).",
+      "marketing_login": "Split screen: 50% Image (Left) / 50% Form (Right).",
+      "lists": "Full width tables with sticky headers."
+    }
+  },
+  "components": {
+    "buttons": {
+      "style": "Sharp edges or small radius (rounded-md).",
+      "hover": "translate-y-[-1px] shadow-md transition-all duration-200"
+    },
+    "cards": {
+      "style": "Flat background, 1px border (border-border), no shadow by default.",
+      "hover": "border-primary/50 transition-colors duration-200"
+    },
+    "inputs": {
+      "style": "bg-muted/50 border-transparent focus:border-primary focus:bg-background transition-all"
+    },
+    "navigation": {
+      "sidebar": "Fixed left, bg-muted/30 border-r border-border.",
+      "header": "Sticky top, glassmorphism (bg-white/80 backdrop-blur-xl border-b border-border/50)."
+    },
+    "visual_enhancers": {
+      "tracing_beam": "Use for 'Subscription Plans' cards. A glowing gradient border that traces the edge.",
+      "glassmorphism": "Use for Header and Toasts.",
+      "grid_borders": "Use for Dashboard KPI section."
+    }
+  },
+  "images": {
+    "login_background": {
+      "url": "https://images.unsplash.com/photo-1759270463243-414a287681be?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "alt": "Abstract white and blue geometric shapes",
+      "usage": "Login page left panel background, cover"
+    },
+    "empty_state": {
+      "style": "Use Lucide Icons (e.g., Box, Ghost) with large size (w-12 h-12) and muted colors.",
+      "fallback_text": "No data available"
+    }
+  },
+  "icons": {
+    "library": "lucide-react",
+    "style": "Stroke width 1.5px or 2px. Color: muted-foreground (default), primary (active)."
+  },
+  "motion": {
+    "transitions": "transition-all duration-200 ease-out",
+    "hover_effects": "Lift up (-1px) and shadow increase.",
+    "page_load": "Staggered fade-in for grid items."
+  },
+  "accessibility": {
+    "contrast": "Ensure text is Slate 900 on White, or White on Blue 600.",
+    "focus_states": "Visible ring-2 ring-primary ring-offset-2.",
+    "testing": "All interactive elements must have data-testid attributes."
+  },
+  "tech_stack": {
+    "framework": "React",
+    "styling": "Tailwind CSS",
+    "ui_library": "Shadcn/UI (Customized)",
+    "icons": "Lucide React",
+    "charts": "Recharts (via Shadcn Charts)",
+    "notifications": "Sonner"
+  },
+  "instructions_to_main_agent": [
+    "1. Install fonts: Barlow Condensed, Inter, JetBrains Mono.",
+    "2. Update tailwind.config.js with the 'Performance Pro' colors.",
+    "3. Create a 'Layout' component with Sidebar and Header.",
+    "4. Build the Dashboard using the Bento Grid Mode B.",
+    "5. Implement the 'Tracing Beam' effect for the Plans page.",
+    "6. Ensure all forms use Shadcn Form components.",
+    "7. Use 'sonner' for all notifications.",
+    "8. STRICTLY follow the 'Anti-AI' design principles: No generic gradients, no 'Inter' for headings.",
+    "9. Add data-testid to all interactive elements."
+  ],
+  "universal_guidelines": [
+    "Avoid 'AI slop' aesthetics (generic centered layouts, purple gradients).",
+    "Use 2-3x more spacing than typical.",
+    "Every interaction needs a micro-animation.",
+    "Do not use 'transition: all'.",
+    "Do not center align the app container."
+  ]
+}
