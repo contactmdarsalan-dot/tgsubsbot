@@ -34,7 +34,6 @@ export default function Login() {
       const { token, user } = response.data;
 
       localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
       
       // Check if this is the first user (admin)
       try {
@@ -42,19 +41,24 @@ export default function Login() {
           headers: { Authorization: `Bearer ${token}` }
         });
         const isAdmin = adminCheck.data.is_admin;
+        
+        // Store admin status in user object AND localStorage
+        user.isAdmin = isAdmin;
+        localStorage.setItem("user", JSON.stringify(user));
         localStorage.setItem("isFirstUser", isAdmin ? "true" : "false");
         
         toast.success(isLogin ? "Welcome back!" : "Account created successfully!");
         
-        // Redirect based on subscription status or admin
+        // Use window.location for full page reload to ensure state is fresh
         if (isAdmin || user.dashboard_subscription_status === "active") {
-          navigate("/");
+          window.location.href = "/";
         } else {
-          navigate("/pricing");
+          window.location.href = "/pricing";
         }
       } catch {
+        localStorage.setItem("user", JSON.stringify(user));
         localStorage.setItem("isFirstUser", "false");
-        navigate("/pricing");
+        window.location.href = "/pricing";
       }
     } catch (error) {
       toast.error(
