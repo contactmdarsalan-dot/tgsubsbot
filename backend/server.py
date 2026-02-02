@@ -722,18 +722,59 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             await http_client.post(url, json={
                                 "chat_id": chat_id,
                                 "photo": qr_url,
-                                "caption": "📱 Scan this QR code to pay\n\nAfter payment, send screenshot to admin"
+                                "caption": "📱 Scan this QR code to pay\n\nAfter payment, click 'I've Paid' button"
                             })
                     except:
                         await send_telegram_message(chat_id, f"QR Code: {qr_url}", bot_token)
             
             elif callback_data.startswith("paid_"):
-                msg = "✅ <b>Thank you!</b>\n\n"
-                msg += "Please send your payment screenshot to admin.\n\n"
-                msg += f"📱 Your User ID: <code>{chat_id}</code>\n"
-                msg += f"👤 Username: @{username}\n\n"
-                msg += "Admin will verify and activate your subscription shortly!"
-                await send_telegram_message(chat_id, msg, bot_token)
+                plan_id = callback_data.replace("paid_", "")
+                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+                
+                if plan:
+                    # Check if already has pending payment for this plan
+                    existing = await db.payments.find_one({
+                        "telegram_user_id": chat_id,
+                        "plan_id": plan_id,
+                        "status": "pending"
+                    })
+                    
+                    if not existing:
+                        # Create pending payment record
+                        payment_obj = {
+                            "id": str(uuid.uuid4()),
+                            "subscriber_id": None,
+                            "telegram_user_id": chat_id,
+                            "telegram_username": username or "",
+                            "amount": plan["price"],
+                            "plan_id": plan_id,
+                            "plan_name": plan["name"],
+                            "payment_method": "manual",
+                            "razorpay_order_id": None,
+                            "razorpay_payment_id": None,
+                            "status": "pending",
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        await db.payments.insert_one(payment_obj)
+                        logger.info(f"Created pending payment for user {chat_id}, plan {plan['name']}")
+                    
+                    msg = "✅ <b>Payment Recorded!</b>\n\n"
+                    msg += f"📦 Plan: <b>{plan['name']}</b>\n"
+                    msg += f"💰 Amount: <b>₹{plan['price']}</b>\n\n"
+                    msg += "━━━━━━━━━━━━━━━\n"
+                    msg += "📝 <b>Next Steps:</b>\n\n"
+                    msg += "1️⃣ Send payment screenshot to admin\n"
+                    msg += "2️⃣ Admin will verify your payment\n"
+                    msg += "3️⃣ You'll get channel access!\n\n"
+                    msg += f"📱 Your ID: <code>{chat_id}</code>\n"
+                    if username:
+                        msg += f"👤 Username: @{username}\n"
+                    msg += "\n⏳ <i>Verification usually takes 5-30 minutes</i>"
+                else:
+                    msg = "❌ Plan not found. Please try again with /start"
+                
+                buttons = [[{"text": "◀️ Back to Plans", "callback_data": "back_plans"}]]
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
             
             elif callback_data == "back_plans":
                 # Show plans again
