@@ -22,10 +22,10 @@ const ProtectedRoute = ({ children }) => {
   
   // Check if user has active subscription
   const subStatus = user.dashboard_subscription_status;
-  const isFirstUser = localStorage.getItem("isFirstUser") === "true";
+  const isAdmin = user.isAdmin || localStorage.getItem("isFirstUser") === "true";
   
-  // First user (admin) gets free access
-  if (isFirstUser) {
+  // Admin gets free access
+  if (isAdmin) {
     return children;
   }
   
