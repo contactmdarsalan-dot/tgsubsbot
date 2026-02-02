@@ -58,6 +58,7 @@ export default function Plans() {
         price: parseFloat(form.price),
         duration_days: parseInt(form.duration_days),
         features: form.features.split("\n").filter((f) => f.trim()),
+        channel_id: form.channel_id,
         is_active: form.is_active,
       };
 
