@@ -823,6 +823,41 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
                 await send_telegram_message_with_buttons(chat_id, welcome_msg, buttons, bot_token)
             
+            elif callback_data.startswith("renew_"):
+                # Handle renewal - go directly to payment for the same plan
+                plan_id = callback_data.replace("renew_", "")
+                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+                
+                if plan:
+                    # Show payment options directly
+                    qr_code_url = settings.get("qr_code_url", "")
+                    
+                    renew_msg = f"🔄 <b>Renew Subscription</b>\n\n"
+                    renew_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
+                    renew_msg += f"💰 Price: <b>₹{plan['price']}</b>\n"
+                    renew_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
+                    renew_msg += "━━━━━━━━━━━━━━━\n"
+                    renew_msg += "<b>💳 Payment Options:</b>\n\n"
+                    renew_msg += "1️⃣ <b>UPI/QR Code:</b> Pay via any UPI app\n"
+                    renew_msg += "2️⃣ After payment, click 'I've Paid'\n\n"
+                    renew_msg += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"
+                    
+                    buttons = []
+                    if qr_code_url:
+                        buttons.append([{"text": "📱 Show QR Code", "callback_data": f"qr_{plan_id}"}])
+                    buttons.append([{"text": "✅ I've Paid", "callback_data": f"paid_{plan_id}"}])
+                    buttons.append([{"text": "📦 View Other Plans", "callback_data": "back_plans"}])
+                    
+                    await send_telegram_message_with_buttons(chat_id, renew_msg, buttons, bot_token)
+                else:
+                    # Plan not found, show all plans
+                    await send_telegram_message(chat_id, "Plan not found. Please choose from available plans:", bot_token)
+                    plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+                    buttons = []
+                    for p in plans:
+                        buttons.append([{"text": f"📦 {p['name']} - ₹{p['price']}", "callback_data": f"buy_{p['id']}"}])
+                    await send_telegram_message_with_buttons(chat_id, "🎯 <b>Available Plans:</b>", buttons, bot_token)
+            
             elif callback_data == "check_status":
                 subscriber = await db.subscribers.find_one({"telegram_user_id": chat_id}, {"_id": 0})
                 if subscriber:
