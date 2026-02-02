@@ -355,9 +355,9 @@ export default function Payments() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
-                    <TableHead className="font-heading font-bold">User ID</TableHead>
+                    <TableHead className="font-heading font-bold">User</TableHead>
+                    <TableHead className="font-heading font-bold">Plan</TableHead>
                     <TableHead className="font-heading font-bold">Amount</TableHead>
-                    <TableHead className="font-heading font-bold">Method</TableHead>
                     <TableHead className="font-heading font-bold">Status</TableHead>
                     <TableHead className="font-heading font-bold">Date</TableHead>
                     <TableHead className="font-heading font-bold text-right">Actions</TableHead>
@@ -366,11 +366,20 @@ export default function Payments() {
                 <TableBody>
                   {filteredPayments.map((payment) => (
                     <TableRow key={payment.id} className="hover:bg-muted/30" data-testid={`payment-row-${payment.id}`}>
-                      <TableCell className="font-mono text-sm">{payment.telegram_user_id}</TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="font-mono text-sm font-medium">
+                            {payment.telegram_username ? `@${payment.telegram_username}` : payment.telegram_user_id}
+                          </p>
+                          {payment.telegram_username && (
+                            <p className="text-xs text-muted-foreground">{payment.telegram_user_id}</p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium">{payment.plan_name || "-"}</TableCell>
                       <TableCell className="font-mono font-medium">
                         ₹{payment.amount.toLocaleString("en-IN")}
                       </TableCell>
-                      <TableCell className="capitalize">{payment.payment_method}</TableCell>
                       <TableCell>{getStatusBadge(payment.status)}</TableCell>
                       <TableCell className="font-mono text-sm">{formatDate(payment.created_at)}</TableCell>
                       <TableCell className="text-right">
