@@ -61,8 +61,11 @@ export default function Plans() {
         is_active: form.is_active,
       };
 
+      console.log("Submitting plan:", payload, "Editing:", editingPlan);
+
       if (editingPlan) {
-        await axios.put(`${API}/plans/${editingPlan.id}`, payload, getAuthHeaders());
+        const response = await axios.put(`${API}/plans/${editingPlan.id}`, payload, getAuthHeaders());
+        console.log("Update response:", response);
         toast.success("Plan updated successfully");
       } else {
         await axios.post(`${API}/plans`, payload, getAuthHeaders());
@@ -73,6 +76,7 @@ export default function Plans() {
       resetForm();
       fetchPlans();
     } catch (error) {
+      console.error("Submit error:", error);
       toast.error(error.response?.data?.detail || "Failed to save plan");
     }
   };
