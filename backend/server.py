@@ -1013,6 +1013,7 @@ async def check_subscriptions():
     now = datetime.now(timezone.utc)
     settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
     reminder_days = settings.get("reminder_days_before", 3)
+    bot_token = settings.get("telegram_bot_token", "")
     
     subscribers = await db.subscribers.find({"status": {"$in": ["active", "grace"]}}, {"_id": 0}).to_list(10000)
     
@@ -1022,24 +1023,54 @@ async def check_subscriptions():
         
         days_to_expiry = (end_date - now).days
         
-        # Send reminder
+        # Send reminder with Renew button
         if days_to_expiry <= reminder_days and days_to_expiry > 0 and not sub.get("reminder_sent"):
-            await send_telegram_message(sub["telegram_user_id"], 
-                f"Your subscription expires in {days_to_expiry} days. Renew now to continue access!")
+            reminder_msg = f"⏰ <b>Subscription Expiring Soon!</b>\n\n"
+            reminder_msg += f"📦 Plan: <b>{sub.get('plan_name', 'Premium')}</b>\n"
+            reminder_msg += f"📅 Expires in: <b>{days_to_expiry} days</b>\n"
+            reminder_msg += f"🗓 End Date: <b>{end_date.strftime('%d %b %Y')}</b>\n\n"
+            reminder_msg += "👇 Renew now to continue access!"
+            
+            buttons = [
+                [{"text": "🔄 Renew Now", "callback_data": f"renew_{sub.get('plan_id', '')}"}],
+                [{"text": "📦 View All Plans", "callback_data": "back_plans"}]
+            ]
+            await send_telegram_message_with_buttons(sub["telegram_user_id"], reminder_msg, buttons, bot_token)
             await db.subscribers.update_one({"id": sub["id"]}, {"$set": {"reminder_sent": True}})
         
-        # Move to grace period
+        # Move to grace period with Renew button
         if now > end_date and sub["status"] == "active":
             await db.subscribers.update_one({"id": sub["id"]}, {"$set": {"status": "grace"}})
-            await send_telegram_message(sub["telegram_user_id"], 
-                "Your subscription has expired. You have a grace period to renew.")
+            
+            grace_msg = "⚠️ <b>Subscription Expired!</b>\n\n"
+            grace_msg += f"📦 Plan: <b>{sub.get('plan_name', 'Premium')}</b>\n"
+            grace_msg += f"⏳ Grace Period: <b>{settings.get('grace_period_days', 2)} days</b>\n\n"
+            grace_msg += "Renew now to keep your access!"
+            
+            buttons = [
+                [{"text": "🔄 Renew Now", "callback_data": f"renew_{sub.get('plan_id', '')}"}],
+                [{"text": "📦 View All Plans", "callback_data": "back_plans"}]
+            ]
+            await send_telegram_message_with_buttons(sub["telegram_user_id"], grace_msg, buttons, bot_token)
         
         # Remove after grace period
         if grace_end and now > grace_end and sub["status"] == "grace":
             await db.subscribers.update_one({"id": sub["id"]}, {"$set": {"status": "expired"}})
-            await remove_from_channel(sub["telegram_user_id"])
-            await send_telegram_message(sub["telegram_user_id"], 
-                "Your subscription and grace period have ended. Contact us to resubscribe.")
+            
+            # Get plan channel for removal
+            plan = await db.plans.find_one({"id": sub.get("plan_id")}, {"_id": 0})
+            plan_channel = plan.get("channel_id", "") if plan else ""
+            await remove_from_channel(sub["telegram_user_id"], plan_channel)
+            
+            expired_msg = "❌ <b>Subscription Ended</b>\n\n"
+            expired_msg += "Your subscription and grace period have ended.\n"
+            expired_msg += "You've been removed from the premium channel.\n\n"
+            expired_msg += "👇 Resubscribe anytime!"
+            
+            buttons = [
+                [{"text": "🔄 Resubscribe", "callback_data": "back_plans"}]
+            ]
+            await send_telegram_message_with_buttons(sub["telegram_user_id"], expired_msg, buttons, bot_token)
 
 async def send_followups():
     """Send follow-up messages twice a week"""
