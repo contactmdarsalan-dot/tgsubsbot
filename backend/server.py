@@ -74,6 +74,7 @@ class SubscriptionPlanCreate(BaseModel):
     duration_days: int
     features: List[str] = []
     is_active: bool = True
+    channel_id: str = ""  # Each plan can have its own channel
 
 class SubscriptionPlan(BaseModel):
     model_config = ConfigDict(extra="ignore")
