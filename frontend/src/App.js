@@ -100,6 +100,7 @@ function App() {
             <Route path="payments" element={<Payments />} />
             <Route path="automation" element={<Automation />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="admin-subs" element={<AdminSubscriptions />} />
           </Route>
         </Routes>
       </BrowserRouter>
