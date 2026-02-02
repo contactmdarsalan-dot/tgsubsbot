@@ -281,7 +281,11 @@ export default function Plans() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleEdit(plan)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleEdit(plan);
+                    }}
                     data-testid={`edit-plan-${plan.id}`}
                     className="flex-1"
                   >
@@ -291,7 +295,11 @@ export default function Plans() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleDelete(plan.id)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDelete(plan.id);
+                    }}
                     data-testid={`delete-plan-${plan.id}`}
                     className="text-destructive hover:text-destructive"
                   >
