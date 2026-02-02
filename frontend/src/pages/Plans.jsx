@@ -78,15 +78,16 @@ export default function Plans() {
   };
 
   const handleEdit = (plan) => {
+    console.log("Editing plan:", plan);
     setEditingPlan(plan);
     setForm({
       name: plan.name,
       price: plan.price.toString(),
       duration_days: plan.duration_days.toString(),
-      features: plan.features.join("\n"),
+      features: Array.isArray(plan.features) ? plan.features.join("\n") : "",
       is_active: plan.is_active,
     });
-    setDialogOpen(true);
+    setTimeout(() => setDialogOpen(true), 100);
   };
 
   const handleDelete = async (planId) => {
