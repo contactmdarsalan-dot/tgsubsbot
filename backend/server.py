@@ -635,40 +635,208 @@ async def delete_template(template_id: str, user = Depends(get_current_user)):
 
 # ============== TELEGRAM WEBHOOK ==============
 
+async def send_telegram_message_with_buttons(chat_id: str, message: str, buttons: list = None, bot_token: str = None):
+    """Send message with inline keyboard buttons"""
+    if not bot_token:
+        settings = await get_bot_settings()
+        bot_token = settings.get("telegram_bot_token", "")
+    
+    if not bot_token:
+        return False
+    
+    try:
+        async with httpx.AsyncClient() as http_client:
+            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": message,
+                "parse_mode": "HTML"
+            }
+            if buttons:
+                payload["reply_markup"] = {"inline_keyboard": buttons}
+            
+            response = await http_client.post(url, json=payload)
+            logger.info(f"Telegram response: {response.status_code}")
+            return response.status_code == 200
+    except Exception as e:
+        logger.error(f"Failed to send message: {e}")
+        return False
+
 @api_router.post("/telegram/webhook")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
         data = await request.json()
+        logger.info(f"Webhook received: {data}")
+        
+        # Handle callback queries (button clicks)
+        callback_query = data.get("callback_query")
+        if callback_query:
+            callback_data = callback_query.get("data", "")
+            chat_id = str(callback_query.get("from", {}).get("id", ""))
+            username = callback_query.get("from", {}).get("username", "")
+            
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            if callback_data.startswith("buy_"):
+                plan_id = callback_data.replace("buy_", "")
+                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+                
+                if plan:
+                    # Show payment options
+                    qr_code_url = settings.get("qr_code_url", "")
+                    
+                    payment_msg = f"<b>📦 {plan['name']}</b>\n\n"
+                    payment_msg += f"💰 Price: <b>₹{plan['price']}</b>\n"
+                    payment_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
+                    
+                    if plan.get('features'):
+                        payment_msg += "<b>Features:</b>\n"
+                        for feat in plan['features']:
+                            payment_msg += f"✅ {feat}\n"
+                        payment_msg += "\n"
+                    
+                    payment_msg += "━━━━━━━━━━━━━━━\n"
+                    payment_msg += "<b>💳 Payment Options:</b>\n\n"
+                    payment_msg += "1️⃣ <b>UPI/QR Code:</b>\n"
+                    payment_msg += "   Pay via any UPI app\n\n"
+                    payment_msg += "2️⃣ After payment, send screenshot to admin\n\n"
+                    payment_msg += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>\n"
+                    payment_msg += "(Share this with admin after payment)"
+                    
+                    buttons = []
+                    if qr_code_url:
+                        buttons.append([{"text": "📱 Show QR Code", "callback_data": f"qr_{plan_id}"}])
+                    buttons.append([{"text": "✅ I've Paid - Contact Admin", "callback_data": f"paid_{plan_id}"}])
+                    buttons.append([{"text": "◀️ Back to Plans", "callback_data": "back_plans"}])
+                    
+                    await send_telegram_message_with_buttons(chat_id, payment_msg, buttons, bot_token)
+            
+            elif callback_data.startswith("qr_"):
+                # Send QR code image
+                qr_url = settings.get("qr_code_url", "")
+                if qr_url:
+                    try:
+                        async with httpx.AsyncClient() as http_client:
+                            url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+                            await http_client.post(url, json={
+                                "chat_id": chat_id,
+                                "photo": qr_url,
+                                "caption": "📱 Scan this QR code to pay\n\nAfter payment, send screenshot to admin"
+                            })
+                    except:
+                        await send_telegram_message(chat_id, f"QR Code: {qr_url}", bot_token)
+            
+            elif callback_data.startswith("paid_"):
+                msg = "✅ <b>Thank you!</b>\n\n"
+                msg += "Please send your payment screenshot to admin.\n\n"
+                msg += f"📱 Your User ID: <code>{chat_id}</code>\n"
+                msg += f"👤 Username: @{username}\n\n"
+                msg += "Admin will verify and activate your subscription shortly!"
+                await send_telegram_message(chat_id, msg, bot_token)
+            
+            elif callback_data == "back_plans":
+                # Show plans again
+                plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+                
+                welcome_msg = "🎯 <b>Choose Your Plan</b>\n\n"
+                buttons = []
+                for plan in plans:
+                    welcome_msg += f"📦 <b>{plan['name']}</b>\n"
+                    welcome_msg += f"   💰 ₹{plan['price']} • ⏱ {plan['duration_days']} days\n\n"
+                    buttons.append([{"text": f"📦 {plan['name']} - ₹{plan['price']}", "callback_data": f"buy_{plan['id']}"}])
+                
+                buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
+                await send_telegram_message_with_buttons(chat_id, welcome_msg, buttons, bot_token)
+            
+            elif callback_data == "check_status":
+                subscriber = await db.subscribers.find_one({"telegram_user_id": chat_id}, {"_id": 0})
+                if subscriber:
+                    end_date = datetime.fromisoformat(subscriber["end_date"]) if isinstance(subscriber["end_date"], str) else subscriber["end_date"]
+                    days_left = (end_date - datetime.now(timezone.utc)).days
+                    
+                    status_emoji = "✅" if subscriber['status'] == 'active' else "⚠️" if subscriber['status'] == 'grace' else "❌"
+                    status_msg = f"{status_emoji} <b>Your Subscription</b>\n\n"
+                    status_msg += f"📦 Plan: <b>{subscriber['plan_name']}</b>\n"
+                    status_msg += f"📊 Status: <b>{subscriber['status'].upper()}</b>\n"
+                    status_msg += f"📅 Expires: <b>{end_date.strftime('%d %b %Y')}</b>\n"
+                    status_msg += f"⏳ Days Left: <b>{days_left}</b>"
+                else:
+                    status_msg = "❌ You don't have an active subscription.\n\nUse /start to see available plans!"
+                
+                buttons = [[{"text": "◀️ Back to Plans", "callback_data": "back_plans"}]]
+                await send_telegram_message_with_buttons(chat_id, status_msg, buttons, bot_token)
+            
+            # Answer callback to remove loading state
+            try:
+                async with httpx.AsyncClient() as http_client:
+                    await http_client.post(
+                        f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
+                        json={"callback_query_id": callback_query.get("id")}
+                    )
+            except:
+                pass
+            
+            return {"ok": True}
+        
+        # Handle regular messages
         message = data.get("message", {})
         chat_id = str(message.get("chat", {}).get("id", ""))
         text = message.get("text", "")
         username = message.get("from", {}).get("username", "")
         
+        if not chat_id:
+            return {"ok": True}
+        
         if text == "/start":
             plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
-            settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
             
-            plan_text = "\n".join([f"• {p['name']} - ₹{p['price']} ({p['duration_days']} days)" for p in plans])
-            welcome_msg = f"Welcome! Available subscription plans:\n\n{plan_text}\n\nContact admin to subscribe."
+            welcome_msg = "🎉 <b>Welcome!</b>\n\n"
+            welcome_msg += "🎯 <b>Choose Your Plan:</b>\n\n"
             
-            if settings.get("website_link"):
-                welcome_msg += f"\n\nVisit: {settings['website_link']}"
+            buttons = []
+            for plan in plans:
+                welcome_msg += f"📦 <b>{plan['name']}</b>\n"
+                welcome_msg += f"   💰 ₹{plan['price']} • ⏱ {plan['duration_days']} days\n\n"
+                buttons.append([{"text": f"📦 {plan['name']} - ₹{plan['price']}", "callback_data": f"buy_{plan['id']}"}])
             
-            await send_telegram_message(chat_id, welcome_msg)
+            if not plans:
+                welcome_msg += "No plans available at the moment.\n"
+            
+            buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
+            
+            await send_telegram_message_with_buttons(chat_id, welcome_msg, buttons)
         
         elif text == "/status":
             subscriber = await db.subscribers.find_one({"telegram_user_id": chat_id}, {"_id": 0})
             if subscriber:
                 end_date = datetime.fromisoformat(subscriber["end_date"]) if isinstance(subscriber["end_date"], str) else subscriber["end_date"]
                 days_left = (end_date - datetime.now(timezone.utc)).days
-                status_msg = f"Your subscription:\nPlan: {subscriber['plan_name']}\nStatus: {subscriber['status']}\nExpires: {end_date.strftime('%Y-%m-%d')}\nDays left: {days_left}"
+                
+                status_emoji = "✅" if subscriber['status'] == 'active' else "⚠️" if subscriber['status'] == 'grace' else "❌"
+                status_msg = f"{status_emoji} <b>Your Subscription</b>\n\n"
+                status_msg += f"📦 Plan: <b>{subscriber['plan_name']}</b>\n"
+                status_msg += f"📊 Status: <b>{subscriber['status'].upper()}</b>\n"
+                status_msg += f"📅 Expires: <b>{end_date.strftime('%d %b %Y')}</b>\n"
+                status_msg += f"⏳ Days Left: <b>{days_left}</b>"
             else:
-                status_msg = "You don't have an active subscription."
-            await send_telegram_message(chat_id, status_msg)
+                status_msg = "❌ You don't have an active subscription.\n\nUse /start to see available plans!"
+            
+            buttons = [[{"text": "📦 View Plans", "callback_data": "back_plans"}]]
+            await send_telegram_message_with_buttons(chat_id, status_msg, buttons)
+        
+        elif text == "/help":
+            help_msg = "🤖 <b>Bot Commands</b>\n\n"
+            help_msg += "/start - View subscription plans\n"
+            help_msg += "/status - Check your subscription\n"
+            help_msg += "/help - Show this help message"
+            await send_telegram_message(chat_id, help_msg)
         
         return {"ok": True}
     except Exception as e:
         logger.error(f"Webhook error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return {"ok": False}
 
 # ============== BACKGROUND TASKS ==============
