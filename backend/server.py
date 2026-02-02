@@ -903,8 +903,51 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             help_msg = "🤖 <b>Bot Commands</b>\n\n"
             help_msg += "/start - View subscription plans\n"
             help_msg += "/status - Check your subscription\n"
+            help_msg += "/share - Get shareable message\n"
             help_msg += "/help - Show this help message"
             await send_telegram_message(chat_id, help_msg)
+        
+        elif text == "/share":
+            # Get bot username
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            bot_username = ""
+            
+            try:
+                async with httpx.AsyncClient() as http_client:
+                    me_response = await http_client.get(f"https://api.telegram.org/bot{bot_token}/getMe")
+                    if me_response.status_code == 200:
+                        bot_username = me_response.json().get("result", {}).get("username", "")
+            except:
+                pass
+            
+            plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+            
+            share_msg = "🔥 <b>Premium Subscription Service</b> 🔥\n\n"
+            share_msg += "━━━━━━━━━━━━━━━━━━━\n"
+            share_msg += "📦 <b>Available Plans:</b>\n\n"
+            
+            for plan in plans:
+                share_msg += f"✨ <b>{plan['name']}</b> - ₹{plan['price']}\n"
+                share_msg += f"   ⏱ {plan['duration_days']} days\n"
+                if plan.get('features'):
+                    for feat in plan['features'][:2]:
+                        share_msg += f"   ✅ {feat}\n"
+                share_msg += "\n"
+            
+            share_msg += "━━━━━━━━━━━━━━━━━━━\n"
+            share_msg += "👇 <b>Click below to subscribe!</b>"
+            
+            # Create inline button with bot link
+            buttons = []
+            if bot_username:
+                buttons.append([{"text": "🚀 Subscribe Now", "url": f"https://t.me/{bot_username}?start=subscribe"}])
+            buttons.append([{"text": "📞 Contact Admin", "url": f"https://t.me/{bot_username}"}])
+            
+            await send_telegram_message_with_buttons(chat_id, share_msg, buttons)
+            
+            # Also send instruction
+            await send_telegram_message(chat_id, "👆 Forward this message to your groups!\n\nThe buttons will work for everyone.", bot_token)
         
         # Handle photo/screenshot uploads
         photo = message.get("photo")
