@@ -90,6 +90,10 @@ export default function SuperAdminDashboard() {
   const [planDialog, setPlanDialog] = useState({ open: false, plan: null, isNew: false });
   const [planForm, setPlanForm] = useState({ name: "", price: "", duration_days: "", features: "", channel_id: "" });
   
+  // Dashboard Plan edit dialog
+  const [dashPlanDialog, setDashPlanDialog] = useState({ open: false, plan: null });
+  const [dashPlanForm, setDashPlanForm] = useState({ name: "", price: "", duration_days: "", popular: false, save: "", contact: false });
+  
   // Screenshot modal
   const [screenshotModal, setScreenshotModal] = useState({ open: false, url: "", payment: null });
   
@@ -109,13 +113,15 @@ export default function SuperAdminDashboard() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [plansRes, subsRes, paymentsRes, ticketsRes] = await Promise.all([
+      const [plansRes, dashPlansRes, subsRes, paymentsRes, ticketsRes] = await Promise.all([
         axios.get(`${API}/plans`, getAuthHeaders()),
+        axios.get(`${API}/admin/dashboard-plans`, getAuthHeaders()),
         axios.get(`${API}/subscribers`, getAuthHeaders()),
         axios.get(`${API}/payments`, getAuthHeaders()),
         axios.get(`${API}/admin/support/tickets`, getAuthHeaders()),
       ]);
       setPlans(plansRes.data);
+      setDashboardPlans(dashPlansRes.data);
       setSubscribers(subsRes.data);
       setPayments(paymentsRes.data);
       setTickets(ticketsRes.data);
@@ -123,6 +129,41 @@ export default function SuperAdminDashboard() {
       toast.error("Failed to load data");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Dashboard Plan handlers
+  const handleEditDashPlan = (plan) => {
+    setDashPlanForm({
+      name: plan.name,
+      price: plan.price.toString(),
+      duration_days: plan.duration_days.toString(),
+      popular: plan.popular || false,
+      save: plan.save || "",
+      contact: plan.contact || false,
+    });
+    setDashPlanDialog({ open: true, plan });
+  };
+
+  const handleSaveDashPlan = async () => {
+    try {
+      await axios.put(
+        `${API}/admin/dashboard-plans/${dashPlanDialog.plan.id}`,
+        {
+          name: dashPlanForm.name,
+          price: parseFloat(dashPlanForm.price),
+          duration_days: parseInt(dashPlanForm.duration_days),
+          popular: dashPlanForm.popular,
+          save: dashPlanForm.save,
+          contact: dashPlanForm.contact,
+        },
+        getAuthHeaders()
+      );
+      toast.success("Dashboard plan updated!");
+      setDashPlanDialog({ open: false, plan: null });
+      fetchData();
+    } catch (error) {
+      toast.error("Failed to update plan");
     }
   };
 
