@@ -451,21 +451,27 @@ async def get_me(user = Depends(get_current_user)):
         "is_admin": user.get("is_admin", False)
     }
 
-# ============== SUPPORT TICKET ROUTES ==============
+# ============== SUPPORT TICKET ROUTES (Chat-style) ==============
 
 @api_router.post("/support/tickets")
 async def create_support_ticket(data: dict, user = Depends(get_current_user)):
     """Create a new support ticket"""
+    initial_message = {
+        "sender": "user",
+        "sender_name": user.get("name", "User"),
+        "sender_email": user["email"],
+        "message": data.get("message", ""),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    
     ticket = {
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
         "user_email": user["email"],
         "user_name": user.get("name", ""),
         "subject": data.get("subject", "General Query"),
-        "message": data.get("message", ""),
+        "messages": [initial_message],
         "status": "open",
-        "admin_reply": None,
-        "admin_reply_at": None,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
@@ -481,6 +487,31 @@ async def get_user_support_tickets(user = Depends(get_current_user)):
     ).sort("created_at", -1).to_list(100)
     return tickets
 
+@api_router.post("/support/tickets/{ticket_id}/message")
+async def add_user_message_to_ticket(ticket_id: str, data: dict, user = Depends(get_current_user)):
+    """Add a message to existing ticket (user)"""
+    ticket = await db.support_tickets.find_one({"id": ticket_id, "user_id": user["id"]}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    if ticket.get("status") in ["resolved", "closed"]:
+        raise HTTPException(status_code=400, detail="Cannot add message to resolved/closed ticket")
+    
+    new_message = {
+        "sender": "user",
+        "sender_name": user.get("name", "User"),
+        "sender_email": user["email"],
+        "message": data.get("message", ""),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.support_tickets.update_one(
+        {"id": ticket_id},
+        {"$push": {"messages": new_message}}
+    )
+    
+    return {"message": "Message added"}
+
 @api_router.get("/admin/support/tickets")
 async def get_all_support_tickets(user = Depends(get_current_user)):
     """Get all support tickets (super admin or admin only)"""
@@ -493,9 +524,9 @@ async def get_all_support_tickets(user = Depends(get_current_user)):
     tickets = await db.support_tickets.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
     return tickets
 
-@api_router.put("/admin/support/tickets/{ticket_id}/reply")
-async def reply_to_support_ticket(ticket_id: str, data: dict, user = Depends(get_current_user)):
-    """Reply to a support ticket (super admin or admin only)"""
+@api_router.post("/admin/support/tickets/{ticket_id}/reply")
+async def admin_reply_to_ticket(ticket_id: str, data: dict, user = Depends(get_current_user)):
+    """Add admin reply to a ticket (can reply multiple times)"""
     is_super_admin = user.get("email") == SUPER_ADMIN_EMAIL
     is_admin = user.get("is_admin", False)
     
@@ -506,13 +537,23 @@ async def reply_to_support_ticket(ticket_id: str, data: dict, user = Depends(get
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     
+    new_message = {
+        "sender": "admin",
+        "sender_name": user.get("name", "Admin"),
+        "sender_email": user["email"],
+        "message": data.get("message", ""),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Update status if provided, otherwise set to in_progress
+    new_status = data.get("status", "in_progress")
+    
     await db.support_tickets.update_one(
         {"id": ticket_id},
-        {"$set": {
-            "admin_reply": data.get("reply", ""),
-            "admin_reply_at": datetime.now(timezone.utc).isoformat(),
-            "status": data.get("status", "resolved")
-        }}
+        {
+            "$push": {"messages": new_message},
+            "$set": {"status": new_status}
+        }
     )
     
     return {"message": "Reply sent"}
