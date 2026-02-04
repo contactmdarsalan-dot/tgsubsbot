@@ -214,13 +214,17 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 # ============== TELEGRAM HELPERS ==============
 
+# Rate limiting for Telegram API
+telegram_last_request = {}
+TELEGRAM_MIN_INTERVAL = 0.05  # 50ms between messages per chat
+
 async def get_bot_settings():
     """Get bot settings from database"""
     settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0})
     return settings or {}
 
-async def send_telegram_message(chat_id: str, message: str, bot_token: str = None):
-    """Send message via Telegram Bot API"""
+async def send_telegram_message(chat_id: str, message: str, bot_token: str = None, retries: int = 3):
+    """Send message via Telegram Bot API with rate limiting and retry"""
     if not bot_token:
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
@@ -228,15 +232,36 @@ async def send_telegram_message(chat_id: str, message: str, bot_token: str = Non
     if not bot_token:
         logger.warning("Telegram bot token not configured")
         return False
-    try:
-        async with httpx.AsyncClient() as http_client:
-            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-            response = await http_client.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"})
-            logger.info(f"Telegram sendMessage response: {response.status_code} - {response.text}")
-            return response.status_code == 200
-    except Exception as e:
-        logger.error(f"Failed to send telegram message: {e}")
-        return False
+    
+    # Rate limiting per chat
+    now = asyncio.get_event_loop().time()
+    last = telegram_last_request.get(chat_id, 0)
+    if now - last < TELEGRAM_MIN_INTERVAL:
+        await asyncio.sleep(TELEGRAM_MIN_INTERVAL - (now - last))
+    telegram_last_request[chat_id] = asyncio.get_event_loop().time()
+    
+    for attempt in range(retries):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as http_client:
+                url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                response = await http_client.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"})
+                logger.info(f"Telegram response: {response.status_code}")
+                
+                if response.status_code == 200:
+                    return True
+                elif response.status_code == 429:
+                    # Rate limited - wait and retry
+                    retry_after = response.json().get("parameters", {}).get("retry_after", 1)
+                    logger.warning(f"Rate limited, waiting {retry_after}s")
+                    await asyncio.sleep(retry_after)
+                else:
+                    logger.error(f"Telegram error: {response.text}")
+                    return False
+        except Exception as e:
+            logger.error(f"Failed to send message: {e}")
+            if attempt < retries - 1:
+                await asyncio.sleep(0.5)
+    return False
 
 async def add_to_channel(user_id: str, plan_channel_id: str = None, plan_name: str = ""):
     """Add user to private channel by sending invite link"""
