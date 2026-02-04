@@ -299,6 +299,7 @@ async def register(user: UserCreate):
     doc = user_obj.model_dump()
     doc["password_hash"] = hash_password(user.password)
     doc["created_at"] = doc["created_at"].isoformat()
+    doc["is_admin"] = False  # Default not admin
     if doc.get("dashboard_subscription_end"):
         doc["dashboard_subscription_end"] = doc["dashboard_subscription_end"].isoformat()
     
@@ -312,7 +313,8 @@ async def register(user: UserCreate):
             "name": user_obj.name,
             "dashboard_subscription_status": "inactive",
             "dashboard_plan": "",
-            "dashboard_subscription_end": None
+            "dashboard_subscription_end": None,
+            "is_admin": False
         }
     }
 
@@ -343,7 +345,94 @@ async def login(user: UserLogin):
             "name": existing["name"],
             "dashboard_subscription_status": sub_status,
             "dashboard_plan": existing.get("dashboard_plan", ""),
-            "dashboard_subscription_end": sub_end.isoformat() if sub_end else None
+            "dashboard_subscription_end": sub_end.isoformat() if sub_end else None,
+            "is_admin": existing.get("is_admin", False)
+        }
+    }
+
+# ============== GOOGLE OAUTH ROUTES ==============
+
+@api_router.post("/auth/google/session")
+async def process_google_session(data: dict):
+    """Process Google OAuth session and create/login user"""
+    session_id = data.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Session ID required")
+    
+    # Get user data from Emergent Auth
+    try:
+        async with httpx.AsyncClient() as http_client:
+            response = await http_client.get(
+                "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+                headers={"X-Session-ID": session_id}
+            )
+            if response.status_code != 200:
+                raise HTTPException(status_code=401, detail="Invalid session")
+            
+            google_user = response.json()
+    except Exception as e:
+        logger.error(f"Google auth error: {e}")
+        raise HTTPException(status_code=401, detail="Failed to verify Google session")
+    
+    email = google_user.get("email")
+    name = google_user.get("name", email.split("@")[0])
+    picture = google_user.get("picture", "")
+    
+    # Check if user exists
+    existing = await db.users.find_one({"email": email}, {"_id": 0})
+    
+    if existing:
+        # Update existing user with Google info
+        await db.users.update_one(
+            {"email": email},
+            {"$set": {"name": name, "picture": picture, "google_id": google_user.get("id")}}
+        )
+        user_id = existing["id"]
+        sub_status = existing.get("dashboard_subscription_status", "inactive")
+        sub_end = existing.get("dashboard_subscription_end")
+        is_admin = existing.get("is_admin", False)
+    else:
+        # Create new user
+        user_id = str(uuid.uuid4())
+        new_user = {
+            "id": user_id,
+            "email": email,
+            "name": name,
+            "phone": "",
+            "picture": picture,
+            "google_id": google_user.get("id"),
+            "dashboard_plan": "",
+            "dashboard_subscription_end": None,
+            "dashboard_subscription_status": "inactive",
+            "is_admin": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.users.insert_one(new_user)
+        sub_status = "inactive"
+        sub_end = None
+        is_admin = False
+    
+    # Create JWT token
+    token = create_token(user_id)
+    
+    # Check if sub expired
+    if sub_end and isinstance(sub_end, str):
+        sub_end = datetime.fromisoformat(sub_end)
+    if sub_status == "active" and sub_end and datetime.now(timezone.utc) > sub_end:
+        sub_status = "expired"
+        await db.users.update_one({"id": user_id}, {"$set": {"dashboard_subscription_status": "expired"}})
+    
+    return {
+        "token": token,
+        "user": {
+            "id": user_id,
+            "email": email,
+            "name": name,
+            "picture": picture,
+            "dashboard_subscription_status": sub_status,
+            "dashboard_plan": existing.get("dashboard_plan", "") if existing else "",
+            "dashboard_subscription_end": sub_end.isoformat() if sub_end else None,
+            "is_admin": is_admin
         }
     }
 
