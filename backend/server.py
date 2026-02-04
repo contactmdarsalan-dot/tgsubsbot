@@ -454,11 +454,152 @@ async def get_me(user = Depends(get_current_user)):
         "id": user["id"], 
         "email": user["email"], 
         "name": user["name"],
+        "phone": user.get("phone", ""),
         "picture": user.get("picture", ""),
         "dashboard_subscription_status": user.get("dashboard_subscription_status", "inactive"),
         "dashboard_plan": user.get("dashboard_plan", ""),
         "dashboard_subscription_end": sub_end.isoformat() if sub_end else None,
         "is_admin": user.get("is_admin", False)
+    }
+
+# ============== TWILIO OTP ROUTES ==============
+
+@api_router.post("/auth/otp/send")
+async def send_otp(data: dict):
+    """Send OTP to phone number"""
+    phone = data.get("phone", "").strip()
+    
+    if not phone:
+        raise HTTPException(status_code=400, detail="Phone number required")
+    
+    # Format phone number (add +91 if not present for India)
+    if not phone.startswith("+"):
+        if phone.startswith("91"):
+            phone = "+" + phone
+        else:
+            phone = "+91" + phone
+    
+    # Generate 6-digit OTP
+    otp = str(random.randint(100000, 999999))
+    
+    # Store OTP in database with expiry (5 minutes)
+    await db.otps.update_one(
+        {"phone": phone},
+        {"$set": {
+            "phone": phone,
+            "otp": otp,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+            "verified": False
+        }},
+        upsert=True
+    )
+    
+    # Send OTP via Twilio
+    if twilio_client and TWILIO_PHONE_NUMBER:
+        try:
+            message = twilio_client.messages.create(
+                body=f"Your OTP for SubsBot is: {otp}. Valid for 5 minutes.",
+                from_=TWILIO_PHONE_NUMBER,
+                to=phone
+            )
+            logger.info(f"OTP sent to {phone}: {message.sid}")
+            return {"message": "OTP sent successfully", "phone": phone}
+        except Exception as e:
+            logger.error(f"Twilio error: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to send OTP: {str(e)}")
+    else:
+        # For testing without Twilio
+        logger.warning(f"Twilio not configured. OTP for {phone}: {otp}")
+        return {"message": "OTP sent (test mode)", "phone": phone, "test_otp": otp}
+
+@api_router.post("/auth/otp/verify")
+async def verify_otp(data: dict):
+    """Verify OTP and login/register user"""
+    phone = data.get("phone", "").strip()
+    otp = data.get("otp", "").strip()
+    name = data.get("name", "")
+    
+    if not phone or not otp:
+        raise HTTPException(status_code=400, detail="Phone and OTP required")
+    
+    # Format phone number
+    if not phone.startswith("+"):
+        if phone.startswith("91"):
+            phone = "+" + phone
+        else:
+            phone = "+91" + phone
+    
+    # Find OTP record
+    otp_record = await db.otps.find_one({"phone": phone}, {"_id": 0})
+    
+    if not otp_record:
+        raise HTTPException(status_code=400, detail="OTP not found. Please request a new one.")
+    
+    # Check if OTP expired
+    expires_at = datetime.fromisoformat(otp_record["expires_at"])
+    if datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(status_code=400, detail="OTP expired. Please request a new one.")
+    
+    # Verify OTP
+    if otp_record["otp"] != otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+    
+    # Mark OTP as verified
+    await db.otps.update_one({"phone": phone}, {"$set": {"verified": True}})
+    
+    # Find or create user
+    existing = await db.users.find_one({"phone": phone}, {"_id": 0})
+    
+    if existing:
+        # Existing user - login
+        user_id = existing["id"]
+        user_name = existing.get("name", name or phone)
+        user_email = existing.get("email", "")
+        sub_status = existing.get("dashboard_subscription_status", "inactive")
+        sub_end = existing.get("dashboard_subscription_end")
+        is_admin = existing.get("is_admin", False)
+    else:
+        # New user - register
+        user_id = str(uuid.uuid4())
+        user_name = name or phone
+        user_email = ""
+        
+        new_user = {
+            "id": user_id,
+            "email": "",
+            "name": user_name,
+            "phone": phone,
+            "dashboard_plan": "",
+            "dashboard_subscription_end": None,
+            "dashboard_subscription_status": "inactive",
+            "is_admin": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.users.insert_one(new_user)
+        sub_status = "inactive"
+        sub_end = None
+        is_admin = False
+    
+    # Create JWT token
+    token = create_token(user_id)
+    
+    # Format subscription end date
+    if sub_end and isinstance(sub_end, str):
+        sub_end = datetime.fromisoformat(sub_end)
+    
+    return {
+        "token": token,
+        "user": {
+            "id": user_id,
+            "email": user_email,
+            "name": user_name,
+            "phone": phone,
+            "dashboard_subscription_status": sub_status,
+            "dashboard_plan": existing.get("dashboard_plan", "") if existing else "",
+            "dashboard_subscription_end": sub_end.isoformat() if sub_end else None,
+            "is_admin": is_admin
+        }
     }
 
 # ============== SUPPORT TICKET ROUTES (Chat-style) ==============
