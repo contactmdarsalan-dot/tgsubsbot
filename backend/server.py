@@ -163,6 +163,20 @@ class MessageTemplate(BaseModel):
     message: str
     is_active: bool = True
 
+# Support Ticket model
+class SupportTicket(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    user_email: str
+    user_name: str
+    subject: str
+    message: str
+    status: str = "open"  # open, in_progress, resolved, closed
+    admin_reply: Optional[str] = None
+    admin_reply_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 # ============== AUTH HELPERS ==============
 
 def hash_password(password: str) -> str:
