@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import {
   Table,
@@ -46,19 +47,18 @@ import {
   Calendar,
   Mail,
   User,
-  UserCog,
   Edit,
   MessageSquare,
   Send,
   AlertTriangle,
-  Activity,
-  TrendingUp,
-  Zap,
-  Settings,
+  Package,
+  CreditCard,
+  Trash2,
+  Plus,
   Eye,
-  Ban,
   ChevronDown,
   ChevronUp,
+  Image,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -70,25 +70,26 @@ const getAuthHeaders = () => ({
 // Only this email can access
 const SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com";
 
-// Dashboard subscription plans
-const DASHBOARD_PLANS = [
-  { id: "1month", name: "1 Month", days: 30 },
-  { id: "6month", name: "6 Months", days: 180 },
-  { id: "12month", name: "12 Months", days: 365 },
-  { id: "lifetime", name: "Lifetime", days: 36500 },
-];
-
 export default function SuperAdminDashboard() {
-  const [activeTab, setActiveTab] = useState("overview");
-  const [allUsers, setAllUsers] = useState([]);
+  const [activeTab, setActiveTab] = useState("plans");
+  const [plans, setPlans] = useState([]);
+  const [subscribers, setSubscribers] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [userFilter, setUserFilter] = useState("all");
+  const [subscriberFilter, setSubscriberFilter] = useState("all");
+  const [paymentFilter, setPaymentFilter] = useState("all");
   const [ticketFilter, setTicketFilter] = useState("all");
-  const [stats, setStats] = useState({});
-  const [changePlanDialog, setChangePlanDialog] = useState({ open: false, user: null });
-  const [selectedPlan, setSelectedPlan] = useState("");
+  
+  // Plan edit dialog
+  const [planDialog, setPlanDialog] = useState({ open: false, plan: null, isNew: false });
+  const [planForm, setPlanForm] = useState({ name: "", price: "", duration_days: "", features: "", channel_id: "" });
+  
+  // Screenshot modal
+  const [screenshotModal, setScreenshotModal] = useState({ open: false, url: "", payment: null });
+  
+  // Support ticket
   const [expandedTicket, setExpandedTicket] = useState(null);
   const [adminReply, setAdminReply] = useState({ ticketId: null, message: "", status: "in_progress" });
   
@@ -104,13 +105,15 @@ export default function SuperAdminDashboard() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [usersRes, statsRes, ticketsRes] = await Promise.all([
-        axios.get(`${API}/admin/all-users`, getAuthHeaders()),
-        axios.get(`${API}/admin/stats`, getAuthHeaders()),
+      const [plansRes, subsRes, paymentsRes, ticketsRes] = await Promise.all([
+        axios.get(`${API}/plans`, getAuthHeaders()),
+        axios.get(`${API}/subscribers`, getAuthHeaders()),
+        axios.get(`${API}/payments`, getAuthHeaders()),
         axios.get(`${API}/admin/support/tickets`, getAuthHeaders()),
       ]);
-      setAllUsers(usersRes.data);
-      setStats(statsRes.data);
+      setPlans(plansRes.data);
+      setSubscribers(subsRes.data);
+      setPayments(paymentsRes.data);
       setTickets(ticketsRes.data);
     } catch (error) {
       toast.error("Failed to load data");
@@ -119,68 +122,84 @@ export default function SuperAdminDashboard() {
     }
   };
 
-  // Handler functions
-  const handleSetLifetime = async (userId) => {
-    if (!window.confirm("Give lifetime access to this user?")) return;
+  // Plan handlers
+  const handleEditPlan = (plan) => {
+    setPlanForm({
+      name: plan.name,
+      price: plan.price.toString(),
+      duration_days: plan.duration_days.toString(),
+      features: (plan.features || []).join("\n"),
+      channel_id: plan.channel_id || "",
+    });
+    setPlanDialog({ open: true, plan, isNew: false });
+  };
+
+  const handleNewPlan = () => {
+    setPlanForm({ name: "", price: "", duration_days: "", features: "", channel_id: "" });
+    setPlanDialog({ open: true, plan: null, isNew: true });
+  };
+
+  const handleSavePlan = async () => {
     try {
-      await axios.put(`${API}/admin/set-lifetime/${userId}`, {}, getAuthHeaders());
-      toast.success("Lifetime access granted!");
+      const data = {
+        name: planForm.name,
+        price: parseFloat(planForm.price),
+        duration_days: parseInt(planForm.duration_days),
+        features: planForm.features.split("\n").filter(f => f.trim()),
+        channel_id: planForm.channel_id,
+        is_active: true,
+      };
+
+      if (planDialog.isNew) {
+        await axios.post(`${API}/plans`, data, getAuthHeaders());
+        toast.success("Plan created!");
+      } else {
+        await axios.put(`${API}/plans/${planDialog.plan.id}`, data, getAuthHeaders());
+        toast.success("Plan updated!");
+      }
+      setPlanDialog({ open: false, plan: null, isNew: false });
       fetchData();
     } catch (error) {
-      toast.error("Failed to set lifetime");
+      toast.error("Failed to save plan");
     }
   };
 
-  const handleRevokeAccess = async (userId) => {
-    if (!window.confirm("Revoke access for this user?")) return;
+  const handleDeletePlan = async (planId) => {
+    if (!window.confirm("Delete this plan?")) return;
     try {
-      await axios.put(`${API}/admin/revoke-access/${userId}`, {}, getAuthHeaders());
-      toast.success("Access revoked");
+      await axios.delete(`${API}/plans/${planId}`, getAuthHeaders());
+      toast.success("Plan deleted!");
       fetchData();
     } catch (error) {
-      toast.error("Failed to revoke");
+      toast.error("Failed to delete plan");
     }
   };
 
-  const handleMakeAdmin = async (userId) => {
-    if (!window.confirm("Make this user an admin? (Limited powers)")) return;
+  // Payment handlers
+  const handleVerifyPayment = async (paymentId) => {
     try {
-      await axios.put(`${API}/admin/make-admin/${userId}`, {}, getAuthHeaders());
-      toast.success("User is now an admin!");
+      await axios.put(`${API}/payments/${paymentId}/verify-manual`, {}, getAuthHeaders());
+      toast.success("Payment verified!");
+      setScreenshotModal({ open: false, url: "", payment: null });
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to make admin");
+      toast.error("Failed to verify");
     }
   };
 
-  const handleRemoveAdmin = async (userId) => {
-    if (!window.confirm("Remove admin status from this user?")) return;
+  const handleRejectPayment = async (paymentId) => {
+    if (!window.confirm("Reject this payment?")) return;
     try {
-      await axios.put(`${API}/admin/remove-admin/${userId}`, {}, getAuthHeaders());
-      toast.success("Admin status removed");
+      await axios.put(`${API}/payments/${paymentId}/reject`, { reason: "Rejected by admin" }, getAuthHeaders());
+      toast.success("Payment rejected!");
+      setScreenshotModal({ open: false, url: "", payment: null });
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to remove admin");
+      toast.error("Failed to reject");
     }
   };
 
-  const handleChangePlan = async () => {
-    if (!changePlanDialog.user || !selectedPlan) return;
-    try {
-      await axios.put(
-        `${API}/admin/change-subscription/${changePlanDialog.user.id}`,
-        { plan_id: selectedPlan },
-        getAuthHeaders()
-      );
-      toast.success("Subscription plan changed!");
-      setChangePlanDialog({ open: false, user: null });
-      setSelectedPlan("");
-      fetchData();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to change plan");
-    }
-  };
-
+  // Support handlers
   const handleAdminReply = async (ticketId) => {
     if (!adminReply.message.trim()) return;
     try {
@@ -214,29 +233,29 @@ export default function SuperAdminDashboard() {
     });
   };
 
-  // Filter users
-  const filteredUsers = allUsers.filter((u) => {
-    const matchesSearch = 
-      u.email?.toLowerCase().includes(search.toLowerCase()) ||
-      u.name?.toLowerCase().includes(search.toLowerCase());
-    
-    if (userFilter === "all") return matchesSearch;
-    if (userFilter === "active") return matchesSearch && u.dashboard_subscription_status === "active";
-    if (userFilter === "inactive") return matchesSearch && u.dashboard_subscription_status !== "active";
-    if (userFilter === "admin") return matchesSearch && u.is_admin;
-    return matchesSearch;
+  // Filtered data
+  const filteredSubscribers = subscribers.filter((s) => {
+    const matchesSearch = s.telegram_user_id?.toLowerCase().includes(search.toLowerCase());
+    if (subscriberFilter === "all") return matchesSearch;
+    return matchesSearch && s.status === subscriberFilter;
   });
 
-  // Filter tickets
+  const filteredPayments = payments.filter((p) => {
+    if (paymentFilter === "all") return true;
+    return p.status === paymentFilter;
+  });
+
   const filteredTickets = tickets.filter((t) => {
     if (ticketFilter === "all") return true;
     return t.status === ticketFilter;
   });
 
-  // Calculate additional stats
-  const adminCount = allUsers.filter(u => u.is_admin).length;
-  const openTicketsCount = tickets.filter(t => t.status === "open").length;
-  const lifetimeUsers = allUsers.filter(u => u.dashboard_plan === "lifetime").length;
+  // Stats
+  const totalSubscribers = subscribers.length;
+  const activeSubscribers = subscribers.filter(s => s.status === "active").length;
+  const pendingPayments = payments.filter(p => p.status === "pending").length;
+  const openTickets = tickets.filter(t => t.status === "open").length;
+  const totalRevenue = payments.filter(p => p.status === "verified").reduce((sum, p) => sum + (p.amount || 0), 0);
 
   if (!isSuperAdmin) {
     return (
@@ -278,7 +297,7 @@ export default function SuperAdminDashboard() {
                   Super Admin Control Panel
                 </h1>
                 <p className="text-purple-300 text-sm">
-                  Complete system management • {user.email}
+                  Bot Subscription Management • {user.email}
                 </p>
               </div>
             </div>
@@ -296,52 +315,44 @@ export default function SuperAdminDashboard() {
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           <Card className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border-blue-500/30 backdrop-blur">
             <CardContent className="p-4 text-center">
-              <Users className="w-8 h-8 text-blue-400 mx-auto mb-2" />
-              <p className="text-3xl font-bold text-white">{stats.total_users || 0}</p>
-              <p className="text-blue-300 text-xs">Total Users</p>
+              <Package className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+              <p className="text-3xl font-bold text-white">{plans.length}</p>
+              <p className="text-blue-300 text-xs">Bot Plans</p>
             </CardContent>
           </Card>
 
           <Card className="bg-gradient-to-br from-green-500/20 to-green-600/10 border-green-500/30 backdrop-blur">
             <CardContent className="p-4 text-center">
-              <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
-              <p className="text-3xl font-bold text-white">{stats.active_subscribers || 0}</p>
-              <p className="text-green-300 text-xs">Active Subs</p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-purple-500/20 to-purple-600/10 border-purple-500/30 backdrop-blur">
-            <CardContent className="p-4 text-center">
-              <Crown className="w-8 h-8 text-purple-400 mx-auto mb-2" />
-              <p className="text-3xl font-bold text-white">{lifetimeUsers}</p>
-              <p className="text-purple-300 text-xs">Lifetime</p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-orange-500/20 to-orange-600/10 border-orange-500/30 backdrop-blur">
-            <CardContent className="p-4 text-center">
-              <Shield className="w-8 h-8 text-orange-400 mx-auto mb-2" />
-              <p className="text-3xl font-bold text-white">{adminCount}</p>
-              <p className="text-orange-300 text-xs">Admins</p>
+              <Users className="w-8 h-8 text-green-400 mx-auto mb-2" />
+              <p className="text-3xl font-bold text-white">{activeSubscribers}/{totalSubscribers}</p>
+              <p className="text-green-300 text-xs">Active Subscribers</p>
             </CardContent>
           </Card>
 
           <Card className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/10 border-yellow-500/30 backdrop-blur">
             <CardContent className="p-4 text-center">
-              <MessageSquare className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
-              <p className="text-3xl font-bold text-white">{openTicketsCount}</p>
-              <p className="text-yellow-300 text-xs">Open Tickets</p>
+              <CreditCard className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
+              <p className="text-3xl font-bold text-white">{pendingPayments}</p>
+              <p className="text-yellow-300 text-xs">Pending Payments</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-orange-500/20 to-orange-600/10 border-orange-500/30 backdrop-blur">
+            <CardContent className="p-4 text-center">
+              <MessageSquare className="w-8 h-8 text-orange-400 mx-auto mb-2" />
+              <p className="text-3xl font-bold text-white">{openTickets}</p>
+              <p className="text-orange-300 text-xs">Open Tickets</p>
             </CardContent>
           </Card>
 
           <Card className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-emerald-500/30 backdrop-blur">
             <CardContent className="p-4 text-center">
               <IndianRupee className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-              <p className="text-3xl font-bold text-white">₹{stats.total_revenue || 0}</p>
-              <p className="text-emerald-300 text-xs">Revenue</p>
+              <p className="text-3xl font-bold text-white">₹{totalRevenue}</p>
+              <p className="text-emerald-300 text-xs">Total Revenue</p>
             </CardContent>
           </Card>
         </div>
@@ -350,223 +361,316 @@ export default function SuperAdminDashboard() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="bg-black/40 border border-purple-500/30 p-1">
             <TabsTrigger 
-              value="overview" 
+              value="plans" 
               className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-200"
             >
-              <Activity className="w-4 h-4 mr-2" />
-              User Management
+              <Package className="w-4 h-4 mr-2" />
+              Bot Plans
+            </TabsTrigger>
+            <TabsTrigger 
+              value="subscribers" 
+              className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-200"
+            >
+              <Users className="w-4 h-4 mr-2" />
+              Subscribers
+            </TabsTrigger>
+            <TabsTrigger 
+              value="payments" 
+              className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-200"
+            >
+              <CreditCard className="w-4 h-4 mr-2" />
+              Payments
+              {pendingPayments > 0 && (
+                <Badge className="ml-2 bg-yellow-500 text-black">{pendingPayments}</Badge>
+              )}
             </TabsTrigger>
             <TabsTrigger 
               value="support" 
               className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-200"
             >
               <MessageSquare className="w-4 h-4 mr-2" />
-              Support Tickets
-              {openTicketsCount > 0 && (
-                <Badge className="ml-2 bg-yellow-500 text-black">{openTicketsCount}</Badge>
+              Support
+              {openTickets > 0 && (
+                <Badge className="ml-2 bg-orange-500 text-black">{openTickets}</Badge>
               )}
             </TabsTrigger>
           </TabsList>
 
-          {/* User Management Tab */}
-          <TabsContent value="overview" className="space-y-6">
-            {/* Search & Filter */}
+          {/* BOT PLANS TAB */}
+          <TabsContent value="plans" className="space-y-6">
+            <div className="flex justify-end">
+              <Button onClick={handleNewPlan} className="bg-purple-500 hover:bg-purple-600">
+                <Plus className="w-4 h-4 mr-2" />
+                Add New Plan
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {plans.map((plan) => (
+                <Card key={plan.id} className="bg-black/40 border-purple-500/30 backdrop-blur overflow-hidden">
+                  <CardHeader className="border-b border-purple-500/30 pb-4">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-white text-xl">{plan.name}</CardTitle>
+                      <Badge className={plan.is_active ? "bg-green-500/20 text-green-300" : "bg-red-500/20 text-red-300"}>
+                        {plan.is_active ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    <div className="text-center">
+                      <p className="text-4xl font-bold text-white">₹{plan.price}</p>
+                      <p className="text-purple-300 text-sm">{plan.duration_days} days</p>
+                    </div>
+                    
+                    {plan.channel_id && (
+                      <div className="p-3 bg-purple-500/10 rounded-lg">
+                        <p className="text-xs text-purple-400">Channel ID</p>
+                        <p className="text-white text-sm font-mono">{plan.channel_id}</p>
+                      </div>
+                    )}
+
+                    {plan.features && plan.features.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-purple-400">Features</p>
+                        {plan.features.map((f, i) => (
+                          <p key={i} className="text-white text-sm flex items-center gap-2">
+                            <CheckCircle className="w-3 h-3 text-green-400" />
+                            {f}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-4">
+                      <Button 
+                        onClick={() => handleEditPlan(plan)} 
+                        className="flex-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300"
+                      >
+                        <Edit className="w-4 h-4 mr-2" />
+                        Edit
+                      </Button>
+                      <Button 
+                        onClick={() => handleDeletePlan(plan.id)} 
+                        variant="outline"
+                        className="border-red-500/50 text-red-400 hover:bg-red-500/20"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
+
+          {/* SUBSCRIBERS TAB */}
+          <TabsContent value="subscribers" className="space-y-6">
             <Card className="bg-black/40 border-purple-500/30 backdrop-blur">
               <CardContent className="p-4">
                 <div className="flex flex-col md:flex-row gap-4">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-400" />
                     <Input
-                      placeholder="Search by email or name..."
+                      placeholder="Search by Telegram ID..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       className="pl-10 bg-black/30 border-purple-500/30 text-white placeholder:text-purple-400"
                     />
                   </div>
-                  <Select value={userFilter} onValueChange={setUserFilter}>
+                  <Select value={subscriberFilter} onValueChange={setSubscriberFilter}>
                     <SelectTrigger className="w-[180px] bg-black/30 border-purple-500/30 text-white">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Users</SelectItem>
+                      <SelectItem value="all">All Subscribers</SelectItem>
                       <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                      <SelectItem value="admin">Admins Only</SelectItem>
+                      <SelectItem value="expired">Expired</SelectItem>
+                      <SelectItem value="grace">Grace Period</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Users Table */}
             <Card className="bg-black/40 border-purple-500/30 backdrop-blur overflow-hidden">
-              <CardHeader className="border-b border-purple-500/30">
-                <CardTitle className="text-white flex items-center gap-2">
-                  <Users className="w-5 h-5 text-purple-400" />
-                  All Users ({filteredUsers.length})
-                </CardTitle>
-              </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-purple-500/30 hover:bg-transparent">
-                        <TableHead className="text-purple-300">User</TableHead>
-                        <TableHead className="text-purple-300">Role</TableHead>
+                        <TableHead className="text-purple-300">Telegram ID</TableHead>
                         <TableHead className="text-purple-300">Plan</TableHead>
                         <TableHead className="text-purple-300">Status</TableHead>
-                        <TableHead className="text-purple-300">Expires</TableHead>
-                        <TableHead className="text-purple-300 text-right">Quick Actions</TableHead>
+                        <TableHead className="text-purple-300">Start Date</TableHead>
+                        <TableHead className="text-purple-300">End Date</TableHead>
+                        <TableHead className="text-purple-300">Payment</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredUsers.map((u) => (
-                        <TableRow key={u.id} className="border-purple-500/20 hover:bg-purple-500/10">
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                                u.email === SUPER_ADMIN_EMAIL 
-                                  ? "bg-gradient-to-br from-purple-500 to-pink-500" 
-                                  : u.is_admin 
-                                    ? "bg-gradient-to-br from-blue-500 to-cyan-500"
-                                    : "bg-gradient-to-br from-slate-600 to-slate-700"
-                              }`}>
-                                {u.email === SUPER_ADMIN_EMAIL ? (
-                                  <Crown className="w-5 h-5 text-white" />
-                                ) : u.is_admin ? (
-                                  <Shield className="w-5 h-5 text-white" />
-                                ) : (
-                                  <User className="w-5 h-5 text-white" />
-                                )}
-                              </div>
-                              <div>
-                                <p className="font-medium text-white">{u.name || "No Name"}</p>
-                                <p className="text-xs text-purple-300">{u.email}</p>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {u.email === SUPER_ADMIN_EMAIL ? (
-                              <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0">
-                                Super Admin
+                      {filteredSubscribers.map((sub) => {
+                        const plan = plans.find(p => p.id === sub.plan_id);
+                        return (
+                          <TableRow key={sub.id} className="border-purple-500/20 hover:bg-purple-500/10">
+                            <TableCell className="text-white font-mono">
+                              @{sub.telegram_user_id}
+                            </TableCell>
+                            <TableCell>
+                              <Badge className="bg-purple-500/20 text-purple-300">
+                                {plan?.name || sub.plan_id}
                               </Badge>
-                            ) : u.is_admin ? (
-                              <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/50">
-                                Admin
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-slate-300 border-slate-500">
-                                User
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {u.dashboard_plan ? (
+                            </TableCell>
+                            <TableCell>
                               <Badge className={`${
-                                u.dashboard_plan === "lifetime" 
-                                  ? "bg-purple-500/20 text-purple-300 border-purple-500/50" 
-                                  : "bg-slate-500/20 text-slate-300 border-slate-500/50"
+                                sub.status === "active"
+                                  ? "bg-green-500/20 text-green-300 border-green-500/50"
+                                  : sub.status === "grace"
+                                    ? "bg-yellow-500/20 text-yellow-300 border-yellow-500/50"
+                                    : "bg-red-500/20 text-red-300 border-red-500/50"
                               }`}>
-                                {u.dashboard_plan}
+                                {sub.status}
                               </Badge>
-                            ) : (
-                              <span className="text-slate-500">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={`${
-                              u.dashboard_subscription_status === "active"
-                                ? "bg-green-500/20 text-green-300 border-green-500/50"
-                                : u.dashboard_subscription_status === "expired"
-                                  ? "bg-red-500/20 text-red-300 border-red-500/50"
-                                  : "bg-slate-500/20 text-slate-400 border-slate-500/50"
-                            }`}>
-                              {u.dashboard_subscription_status || "inactive"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-slate-300 text-sm">
-                            {u.dashboard_subscription_end ? formatDate(u.dashboard_subscription_end) : "-"}
-                          </TableCell>
-                          <TableCell>
-                            {u.email !== SUPER_ADMIN_EMAIL && (
-                              <div className="flex justify-end gap-1">
-                                {/* Change Plan */}
-                                <Button 
-                                  size="sm" 
-                                  variant="ghost"
-                                  onClick={() => {
-                                    setChangePlanDialog({ open: true, user: u });
-                                    setSelectedPlan(u.dashboard_plan || "");
-                                  }}
-                                  className="h-8 w-8 p-0 text-blue-400 hover:text-blue-300 hover:bg-blue-500/20"
-                                  title="Change Plan"
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </Button>
-                                
-                                {/* Lifetime */}
-                                {u.dashboard_plan !== "lifetime" && (
-                                  <Button 
-                                    size="sm" 
-                                    variant="ghost"
-                                    onClick={() => handleSetLifetime(u.id)} 
-                                    className="h-8 w-8 p-0 text-purple-400 hover:text-purple-300 hover:bg-purple-500/20"
-                                    title="Give Lifetime"
-                                  >
-                                    <Crown className="w-4 h-4" />
-                                  </Button>
-                                )}
-                                
-                                {/* Admin Toggle */}
-                                {u.is_admin ? (
-                                  <Button 
-                                    size="sm" 
-                                    variant="ghost"
-                                    onClick={() => handleRemoveAdmin(u.id)} 
-                                    className="h-8 w-8 p-0 text-orange-400 hover:text-orange-300 hover:bg-orange-500/20"
-                                    title="Remove Admin"
-                                  >
-                                    <UserCog className="w-4 h-4" />
-                                  </Button>
-                                ) : (
-                                  <Button 
-                                    size="sm" 
-                                    variant="ghost"
-                                    onClick={() => handleMakeAdmin(u.id)} 
-                                    className="h-8 w-8 p-0 text-green-400 hover:text-green-300 hover:bg-green-500/20"
-                                    title="Make Admin"
-                                  >
-                                    <Shield className="w-4 h-4" />
-                                  </Button>
-                                )}
-                                
-                                {/* Revoke */}
-                                {u.dashboard_subscription_status === "active" && (
-                                  <Button 
-                                    size="sm" 
-                                    variant="ghost"
-                                    onClick={() => handleRevokeAccess(u.id)} 
-                                    className="h-8 w-8 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/20"
-                                    title="Revoke Access"
-                                  >
-                                    <Ban className="w-4 h-4" />
-                                  </Button>
-                                )}
-                              </div>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                            </TableCell>
+                            <TableCell className="text-slate-300 text-sm">
+                              {formatDate(sub.start_date)}
+                            </TableCell>
+                            <TableCell className="text-slate-300 text-sm">
+                              {formatDate(sub.end_date)}
+                            </TableCell>
+                            <TableCell>
+                              <Badge className="bg-slate-500/20 text-slate-300">
+                                {sub.payment_method}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
+                {filteredSubscribers.length === 0 && (
+                  <div className="py-12 text-center text-purple-300">
+                    No subscribers found
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Support Tickets Tab */}
+          {/* PAYMENTS TAB */}
+          <TabsContent value="payments" className="space-y-6">
+            <Card className="bg-black/40 border-purple-500/30 backdrop-blur">
+              <CardContent className="p-4">
+                <Select value={paymentFilter} onValueChange={setPaymentFilter}>
+                  <SelectTrigger className="w-[180px] bg-black/30 border-purple-500/30 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Payments</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="verified">Verified</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
+                  </SelectContent>
+                </Select>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-black/40 border-purple-500/30 backdrop-blur overflow-hidden">
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-purple-500/30 hover:bg-transparent">
+                        <TableHead className="text-purple-300">Telegram ID</TableHead>
+                        <TableHead className="text-purple-300">Plan</TableHead>
+                        <TableHead className="text-purple-300">Amount</TableHead>
+                        <TableHead className="text-purple-300">Method</TableHead>
+                        <TableHead className="text-purple-300">Status</TableHead>
+                        <TableHead className="text-purple-300">Date</TableHead>
+                        <TableHead className="text-purple-300 text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredPayments.map((payment) => {
+                        const plan = plans.find(p => p.id === payment.plan_id);
+                        return (
+                          <TableRow key={payment.id} className="border-purple-500/20 hover:bg-purple-500/10">
+                            <TableCell className="text-white font-mono">
+                              @{payment.telegram_user_id}
+                            </TableCell>
+                            <TableCell>
+                              <Badge className="bg-purple-500/20 text-purple-300">
+                                {plan?.name || payment.plan_id}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-white font-bold">
+                              ₹{payment.amount}
+                            </TableCell>
+                            <TableCell>
+                              <Badge className="bg-slate-500/20 text-slate-300">
+                                {payment.payment_method}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={`${
+                                payment.status === "verified"
+                                  ? "bg-green-500/20 text-green-300"
+                                  : payment.status === "pending"
+                                    ? "bg-yellow-500/20 text-yellow-300"
+                                    : "bg-red-500/20 text-red-300"
+                              }`}>
+                                {payment.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-slate-300 text-sm">
+                              {formatDate(payment.created_at)}
+                            </TableCell>
+                            <TableCell>
+                              {payment.status === "pending" && (
+                                <div className="flex justify-end gap-2">
+                                  {payment.screenshot_url && (
+                                    <Button 
+                                      size="sm" 
+                                      variant="ghost"
+                                      onClick={() => setScreenshotModal({ open: true, url: payment.screenshot_url, payment })}
+                                      className="text-blue-400 hover:bg-blue-500/20"
+                                    >
+                                      <Eye className="w-4 h-4" />
+                                    </Button>
+                                  )}
+                                  <Button 
+                                    size="sm" 
+                                    onClick={() => handleVerifyPayment(payment.id)}
+                                    className="bg-green-500/20 hover:bg-green-500/30 text-green-300"
+                                  >
+                                    <CheckCircle className="w-4 h-4" />
+                                  </Button>
+                                  <Button 
+                                    size="sm" 
+                                    onClick={() => handleRejectPayment(payment.id)}
+                                    className="bg-red-500/20 hover:bg-red-500/30 text-red-300"
+                                  >
+                                    <XCircle className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+                {filteredPayments.length === 0 && (
+                  <div className="py-12 text-center text-purple-300">
+                    No payments found
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* SUPPORT TAB */}
           <TabsContent value="support" className="space-y-6">
-            {/* Ticket Filter */}
             <Card className="bg-black/40 border-purple-500/30 backdrop-blur">
               <CardContent className="p-4">
                 <Select value={ticketFilter} onValueChange={setTicketFilter}>
@@ -583,7 +687,6 @@ export default function SuperAdminDashboard() {
               </CardContent>
             </Card>
 
-            {/* Tickets List */}
             <div className="space-y-4">
               {filteredTickets.length > 0 ? (
                 filteredTickets.map((ticket) => (
@@ -597,10 +700,10 @@ export default function SuperAdminDashboard() {
                           <div className="flex items-center gap-3 mb-2">
                             <Badge className={`${
                               ticket.status === "open" 
-                                ? "bg-yellow-500/20 text-yellow-300 border-yellow-500/50"
+                                ? "bg-yellow-500/20 text-yellow-300"
                                 : ticket.status === "in_progress"
-                                  ? "bg-blue-500/20 text-blue-300 border-blue-500/50"
-                                  : "bg-green-500/20 text-green-300 border-green-500/50"
+                                  ? "bg-blue-500/20 text-blue-300"
+                                  : "bg-green-500/20 text-green-300"
                             }`}>
                               {ticket.status}
                             </Badge>
@@ -618,10 +721,6 @@ export default function SuperAdminDashboard() {
                               <Mail className="w-3 h-3" />
                               {ticket.user_email}
                             </span>
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {formatDate(ticket.created_at)}
-                            </span>
                           </div>
                         </div>
                         {expandedTicket === ticket.id ? (
@@ -632,10 +731,8 @@ export default function SuperAdminDashboard() {
                       </div>
                     </div>
 
-                    {/* Expanded Content */}
                     {expandedTicket === ticket.id && (
                       <div className="border-t border-purple-500/30">
-                        {/* Messages */}
                         <div className="max-h-80 overflow-y-auto p-4 space-y-3 bg-black/20">
                           {(ticket.messages || []).map((msg, idx) => (
                             <div
@@ -666,7 +763,6 @@ export default function SuperAdminDashboard() {
                           ))}
                         </div>
 
-                        {/* Reply Box */}
                         {ticket.status !== "resolved" && ticket.status !== "closed" && (
                           <div className="p-4 border-t border-purple-500/30 bg-black/30">
                             <Textarea
@@ -728,55 +824,139 @@ export default function SuperAdminDashboard() {
           </TabsContent>
         </Tabs>
 
-        {/* Change Plan Dialog */}
-        <Dialog open={changePlanDialog.open} onOpenChange={(open) => setChangePlanDialog({ ...changePlanDialog, open })}>
-          <DialogContent className="bg-slate-900 border-purple-500/30">
+        {/* Plan Edit Dialog */}
+        <Dialog open={planDialog.open} onOpenChange={(open) => setPlanDialog({ ...planDialog, open })}>
+          <DialogContent className="bg-slate-900 border-purple-500/30 max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-white">Change Subscription Plan</DialogTitle>
+              <DialogTitle className="text-white">
+                {planDialog.isNew ? "Create New Plan" : "Edit Plan"}
+              </DialogTitle>
             </DialogHeader>
-            {changePlanDialog.user && (
-              <div className="space-y-4 mt-4">
-                <div className="p-4 bg-black/30 rounded-lg border border-purple-500/30">
-                  <p className="text-purple-300 text-sm">User</p>
-                  <p className="text-white font-medium">{changePlanDialog.user.name}</p>
-                  <p className="text-purple-400 text-sm">{changePlanDialog.user.email}</p>
-                </div>
-                
+            <div className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label className="text-purple-300">Plan Name</Label>
+                <Input
+                  value={planForm.name}
+                  onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
+                  placeholder="e.g., Premium Monthly"
+                  className="bg-black/30 border-purple-500/30 text-white"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <p className="text-purple-300 text-sm">Select Plan</p>
-                  <Select value={selectedPlan} onValueChange={setSelectedPlan}>
-                    <SelectTrigger className="bg-black/30 border-purple-500/30 text-white">
-                      <SelectValue placeholder="Choose a plan" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DASHBOARD_PLANS.map((plan) => (
-                        <SelectItem key={plan.id} value={plan.id}>
-                          {plan.name} ({plan.days} days)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-purple-300">Price (₹)</Label>
+                  <Input
+                    type="number"
+                    value={planForm.price}
+                    onChange={(e) => setPlanForm({ ...planForm, price: e.target.value })}
+                    placeholder="499"
+                    className="bg-black/30 border-purple-500/30 text-white"
+                  />
                 </div>
-
-                <div className="flex gap-2">
-                  <Button 
-                    className="flex-1 bg-purple-500 hover:bg-purple-600" 
-                    onClick={handleChangePlan}
-                    disabled={!selectedPlan}
-                  >
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    Update Plan
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    className="border-purple-500/30 text-purple-300"
-                    onClick={() => setChangePlanDialog({ open: false, user: null })}
-                  >
-                    Cancel
-                  </Button>
+                <div className="space-y-2">
+                  <Label className="text-purple-300">Duration (days)</Label>
+                  <Input
+                    type="number"
+                    value={planForm.duration_days}
+                    onChange={(e) => setPlanForm({ ...planForm, duration_days: e.target.value })}
+                    placeholder="30"
+                    className="bg-black/30 border-purple-500/30 text-white"
+                  />
                 </div>
               </div>
-            )}
+
+              <div className="space-y-2">
+                <Label className="text-purple-300">Channel ID</Label>
+                <Input
+                  value={planForm.channel_id}
+                  onChange={(e) => setPlanForm({ ...planForm, channel_id: e.target.value })}
+                  placeholder="-1001234567890"
+                  className="bg-black/30 border-purple-500/30 text-white font-mono"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-purple-300">Features (one per line)</Label>
+                <Textarea
+                  value={planForm.features}
+                  onChange={(e) => setPlanForm({ ...planForm, features: e.target.value })}
+                  placeholder="Feature 1&#10;Feature 2&#10;Feature 3"
+                  rows={3}
+                  className="bg-black/30 border-purple-500/30 text-white resize-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-4">
+                <Button 
+                  onClick={handleSavePlan}
+                  className="flex-1 bg-purple-500 hover:bg-purple-600"
+                  disabled={!planForm.name || !planForm.price || !planForm.duration_days}
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  {planDialog.isNew ? "Create Plan" : "Save Changes"}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="border-purple-500/30 text-purple-300"
+                  onClick={() => setPlanDialog({ open: false, plan: null, isNew: false })}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Screenshot Modal */}
+        <Dialog open={screenshotModal.open} onOpenChange={(open) => setScreenshotModal({ ...screenshotModal, open })}>
+          <DialogContent className="bg-slate-900 border-purple-500/30 max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-white">Payment Screenshot</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {screenshotModal.url ? (
+                <img 
+                  src={screenshotModal.url} 
+                  alt="Payment Screenshot" 
+                  className="w-full rounded-lg border border-purple-500/30"
+                />
+              ) : (
+                <div className="h-64 flex items-center justify-center bg-black/30 rounded-lg">
+                  <p className="text-purple-300">No screenshot available</p>
+                </div>
+              )}
+              
+              {screenshotModal.payment && (
+                <div className="p-4 bg-black/30 rounded-lg space-y-2">
+                  <p className="text-purple-300 text-sm">
+                    <span className="text-white">Telegram:</span> @{screenshotModal.payment.telegram_user_id}
+                  </p>
+                  <p className="text-purple-300 text-sm">
+                    <span className="text-white">Amount:</span> ₹{screenshotModal.payment.amount}
+                  </p>
+                </div>
+              )}
+
+              {screenshotModal.payment?.status === "pending" && (
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => handleVerifyPayment(screenshotModal.payment.id)}
+                    className="flex-1 bg-green-500 hover:bg-green-600"
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Verify
+                  </Button>
+                  <Button 
+                    onClick={() => handleRejectPayment(screenshotModal.payment.id)}
+                    className="flex-1 bg-red-500 hover:bg-red-600"
+                  >
+                    <XCircle className="w-4 h-4 mr-2" />
+                    Reject
+                  </Button>
+                </div>
+              )}
+            </div>
           </DialogContent>
         </Dialog>
       </div>
