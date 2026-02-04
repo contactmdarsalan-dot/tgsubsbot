@@ -36,13 +36,17 @@ const superAdminNavItems = [
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
+  const SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com";
+
   useEffect(() => {
     setIsAdmin(localStorage.getItem("isFirstUser") === "true");
-  }, []);
+    setIsSuperAdmin(user.email === SUPER_ADMIN_EMAIL);
+  }, [user.email]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -51,7 +55,14 @@ export default function Layout() {
     navigate("/login");
   };
 
-  const allNavItems = isAdmin ? [...navItems, ...adminNavItems] : navItems;
+  // Build nav items based on user role
+  let allNavItems = [...navItems];
+  if (isAdmin) {
+    allNavItems = [...allNavItems, ...adminNavItems];
+  }
+  if (isSuperAdmin) {
+    allNavItems = [...allNavItems, ...superAdminNavItems];
+  }
 
   return (
     <div className="min-h-screen flex">
