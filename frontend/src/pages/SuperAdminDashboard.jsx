@@ -140,6 +140,45 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  const handleMakeAdmin = async (userId) => {
+    if (!window.confirm("Make this user an admin? (Limited powers - view only)")) return;
+    try {
+      await axios.put(`${API}/admin/make-admin/${userId}`, {}, getAuthHeaders());
+      toast.success("User is now an admin!");
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to make admin");
+    }
+  };
+
+  const handleRemoveAdmin = async (userId) => {
+    if (!window.confirm("Remove admin status from this user?")) return;
+    try {
+      await axios.put(`${API}/admin/remove-admin/${userId}`, {}, getAuthHeaders());
+      toast.success("Admin status removed");
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to remove admin");
+    }
+  };
+
+  const handleChangePlan = async () => {
+    if (!changePlanDialog.user || !selectedPlan) return;
+    try {
+      await axios.put(
+        `${API}/admin/change-subscription/${changePlanDialog.user.id}`,
+        { plan_id: selectedPlan },
+        getAuthHeaders()
+      );
+      toast.success("Subscription plan changed!");
+      setChangePlanDialog({ open: false, user: null });
+      setSelectedPlan("");
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to change plan");
+    }
+  };
+
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
     return new Date(dateStr).toLocaleDateString("en-IN", {
