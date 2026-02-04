@@ -19,6 +19,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 import { toast } from "sonner";
 import { 
   Users, 
@@ -32,7 +38,9 @@ import {
   RefreshCw,
   Calendar,
   Mail,
-  User
+  User,
+  UserCog,
+  Edit,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -44,6 +52,14 @@ const getAuthHeaders = () => ({
 // Only this email can access
 const SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com";
 
+// Dashboard subscription plans
+const DASHBOARD_PLANS = [
+  { id: "1month", name: "1 Month", days: 30 },
+  { id: "6month", name: "6 Months", days: 180 },
+  { id: "12month", name: "12 Months", days: 365 },
+  { id: "lifetime", name: "Lifetime", days: 36500 },
+];
+
 export default function SuperAdminDashboard() {
   const [requests, setRequests] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
@@ -51,6 +67,8 @@ export default function SuperAdminDashboard() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [stats, setStats] = useState({});
+  const [changePlanDialog, setChangePlanDialog] = useState({ open: false, user: null });
+  const [selectedPlan, setSelectedPlan] = useState("");
   
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
