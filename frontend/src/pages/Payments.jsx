@@ -115,6 +115,17 @@ export default function Payments() {
     }
   };
 
+  const handleReject = async (paymentId, reason = "Payment rejected by admin") => {
+    if (!window.confirm("Are you sure you want to reject this payment?")) return;
+    try {
+      await axios.put(`${API}/payments/${paymentId}/reject`, { reason }, getAuthHeaders());
+      toast.success("Payment rejected");
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to reject payment");
+    }
+  };
+
   const resetForm = () => {
     setForm({
       telegram_user_id: "",
