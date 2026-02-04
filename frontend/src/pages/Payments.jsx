@@ -507,16 +507,29 @@ export default function Payments() {
             </div>
             
             {screenshotModal.payment?.status === "pending" && (
-              <Button 
-                className="w-full btn-hover" 
-                onClick={() => {
-                  handleVerify(screenshotModal.payment.id);
-                  setScreenshotModal({ open: false, url: "", payment: null });
-                }}
-              >
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Verify Payment
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  className="flex-1 btn-hover bg-green-600 hover:bg-green-700" 
+                  onClick={() => {
+                    handleVerify(screenshotModal.payment.id);
+                    setScreenshotModal({ open: false, url: "", payment: null });
+                  }}
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Verify Payment
+                </Button>
+                <Button 
+                  variant="outline"
+                  className="flex-1 text-red-600 hover:bg-red-50" 
+                  onClick={() => {
+                    handleReject(screenshotModal.payment.id);
+                    setScreenshotModal({ open: false, url: "", payment: null });
+                  }}
+                >
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Reject
+                </Button>
+              </div>
             )}
           </div>
         </DialogContent>
