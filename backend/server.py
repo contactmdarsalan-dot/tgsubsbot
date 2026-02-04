@@ -1100,6 +1100,36 @@ async def verify_manual_payment(payment_id: str, background_tasks: BackgroundTas
     
     return {"message": "Payment verified and subscriber created"}
 
+@api_router.put("/payments/{payment_id}/reject")
+async def reject_payment(payment_id: str, data: dict = None, user = Depends(get_current_user)):
+    """Reject a pending payment"""
+    payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    
+    if payment.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="Can only reject pending payments")
+    
+    reason = data.get("reason", "Payment rejected by admin") if data else "Payment rejected by admin"
+    
+    await db.payments.update_one(
+        {"id": payment_id}, 
+        {"$set": {"status": "rejected", "rejection_reason": reason, "rejected_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    # Optionally notify user via Telegram
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    if bot_token and payment.get("telegram_user_id"):
+        msg = f"❌ <b>Payment Rejected</b>\n\n"
+        msg += f"📦 Plan: {payment.get('plan_name', 'N/A')}\n"
+        msg += f"💰 Amount: ₹{payment.get('amount', 0)}\n\n"
+        msg += f"📝 Reason: {reason}\n\n"
+        msg += "Please contact support if you believe this is an error."
+        await send_telegram_message(payment["telegram_user_id"], msg, bot_token)
+    
+    return {"message": "Payment rejected"}
+
 # ============== SETTINGS ROUTES ==============
 
 @api_router.get("/settings")
