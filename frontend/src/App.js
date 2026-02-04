@@ -11,6 +11,7 @@ import Settings from "./pages/Settings";
 import Pricing from "./pages/Pricing";
 import RenewSubscription from "./pages/RenewSubscription";
 import AdminSubscriptions from "./pages/AdminSubscriptions";
+import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import Layout from "./components/Layout";
 
 const ProtectedRoute = ({ children }) => {
@@ -118,6 +119,7 @@ function App() {
             <Route path="automation" element={<Automation />} />
             <Route path="settings" element={<Settings />} />
             <Route path="admin-subs" element={<AdminSubscriptions />} />
+            <Route path="super-admin" element={<SuperAdminDashboard />} />
           </Route>
         </Routes>
       </BrowserRouter>
