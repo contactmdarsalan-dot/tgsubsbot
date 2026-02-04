@@ -98,6 +98,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/pricing" element={<PricingRoute />} />
+          <Route path="/renew" element={<RenewSubscription />} />
           <Route
             path="/"
             element={
