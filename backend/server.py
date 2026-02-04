@@ -446,10 +446,94 @@ async def get_me(user = Depends(get_current_user)):
         "id": user["id"], 
         "email": user["email"], 
         "name": user["name"],
+        "picture": user.get("picture", ""),
         "dashboard_subscription_status": user.get("dashboard_subscription_status", "inactive"),
         "dashboard_plan": user.get("dashboard_plan", ""),
-        "dashboard_subscription_end": sub_end.isoformat() if sub_end else None
+        "dashboard_subscription_end": sub_end.isoformat() if sub_end else None,
+        "is_admin": user.get("is_admin", False)
     }
+
+# ============== SUPPORT TICKET ROUTES ==============
+
+@api_router.post("/support/tickets")
+async def create_support_ticket(data: dict, user = Depends(get_current_user)):
+    """Create a new support ticket"""
+    ticket = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "user_name": user.get("name", ""),
+        "subject": data.get("subject", "General Query"),
+        "message": data.get("message", ""),
+        "status": "open",
+        "admin_reply": None,
+        "admin_reply_at": None,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.support_tickets.insert_one(ticket)
+    return {"message": "Support ticket created", "ticket_id": ticket["id"]}
+
+@api_router.get("/support/tickets")
+async def get_user_support_tickets(user = Depends(get_current_user)):
+    """Get user's own support tickets"""
+    tickets = await db.support_tickets.find(
+        {"user_id": user["id"]}, 
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    return tickets
+
+@api_router.get("/admin/support/tickets")
+async def get_all_support_tickets(user = Depends(get_current_user)):
+    """Get all support tickets (super admin or admin only)"""
+    is_super_admin = user.get("email") == SUPER_ADMIN_EMAIL
+    is_admin = user.get("is_admin", False)
+    
+    if not is_super_admin and not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    tickets = await db.support_tickets.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return tickets
+
+@api_router.put("/admin/support/tickets/{ticket_id}/reply")
+async def reply_to_support_ticket(ticket_id: str, data: dict, user = Depends(get_current_user)):
+    """Reply to a support ticket (super admin or admin only)"""
+    is_super_admin = user.get("email") == SUPER_ADMIN_EMAIL
+    is_admin = user.get("is_admin", False)
+    
+    if not is_super_admin and not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    ticket = await db.support_tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    await db.support_tickets.update_one(
+        {"id": ticket_id},
+        {"$set": {
+            "admin_reply": data.get("reply", ""),
+            "admin_reply_at": datetime.now(timezone.utc).isoformat(),
+            "status": data.get("status", "resolved")
+        }}
+    )
+    
+    return {"message": "Reply sent"}
+
+@api_router.put("/admin/support/tickets/{ticket_id}/status")
+async def update_ticket_status(ticket_id: str, data: dict, user = Depends(get_current_user)):
+    """Update ticket status (super admin or admin only)"""
+    is_super_admin = user.get("email") == SUPER_ADMIN_EMAIL
+    is_admin = user.get("is_admin", False)
+    
+    if not is_super_admin and not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    await db.support_tickets.update_one(
+        {"id": ticket_id},
+        {"$set": {"status": data.get("status", "open")}}
+    )
+    
+    return {"message": "Status updated"}
 
 # ============== DASHBOARD SUBSCRIPTION ROUTES ==============
 
