@@ -404,7 +404,14 @@ export default function SuperAdminDashboard() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-black/40 border border-purple-500/30 p-1">
+          <TabsList className="bg-black/40 border border-purple-500/30 p-1 flex-wrap">
+            <TabsTrigger 
+              value="dashboard-plans" 
+              className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-purple-500 data-[state=active]:text-white text-purple-200"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              Website Plans
+            </TabsTrigger>
             <TabsTrigger 
               value="plans" 
               className="data-[state=active]:bg-purple-500 data-[state=active]:text-white text-purple-200"
@@ -440,6 +447,74 @@ export default function SuperAdminDashboard() {
               )}
             </TabsTrigger>
           </TabsList>
+
+          {/* WEBSITE/DASHBOARD PLANS TAB */}
+          <TabsContent value="dashboard-plans" className="space-y-6">
+            <Card className="bg-gradient-to-r from-pink-500/10 to-purple-500/10 border-pink-500/30 backdrop-blur">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 text-pink-300">
+                  <Sparkles className="w-5 h-5" />
+                  <p className="font-medium">Website Subscription Plans - Ye plans Pricing page pe dikhte hain</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {dashboardPlans.map((plan) => (
+                <Card key={plan.id} className={`backdrop-blur overflow-hidden relative ${
+                  plan.popular 
+                    ? "bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-pink-500/50" 
+                    : "bg-black/40 border-purple-500/30"
+                }`}>
+                  {plan.popular && (
+                    <div className="absolute top-3 right-3">
+                      <Badge className="bg-gradient-to-r from-pink-500 to-purple-500 text-white">
+                        <Star className="w-3 h-3 mr-1" />
+                        Popular
+                      </Badge>
+                    </div>
+                  )}
+                  <CardHeader className="border-b border-purple-500/30 pb-4">
+                    <CardTitle className="text-white text-xl">{plan.name}</CardTitle>
+                    {plan.save && (
+                      <Badge className="w-fit bg-green-500/20 text-green-300">Save {plan.save}</Badge>
+                    )}
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    <div className="text-center">
+                      {plan.contact ? (
+                        <p className="text-2xl font-bold text-white">Contact Us</p>
+                      ) : (
+                        <p className="text-4xl font-bold text-white">₹{plan.price}</p>
+                      )}
+                      <p className="text-purple-300 text-sm">{plan.duration_days} days</p>
+                    </div>
+                    
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between text-purple-300">
+                        <span>ID:</span>
+                        <span className="font-mono text-white">{plan.id}</span>
+                      </div>
+                      <div className="flex justify-between text-purple-300">
+                        <span>Active:</span>
+                        <span className={plan.is_active ? "text-green-400" : "text-red-400"}>
+                          {plan.is_active ? "Yes" : "No"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <Button 
+                      onClick={() => handleEditDashPlan(plan)} 
+                      className="w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600"
+                    >
+                      <Edit className="w-4 h-4 mr-2" />
+                      Edit Plan
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
 
           {/* BOT PLANS TAB */}
           <TabsContent value="plans" className="space-y-6">
