@@ -1503,8 +1503,8 @@ async def delete_template(template_id: str, user = Depends(get_current_user)):
 
 # ============== TELEGRAM WEBHOOK ==============
 
-async def send_telegram_message_with_buttons(chat_id: str, message: str, buttons: list = None, bot_token: str = None):
-    """Send message with inline keyboard buttons"""
+async def send_telegram_message_with_buttons(chat_id: str, message: str, buttons: list = None, bot_token: str = None, retries: int = 3):
+    """Send message with inline keyboard buttons with rate limiting"""
     if not bot_token:
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
@@ -1512,23 +1512,41 @@ async def send_telegram_message_with_buttons(chat_id: str, message: str, buttons
     if not bot_token:
         return False
     
-    try:
-        async with httpx.AsyncClient() as http_client:
-            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-            payload = {
-                "chat_id": chat_id,
-                "text": message,
-                "parse_mode": "HTML"
-            }
-            if buttons:
-                payload["reply_markup"] = {"inline_keyboard": buttons}
-            
-            response = await http_client.post(url, json=payload)
-            logger.info(f"Telegram response: {response.status_code}")
-            return response.status_code == 200
-    except Exception as e:
-        logger.error(f"Failed to send message: {e}")
-        return False
+    # Rate limiting per chat
+    now = asyncio.get_event_loop().time()
+    last = telegram_last_request.get(chat_id, 0)
+    if now - last < TELEGRAM_MIN_INTERVAL:
+        await asyncio.sleep(TELEGRAM_MIN_INTERVAL - (now - last))
+    telegram_last_request[chat_id] = asyncio.get_event_loop().time()
+    
+    for attempt in range(retries):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as http_client:
+                url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                payload = {
+                    "chat_id": chat_id,
+                    "text": message,
+                    "parse_mode": "HTML"
+                }
+                if buttons:
+                    payload["reply_markup"] = {"inline_keyboard": buttons}
+                
+                response = await http_client.post(url, json=payload)
+                logger.info(f"Telegram response: {response.status_code}")
+                
+                if response.status_code == 200:
+                    return True
+                elif response.status_code == 429:
+                    retry_after = response.json().get("parameters", {}).get("retry_after", 1)
+                    logger.warning(f"Rate limited, waiting {retry_after}s")
+                    await asyncio.sleep(retry_after)
+                else:
+                    return False
+        except Exception as e:
+            logger.error(f"Failed to send message: {e}")
+            if attempt < retries - 1:
+                await asyncio.sleep(0.5)
+    return False
 
 @api_router.post("/telegram/webhook")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
