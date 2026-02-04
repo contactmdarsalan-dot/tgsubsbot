@@ -11,6 +11,7 @@ import {
   Menu,
   X,
   Crown,
+  Shield,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -25,6 +26,11 @@ const navItems = [
 
 const adminNavItems = [
   { path: "/admin-subs", label: "SaaS Subs", icon: Crown, adminOnly: true },
+];
+
+// Super admin gets this special item
+const superAdminNavItems = [
+  { path: "/super-admin", label: "Admin Support", icon: Shield, superAdminOnly: true },
 ];
 
 export default function Layout() {
