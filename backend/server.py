@@ -317,8 +317,8 @@ async def login(user: UserLogin):
     
     # Check if subscription expired
     if sub_status == "active" and sub_end and datetime.now(timezone.utc) > sub_end:
-        sub_status = "inactive"
-        await db.users.update_one({"id": existing["id"]}, {"$set": {"dashboard_subscription_status": "inactive"}})
+        sub_status = "expired"
+        await db.users.update_one({"id": existing["id"]}, {"$set": {"dashboard_subscription_status": "expired"}})
     
     token = create_token(existing["id"])
     return {
