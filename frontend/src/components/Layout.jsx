@@ -12,6 +12,8 @@ import {
   X,
   Crown,
   Shield,
+  MessageSquare,
+  UserCog,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
