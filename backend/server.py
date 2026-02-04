@@ -576,26 +576,92 @@ async def update_ticket_status(ticket_id: str, data: dict, user = Depends(get_cu
 
 # ============== DASHBOARD SUBSCRIPTION ROUTES ==============
 
+# Default dashboard plans (will be stored in DB)
+DEFAULT_DASHBOARD_PLANS = [
+    {"id": "1month", "name": "1 Month", "price": 4999, "duration_days": 30, "popular": False, "save": "", "contact": False, "is_active": True},
+    {"id": "6month", "name": "6 Months", "price": 24999, "duration_days": 180, "popular": True, "save": "17%", "contact": False, "is_active": True},
+    {"id": "12month", "name": "12 Months", "price": 44999, "duration_days": 365, "popular": False, "save": "25%", "contact": False, "is_active": True},
+    {"id": "lifetime", "name": "Lifetime", "price": 0, "duration_days": 36500, "popular": False, "save": "", "contact": True, "is_active": True}
+]
+
+async def get_dashboard_plans_from_db():
+    """Get dashboard plans from database, initialize if empty"""
+    plans = await db.dashboard_plans.find({}, {"_id": 0}).to_list(100)
+    if not plans:
+        # Initialize with defaults
+        for plan in DEFAULT_DASHBOARD_PLANS:
+            await db.dashboard_plans.insert_one(plan)
+        plans = DEFAULT_DASHBOARD_PLANS
+    return plans
+
 @api_router.get("/dashboard-plans")
 async def get_dashboard_plans():
     """Get available dashboard subscription plans"""
-    return {
-        "plans": [
-            {"id": "1month", "name": "1 Month", "price": 4999, "duration": "30 days", "popular": False},
-            {"id": "6month", "name": "6 Months", "price": 24999, "duration": "180 days", "popular": True, "save": "17%"},
-            {"id": "12month", "name": "12 Months", "price": 44999, "duration": "365 days", "popular": False, "save": "25%"},
-            {"id": "lifetime", "name": "Lifetime", "price": 0, "duration": "Forever", "contact": True}
-        ]
+    plans = await get_dashboard_plans_from_db()
+    # Format for frontend
+    formatted = []
+    for p in plans:
+        if p.get("is_active", True):
+            formatted.append({
+                "id": p["id"],
+                "name": p["name"],
+                "price": p["price"],
+                "duration": f"{p.get('duration_days', 30)} days" if p["id"] != "lifetime" else "Forever",
+                "popular": p.get("popular", False),
+                "save": p.get("save", ""),
+                "contact": p.get("contact", False)
+            })
+    return {"plans": formatted}
+
+@api_router.get("/admin/dashboard-plans")
+async def get_admin_dashboard_plans(user = Depends(get_current_user)):
+    """Get all dashboard plans for editing (super admin only)"""
+    await verify_super_admin(user)
+    plans = await get_dashboard_plans_from_db()
+    return plans
+
+@api_router.put("/admin/dashboard-plans/{plan_id}")
+async def update_dashboard_plan(plan_id: str, data: dict, user = Depends(get_current_user)):
+    """Update a dashboard plan (super admin only)"""
+    await verify_super_admin(user)
+    
+    existing = await db.dashboard_plans.find_one({"id": plan_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    
+    update_data = {
+        "name": data.get("name", existing["name"]),
+        "price": data.get("price", existing["price"]),
+        "duration_days": data.get("duration_days", existing.get("duration_days", 30)),
+        "popular": data.get("popular", existing.get("popular", False)),
+        "save": data.get("save", existing.get("save", "")),
+        "contact": data.get("contact", existing.get("contact", False)),
+        "is_active": data.get("is_active", existing.get("is_active", True))
     }
+    
+    await db.dashboard_plans.update_one({"id": plan_id}, {"$set": update_data})
+    
+    # Also update DASHBOARD_PLANS dict for subscription approval
+    global DASHBOARD_PLANS
+    DASHBOARD_PLANS[plan_id] = {
+        "name": update_data["name"],
+        "price": update_data["price"],
+        "days": update_data["duration_days"]
+    }
+    
+    return {"message": "Plan updated"}
 
 @api_router.post("/dashboard-subscription/request")
 async def request_dashboard_subscription(data: dict, user = Depends(get_current_user)):
     """Request dashboard subscription - creates pending request"""
     plan_id = data.get("plan_id")
-    if plan_id not in DASHBOARD_PLANS and plan_id != "lifetime":
-        raise HTTPException(status_code=400, detail="Invalid plan")
     
-    plan_info = DASHBOARD_PLANS.get(plan_id, {})
+    # Get plan from database
+    plans = await get_dashboard_plans_from_db()
+    plan_info = next((p for p in plans if p["id"] == plan_id), None)
+    
+    if not plan_info:
+        raise HTTPException(status_code=400, detail="Invalid plan")
     
     # Create subscription request
     request_obj = {
@@ -604,7 +670,7 @@ async def request_dashboard_subscription(data: dict, user = Depends(get_current_
         "user_email": user["email"],
         "user_name": user["name"],
         "plan_id": plan_id,
-        "plan_name": plan_info.get("name", "Lifetime"),
+        "plan_name": plan_info.get("name", ""),
         "amount": plan_info.get("price", 0),
         "status": "pending",  # pending, approved, rejected
         "screenshot_url": data.get("screenshot_url", ""),
