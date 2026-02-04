@@ -31,11 +31,15 @@ const ProtectedRoute = ({ children }) => {
     return children;
   }
   
-  // Check if subscription expired
+  // Expired subscription - show renewal page
+  if (subStatus === "expired") {
+    return <Navigate to="/renew" replace />;
+  }
+  
+  // Check if subscription expired by date
   if (subStatus === "active" && subEnd) {
     const endDate = new Date(subEnd);
     if (new Date() > endDate) {
-      // Subscription expired - show renewal page
       return <Navigate to="/renew" replace />;
     }
     return children;
