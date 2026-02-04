@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -12,7 +12,120 @@ import Pricing from "./pages/Pricing";
 import RenewSubscription from "./pages/RenewSubscription";
 import AdminSubscriptions from "./pages/AdminSubscriptions";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
+import SupportPage from "./pages/SupportPage";
 import Layout from "./components/Layout";
+
+const API = process.env.REACT_APP_BACKEND_URL;
+
+// Google Auth Callback Handler
+// REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+function AuthCallback() {
+  const navigate = useNavigate();
+  const hasProcessed = useRef(false);
+
+  useEffect(() => {
+    if (hasProcessed.current) return;
+    hasProcessed.current = true;
+
+    const processSession = async () => {
+      const hash = window.location.hash;
+      const sessionMatch = hash.match(/session_id=([^&]+)/);
+      
+      if (!sessionMatch) {
+        navigate('/login');
+        return;
+      }
+
+      const sessionId = sessionMatch[1];
+
+      try {
+        const response = await fetch(`${API}/api/auth/google/session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId })
+        });
+
+        if (!response.ok) throw new Error('Session processing failed');
+
+        const data = await response.json();
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        
+        // Check admin status
+        try {
+          const adminCheck = await fetch(`${API}/api/auth/check-admin`, {
+            headers: { Authorization: `Bearer ${data.token}` }
+          });
+          if (adminCheck.ok) {
+            const adminData = await adminCheck.json();
+            localStorage.setItem('isFirstUser', adminData.is_admin ? 'true' : 'false');
+          }
+        } catch (e) {
+          localStorage.setItem('isFirstUser', 'false');
+        }
+
+        // Clear hash and redirect
+        window.history.replaceState(null, '', window.location.pathname);
+        
+        const user = data.user;
+        const isAdmin = localStorage.getItem('isFirstUser') === 'true';
+        
+        if (isAdmin || user.dashboard_subscription_status === 'active') {
+          window.location.href = '/';
+        } else {
+          window.location.href = '/pricing';
+        }
+      } catch (error) {
+        console.error('Google auth error:', error);
+        navigate('/login');
+      }
+    };
+
+    processSession();
+  }, [navigate]);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+    </div>
+  );
+}
+
+// Router wrapper to detect session_id in URL
+function AppRouter() {
+  const location = useLocation();
+  
+  // Check URL fragment for session_id synchronously during render
+  if (location.hash?.includes('session_id=')) {
+    return <AuthCallback />;
+  }
+
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/pricing" element={<PricingRoute />} />
+      <Route path="/renew" element={<RenewSubscription />} />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<Dashboard />} />
+        <Route path="plans" element={<Plans />} />
+        <Route path="subscribers" element={<Subscribers />} />
+        <Route path="payments" element={<Payments />} />
+        <Route path="automation" element={<Automation />} />
+        <Route path="settings" element={<Settings />} />
+        <Route path="admin-subs" element={<AdminSubscriptions />} />
+        <Route path="super-admin" element={<SuperAdminDashboard />} />
+        <Route path="support" element={<SupportPage />} />
+      </Route>
+    </Routes>
+  );
+}
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem("token");
