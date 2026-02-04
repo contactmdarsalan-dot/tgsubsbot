@@ -24,6 +24,7 @@ const navItems = [
   { path: "/payments", label: "Payments", icon: CreditCard },
   { path: "/automation", label: "Automation", icon: Bell },
   { path: "/settings", label: "Settings", icon: Settings },
+  { path: "/support", label: "Support", icon: MessageSquare },
 ];
 
 const adminNavItems = [
