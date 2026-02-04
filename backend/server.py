@@ -706,6 +706,74 @@ async def revoke_user_access(user_id: str, user = Depends(get_current_user)):
     
     return {"message": "Access revoked"}
 
+@api_router.put("/admin/make-admin/{user_id}")
+async def make_user_admin(user_id: str, user = Depends(get_current_user)):
+    """Make a user an admin (super admin only)"""
+    await verify_super_admin(user)
+    
+    target_user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Can't change super admin's status
+    if target_user.get("email") == SUPER_ADMIN_EMAIL:
+        raise HTTPException(status_code=400, detail="Cannot modify super admin")
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"is_admin": True}}
+    )
+    
+    return {"message": "User is now an admin"}
+
+@api_router.put("/admin/remove-admin/{user_id}")
+async def remove_user_admin(user_id: str, user = Depends(get_current_user)):
+    """Remove admin status from a user (super admin only)"""
+    await verify_super_admin(user)
+    
+    target_user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Can't change super admin's status
+    if target_user.get("email") == SUPER_ADMIN_EMAIL:
+        raise HTTPException(status_code=400, detail="Cannot modify super admin")
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"is_admin": False}}
+    )
+    
+    return {"message": "Admin status removed"}
+
+@api_router.put("/admin/change-subscription/{user_id}")
+async def change_user_subscription(user_id: str, data: dict, user = Depends(get_current_user)):
+    """Change a user's subscription plan (super admin only)"""
+    await verify_super_admin(user)
+    
+    target_user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    plan_id = data.get("plan_id")
+    if plan_id not in DASHBOARD_PLANS:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+    
+    plan_info = DASHBOARD_PLANS.get(plan_id, {})
+    days = plan_info.get("days", 30)
+    end_date = datetime.now(timezone.utc) + timedelta(days=days)
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "dashboard_plan": plan_id,
+            "dashboard_subscription_status": "active",
+            "dashboard_subscription_end": end_date.isoformat()
+        }}
+    )
+    
+    return {"message": f"Subscription changed to {plan_info.get('name', plan_id)}"}
+
 @api_router.put("/dashboard-subscription/approve/{request_id}")
 async def approve_subscription(request_id: str, user = Depends(get_current_user)):
     """Approve subscription request (admin only)"""
