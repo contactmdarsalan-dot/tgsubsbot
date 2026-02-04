@@ -419,15 +419,30 @@ export default function Payments() {
                       <TableCell className="font-mono text-sm">{formatDate(payment.created_at)}</TableCell>
                       <TableCell className="text-right">
                         {payment.status === "pending" && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleVerify(payment.id)}
-                            data-testid={`verify-payment-${payment.id}`}
-                            className="btn-hover"
-                          >
-                            <CheckCircle className="w-4 h-4 mr-1" />
-                            Verify
-                          </Button>
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleVerify(payment.id)}
+                              data-testid={`verify-payment-${payment.id}`}
+                              className="btn-hover bg-green-600 hover:bg-green-700"
+                            >
+                              <CheckCircle className="w-4 h-4 mr-1" />
+                              Verify
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleReject(payment.id)}
+                              data-testid={`reject-payment-${payment.id}`}
+                              className="text-red-600 hover:bg-red-50"
+                            >
+                              <XCircle className="w-4 h-4 mr-1" />
+                              Reject
+                            </Button>
+                          </div>
+                        )}
+                        {payment.status === "rejected" && (
+                          <Badge className="bg-red-100 text-red-700">Rejected</Badge>
                         )}
                       </TableCell>
                     </TableRow>
