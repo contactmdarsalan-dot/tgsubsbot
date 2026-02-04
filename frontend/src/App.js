@@ -23,6 +23,7 @@ const ProtectedRoute = ({ children }) => {
   
   // Check if user has active subscription
   const subStatus = user.dashboard_subscription_status;
+  const subEnd = user.dashboard_subscription_end;
   const isAdmin = user.isAdmin || localStorage.getItem("isFirstUser") === "true";
   
   // Admin gets free access
@@ -30,7 +31,17 @@ const ProtectedRoute = ({ children }) => {
     return children;
   }
   
-  // Check subscription
+  // Check if subscription expired
+  if (subStatus === "active" && subEnd) {
+    const endDate = new Date(subEnd);
+    if (new Date() > endDate) {
+      // Subscription expired - show renewal page
+      return <Navigate to="/renew" replace />;
+    }
+    return children;
+  }
+  
+  // No subscription - show pricing
   if (subStatus !== "active") {
     return <Navigate to="/pricing" replace />;
   }
