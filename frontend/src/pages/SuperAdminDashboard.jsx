@@ -419,6 +419,7 @@ export default function SuperAdminDashboard() {
                   <TableHeader>
                     <TableRow className="bg-muted/50">
                       <TableHead>User</TableHead>
+                      <TableHead>Role</TableHead>
                       <TableHead>Plan</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Expires</TableHead>
@@ -434,6 +435,8 @@ export default function SuperAdminDashboard() {
                             <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
                               {u.email === SUPER_ADMIN_EMAIL ? (
                                 <Crown className="w-4 h-4 text-primary" />
+                              ) : u.is_admin ? (
+                                <Shield className="w-4 h-4 text-blue-500" />
                               ) : (
                                 <User className="w-4 h-4 text-primary" />
                               )}
@@ -446,6 +449,15 @@ export default function SuperAdminDashboard() {
                               </p>
                             </div>
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          {u.email === SUPER_ADMIN_EMAIL ? (
+                            <Badge className="bg-purple-100 text-purple-700">Super Admin</Badge>
+                          ) : u.is_admin ? (
+                            <Badge className="bg-blue-100 text-blue-700">Admin</Badge>
+                          ) : (
+                            <Badge variant="outline">User</Badge>
+                          )}
                         </TableCell>
                         <TableCell>
                           {u.dashboard_plan ? (
@@ -464,15 +476,42 @@ export default function SuperAdminDashboard() {
                         <TableCell className="text-sm">{formatDate(u.created_at)}</TableCell>
                         <TableCell className="text-right">
                           {u.email !== SUPER_ADMIN_EMAIL && (
-                            <div className="flex justify-end gap-2">
+                            <div className="flex justify-end gap-1 flex-wrap">
+                              {/* Change Plan Button */}
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                onClick={() => {
+                                  setChangePlanDialog({ open: true, user: u });
+                                  setSelectedPlan(u.dashboard_plan || "");
+                                }}
+                                className="text-blue-600"
+                                title="Change Plan"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              
+                              {/* Lifetime Button */}
                               {u.dashboard_plan !== "lifetime" && (
-                                <Button size="sm" variant="outline" onClick={() => handleSetLifetime(u.id)} className="text-purple-600">
-                                  <Crown className="w-4 h-4 mr-1" />
-                                  Lifetime
+                                <Button size="sm" variant="outline" onClick={() => handleSetLifetime(u.id)} className="text-purple-600" title="Give Lifetime">
+                                  <Crown className="w-4 h-4" />
                                 </Button>
                               )}
+                              
+                              {/* Admin Toggle */}
+                              {u.is_admin ? (
+                                <Button size="sm" variant="outline" onClick={() => handleRemoveAdmin(u.id)} className="text-orange-600" title="Remove Admin">
+                                  <UserCog className="w-4 h-4" />
+                                </Button>
+                              ) : (
+                                <Button size="sm" variant="outline" onClick={() => handleMakeAdmin(u.id)} className="text-green-600" title="Make Admin">
+                                  <Shield className="w-4 h-4" />
+                                </Button>
+                              )}
+                              
+                              {/* Revoke Access */}
                               {u.dashboard_subscription_status === "active" && (
-                                <Button size="sm" variant="outline" onClick={() => handleRevokeAccess(u.id)} className="text-red-600">
+                                <Button size="sm" variant="outline" onClick={() => handleRevokeAccess(u.id)} className="text-red-600" title="Revoke Access">
                                   <XCircle className="w-4 h-4" />
                                 </Button>
                               )}
@@ -491,6 +530,59 @@ export default function SuperAdminDashboard() {
             )}
           </CardContent>
         </Card>
+
+        {/* Change Plan Dialog */}
+        <Dialog open={changePlanDialog.open} onOpenChange={(open) => setChangePlanDialog({ ...changePlanDialog, open })}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle className="font-heading text-xl font-bold">
+                Change Subscription Plan
+              </DialogTitle>
+            </DialogHeader>
+            {changePlanDialog.user && (
+              <div className="space-y-4 mt-4">
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <p className="text-sm text-muted-foreground">User</p>
+                  <p className="font-medium">{changePlanDialog.user.name}</p>
+                  <p className="text-sm text-muted-foreground">{changePlanDialog.user.email}</p>
+                </div>
+                
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Select Plan</p>
+                  <Select value={selectedPlan} onValueChange={setSelectedPlan}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Choose a plan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DASHBOARD_PLANS.map((plan) => (
+                        <SelectItem key={plan.id} value={plan.id}>
+                          {plan.name} ({plan.days} days)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button 
+                    className="flex-1" 
+                    onClick={handleChangePlan}
+                    disabled={!selectedPlan}
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Update Plan
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setChangePlanDialog({ open: false, user: null })}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
