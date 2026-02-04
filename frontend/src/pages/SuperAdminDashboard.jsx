@@ -6,6 +6,7 @@ import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
+import { Switch } from "../components/ui/switch";
 import {
   Table,
   TableBody,
@@ -59,6 +60,8 @@ import {
   ChevronDown,
   ChevronUp,
   Image,
+  Sparkles,
+  Star,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -71,8 +74,9 @@ const getAuthHeaders = () => ({
 const SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com";
 
 export default function SuperAdminDashboard() {
-  const [activeTab, setActiveTab] = useState("plans");
+  const [activeTab, setActiveTab] = useState("dashboard-plans");
   const [plans, setPlans] = useState([]);
+  const [dashboardPlans, setDashboardPlans] = useState([]);
   const [subscribers, setSubscribers] = useState([]);
   const [payments, setPayments] = useState([]);
   const [tickets, setTickets] = useState([]);
