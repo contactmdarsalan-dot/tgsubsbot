@@ -106,7 +106,7 @@ export default function Layout() {
                     isActive
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  } ${item.adminOnly ? "border border-dashed border-primary/30" : ""}`}
+                  } ${item.adminOnly ? "border border-dashed border-primary/30" : ""} ${item.superAdminOnly ? "border border-dashed border-yellow-500/50 bg-yellow-500/5" : ""}`}
                 >
                   <Icon className="w-5 h-5" strokeWidth={1.5} />
                   {item.label}
