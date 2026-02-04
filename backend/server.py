@@ -1552,6 +1552,16 @@ async def send_telegram_message_with_buttons(chat_id: str, message: str, buttons
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
         data = await request.json()
+        
+        # Skip old messages (older than 30 seconds)
+        message = data.get("message") or data.get("callback_query", {}).get("message")
+        if message:
+            msg_date = message.get("date", 0)
+            current_time = int(datetime.now(timezone.utc).timestamp())
+            if current_time - msg_date > 30:
+                logger.info(f"Skipping old message from {current_time - msg_date}s ago")
+                return {"ok": True}
+        
         logger.info(f"Webhook received: {data}")
         
         # Handle callback queries (button clicks)
