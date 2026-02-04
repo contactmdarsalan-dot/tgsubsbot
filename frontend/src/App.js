@@ -198,8 +198,6 @@ function App() {
           });
           if (response.ok) {
             const userData = await response.json();
-            // Simple check: if subscription status is undefined/null, might be admin
-            // Real check happens on backend
             localStorage.setItem("user", JSON.stringify(userData));
           }
         }
@@ -213,28 +211,7 @@ function App() {
   return (
     <div className="min-h-screen bg-background">
       <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/pricing" element={<PricingRoute />} />
-          <Route path="/renew" element={<RenewSubscription />} />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <Layout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Dashboard />} />
-            <Route path="plans" element={<Plans />} />
-            <Route path="subscribers" element={<Subscribers />} />
-            <Route path="payments" element={<Payments />} />
-            <Route path="automation" element={<Automation />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="admin-subs" element={<AdminSubscriptions />} />
-            <Route path="super-admin" element={<SuperAdminDashboard />} />
-          </Route>
-        </Routes>
+        <AppRouter />
       </BrowserRouter>
       <Toaster position="top-right" />
     </div>
