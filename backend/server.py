@@ -410,12 +410,124 @@ async def get_subscription_requests(user = Depends(get_current_user)):
     
     return requests
 
+# Super Admin email
+SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"
+
+async def verify_super_admin(user: dict):
+    """Verify if user is super admin"""
+    if user.get("email") != SUPER_ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Super Admin access required")
+    return True
+
+# ============== SUPER ADMIN ROUTES ==============
+
+@api_router.get("/admin/all-users")
+async def get_all_users(user = Depends(get_current_user)):
+    """Get all users with their subscription details (super admin only)"""
+    await verify_super_admin(user)
+    
+    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
+    return users
+
+@api_router.get("/admin/stats")
+async def get_admin_stats(user = Depends(get_current_user)):
+    """Get dashboard stats for super admin"""
+    await verify_super_admin(user)
+    
+    total_users = await db.users.count_documents({})
+    active_subscribers = await db.users.count_documents({"dashboard_subscription_status": "active"})
+    pending_requests = await db.dashboard_subscriptions.count_documents({"status": "pending"})
+    
+    # Calculate revenue from approved subscriptions
+    approved_subs = await db.dashboard_subscriptions.find({"status": "approved"}, {"_id": 0}).to_list(10000)
+    total_revenue = sum(sub.get("amount", 0) for sub in approved_subs)
+    
+    return {
+        "total_users": total_users,
+        "active_subscribers": active_subscribers,
+        "pending_requests": pending_requests,
+        "total_revenue": total_revenue
+    }
+
+@api_router.get("/admin/subscription-requests")
+async def get_all_subscription_requests(user = Depends(get_current_user)):
+    """Get all subscription requests (super admin only)"""
+    await verify_super_admin(user)
+    
+    requests = await db.dashboard_subscriptions.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return requests
+
+@api_router.put("/admin/reject-subscription/{request_id}")
+async def reject_subscription_request(request_id: str, user = Depends(get_current_user)):
+    """Reject subscription request (super admin only)"""
+    await verify_super_admin(user)
+    
+    request = await db.dashboard_subscriptions.find_one({"id": request_id}, {"_id": 0})
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    await db.dashboard_subscriptions.update_one(
+        {"id": request_id},
+        {"$set": {"status": "rejected", "rejected_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    return {"message": "Subscription request rejected"}
+
+@api_router.put("/admin/set-lifetime/{user_id}")
+async def set_user_lifetime(user_id: str, user = Depends(get_current_user)):
+    """Grant lifetime access to a user (super admin only)"""
+    await verify_super_admin(user)
+    
+    target_user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Set lifetime - 100 years from now
+    lifetime_end = datetime.now(timezone.utc) + timedelta(days=36500)
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "dashboard_plan": "lifetime",
+            "dashboard_subscription_status": "active",
+            "dashboard_subscription_end": lifetime_end.isoformat()
+        }}
+    )
+    
+    return {"message": "Lifetime access granted"}
+
+@api_router.put("/admin/revoke-access/{user_id}")
+async def revoke_user_access(user_id: str, user = Depends(get_current_user)):
+    """Revoke user's dashboard access (super admin only)"""
+    await verify_super_admin(user)
+    
+    target_user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Don't allow revoking super admin's own access
+    if target_user.get("email") == SUPER_ADMIN_EMAIL:
+        raise HTTPException(status_code=400, detail="Cannot revoke super admin's access")
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "dashboard_subscription_status": "inactive",
+            "dashboard_plan": ""
+        }}
+    )
+    
+    return {"message": "Access revoked"}
+
 @api_router.put("/dashboard-subscription/approve/{request_id}")
 async def approve_subscription(request_id: str, user = Depends(get_current_user)):
     """Approve subscription request (admin only)"""
-    # Check if admin (first user)
+    # Check if admin (first user) or super admin
     first_user = await db.users.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
-    if not first_user or first_user["id"] != user["id"]:
+    is_first_user = first_user and first_user["id"] == user["id"]
+    is_super_admin = user.get("email") == SUPER_ADMIN_EMAIL
+    
+    if not is_first_user and not is_super_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     
     request = await db.dashboard_subscriptions.find_one({"id": request_id}, {"_id": 0})
