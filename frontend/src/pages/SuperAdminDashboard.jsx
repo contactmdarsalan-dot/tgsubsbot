@@ -1079,6 +1079,102 @@ export default function SuperAdminDashboard() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Dashboard Plan Edit Dialog */}
+        <Dialog open={dashPlanDialog.open} onOpenChange={(open) => setDashPlanDialog({ ...dashPlanDialog, open })}>
+          <DialogContent className="bg-slate-900 border-pink-500/30 max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-white flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-pink-400" />
+                Edit Website Plan
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label className="text-purple-300">Plan Name</Label>
+                <Input
+                  value={dashPlanForm.name}
+                  onChange={(e) => setDashPlanForm({ ...dashPlanForm, name: e.target.value })}
+                  placeholder="e.g., 1 Month"
+                  className="bg-black/30 border-purple-500/30 text-white"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-purple-300">Price (₹)</Label>
+                  <Input
+                    type="number"
+                    value={dashPlanForm.price}
+                    onChange={(e) => setDashPlanForm({ ...dashPlanForm, price: e.target.value })}
+                    placeholder="4999"
+                    className="bg-black/30 border-purple-500/30 text-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-purple-300">Duration (days)</Label>
+                  <Input
+                    type="number"
+                    value={dashPlanForm.duration_days}
+                    onChange={(e) => setDashPlanForm({ ...dashPlanForm, duration_days: e.target.value })}
+                    placeholder="30"
+                    className="bg-black/30 border-purple-500/30 text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-purple-300">Save Badge (e.g., "17%")</Label>
+                <Input
+                  value={dashPlanForm.save}
+                  onChange={(e) => setDashPlanForm({ ...dashPlanForm, save: e.target.value })}
+                  placeholder="17%"
+                  className="bg-black/30 border-purple-500/30 text-white"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-black/30 rounded-lg">
+                <div>
+                  <p className="text-white text-sm font-medium">Mark as Popular</p>
+                  <p className="text-purple-400 text-xs">Shows "Popular" badge</p>
+                </div>
+                <Switch
+                  checked={dashPlanForm.popular}
+                  onCheckedChange={(checked) => setDashPlanForm({ ...dashPlanForm, popular: checked })}
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-black/30 rounded-lg">
+                <div>
+                  <p className="text-white text-sm font-medium">Contact Us Plan</p>
+                  <p className="text-purple-400 text-xs">Shows "Contact Us" instead of price</p>
+                </div>
+                <Switch
+                  checked={dashPlanForm.contact}
+                  onCheckedChange={(checked) => setDashPlanForm({ ...dashPlanForm, contact: checked })}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-4">
+                <Button 
+                  onClick={handleSaveDashPlan}
+                  className="flex-1 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600"
+                  disabled={!dashPlanForm.name}
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Save Changes
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="border-purple-500/30 text-purple-300"
+                  onClick={() => setDashPlanDialog({ open: false, plan: null })}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
