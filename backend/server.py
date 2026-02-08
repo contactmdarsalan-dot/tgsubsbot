@@ -857,6 +857,118 @@ async def request_dashboard_subscription(data: dict, user = Depends(get_current_
     
     return {"message": "Subscription request submitted", "request_id": request_obj["id"]}
 
+@api_router.post("/dashboard-subscription/create-order")
+async def create_dashboard_razorpay_order(data: dict, user = Depends(get_current_user)):
+    """Create Razorpay order for dashboard subscription"""
+    if not razorpay_client:
+        raise HTTPException(status_code=400, detail="Razorpay not configured")
+    
+    plan_id = data.get("plan_id")
+    
+    # Get plan from database
+    plans = await get_dashboard_plans_from_db()
+    plan_info = next((p for p in plans if p["id"] == plan_id), None)
+    
+    if not plan_info:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+    
+    amount = plan_info.get("price", 0)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Invalid plan price")
+    
+    # Create Razorpay order
+    order = razorpay_client.order.create({
+        "amount": int(amount * 100),  # Convert to paise
+        "currency": "INR",
+        "payment_capture": 1,
+        "notes": {
+            "user_id": user["id"],
+            "user_email": user["email"],
+            "plan_id": plan_id,
+            "plan_name": plan_info.get("name", ""),
+            "type": "dashboard_subscription"
+        }
+    })
+    
+    # Store order info
+    order_obj = {
+        "id": str(uuid.uuid4()),
+        "razorpay_order_id": order["id"],
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "plan_id": plan_id,
+        "plan_name": plan_info.get("name", ""),
+        "amount": amount,
+        "status": "created",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.dashboard_orders.insert_one(order_obj)
+    
+    return {
+        "order_id": order["id"],
+        "amount": amount,
+        "currency": "INR",
+        "key_id": RAZORPAY_KEY_ID
+    }
+
+@api_router.post("/dashboard-subscription/verify-payment")
+async def verify_dashboard_razorpay_payment(data: dict, user = Depends(get_current_user)):
+    """Verify Razorpay payment for dashboard subscription"""
+    if not razorpay_client:
+        raise HTTPException(status_code=400, detail="Razorpay not configured")
+    
+    try:
+        # Verify signature
+        razorpay_client.utility.verify_payment_signature({
+            'razorpay_order_id': data['razorpay_order_id'],
+            'razorpay_payment_id': data['razorpay_payment_id'],
+            'razorpay_signature': data['razorpay_signature']
+        })
+    except Exception:
+        raise HTTPException(status_code=400, detail="Payment verification failed")
+    
+    # Get order
+    order = await db.dashboard_orders.find_one({"razorpay_order_id": data['razorpay_order_id']}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Update order status
+    await db.dashboard_orders.update_one(
+        {"razorpay_order_id": data['razorpay_order_id']},
+        {"$set": {"status": "paid", "razorpay_payment_id": data['razorpay_payment_id']}}
+    )
+    
+    # Activate subscription
+    plan_id = order["plan_id"]
+    plans = await get_dashboard_plans_from_db()
+    plan_info = next((p for p in plans if p["id"] == plan_id), None)
+    
+    if plan_info:
+        duration_days = plan_info.get("duration_days", 30)
+        end_date = datetime.now(timezone.utc) + timedelta(days=duration_days)
+        
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$set": {
+                "dashboard_plan": plan_id,
+                "dashboard_subscription_status": "active",
+                "dashboard_subscription_end": end_date.isoformat()
+            }}
+        )
+        
+        # Update localStorage user data
+        return {
+            "message": "Payment verified and subscription activated!",
+            "subscription": {
+                "plan": plan_id,
+                "plan_name": plan_info.get("name", ""),
+                "status": "active",
+                "end_date": end_date.isoformat()
+            }
+        }
+    
+    return {"message": "Payment verified but plan not found"}
+
 @api_router.get("/auth/check-admin")
 async def check_if_admin(user = Depends(get_current_user)):
     """Check if current user is admin (first registered user)"""
