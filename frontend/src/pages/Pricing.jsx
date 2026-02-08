@@ -93,7 +93,7 @@ export default function Pricing({ onSubscribed }) {
   };
 
   const handleContactUs = () => {
-    window.open("https://t.me/your_admin_username", "_blank");
+    window.location.href = "mailto:nikhil@onlyforyou.club?subject=Lifetime%20Access%20Inquiry&body=Hi,%20I%20am%20interested%20in%20the%20Lifetime%20Access%20plan.";
   };
 
   return (
