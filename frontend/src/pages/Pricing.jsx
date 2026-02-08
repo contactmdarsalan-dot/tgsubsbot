@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
-import { Check, Crown, Zap, Star, Phone, MessageCircle } from "lucide-react";
+import { Check, Crown, Zap, Star, MessageCircle, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -65,28 +66,104 @@ const plans = [
 
 export default function Pricing({ onSubscribed }) {
   const [loading, setLoading] = useState(null);
-  const [selectedPlan, setSelectedPlan] = useState(null);
-  const [showPayment, setShowPayment] = useState(false);
+  const [razorpayLoaded, setRazorpayLoaded] = useState(false);
+  const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-  const handleSelectPlan = (planId) => {
-    setSelectedPlan(planId);
-    setShowPayment(true);
-  };
+  // Load Razorpay script
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => setRazorpayLoaded(true);
+    document.body.appendChild(script);
+    
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
 
-  const handlePaymentDone = async () => {
-    if (!selectedPlan) return;
-    setLoading(selectedPlan);
+  const handleSelectPlan = async (planId) => {
+    if (!razorpayLoaded) {
+      toast.error("Payment gateway loading... Please try again.");
+      return;
+    }
+    
+    setLoading(planId);
     
     try {
-      await axios.post(`${API}/dashboard-subscription/request`, {
-        plan_id: selectedPlan
-      }, getAuthHeaders());
+      // Create Razorpay order
+      const response = await axios.post(
+        `${API}/dashboard-subscription/create-order`,
+        { plan_id: planId },
+        getAuthHeaders()
+      );
       
-      toast.success("Subscription request submitted! We'll verify and activate soon.");
-      setShowPayment(false);
+      const { order_id, amount, key_id } = response.data;
+      const plan = plans.find(p => p.id === planId);
+      
+      // Open Razorpay checkout
+      const options = {
+        key: key_id,
+        amount: amount * 100,
+        currency: "INR",
+        name: "SubsBot Pro",
+        description: `${plan.name} Subscription`,
+        order_id: order_id,
+        handler: async function (response) {
+          // Verify payment
+          try {
+            const verifyResponse = await axios.post(
+              `${API}/dashboard-subscription/verify-payment`,
+              {
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature
+              },
+              getAuthHeaders()
+            );
+            
+            toast.success("Payment successful! Subscription activated.");
+            
+            // Update local user data
+            const updatedUser = {
+              ...user,
+              dashboard_subscription_status: "active",
+              dashboard_plan: planId
+            };
+            localStorage.setItem("user", JSON.stringify(updatedUser));
+            
+            // Redirect to dashboard
+            if (onSubscribed) {
+              onSubscribed();
+            }
+            navigate("/");
+            window.location.reload();
+          } catch (error) {
+            toast.error("Payment verification failed. Please contact support.");
+          }
+        },
+        prefill: {
+          name: user.name || "",
+          email: user.email || "",
+          contact: user.phone || ""
+        },
+        theme: {
+          color: "#3b82f6"
+        },
+        modal: {
+          ondismiss: function() {
+            setLoading(null);
+          }
+        }
+      };
+      
+      const razorpay = new window.Razorpay(options);
+      razorpay.open();
+      
     } catch (error) {
-      toast.error("Failed to submit request");
+      console.error("Payment error:", error);
+      toast.error(error.response?.data?.detail || "Failed to initiate payment");
     } finally {
       setLoading(null);
     }
@@ -112,143 +189,96 @@ export default function Pricing({ onSubscribed }) {
           </p>
         </div>
 
-        {!showPayment ? (
-          <>
-            {/* Pricing Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-              {plans.map((plan) => {
-                const Icon = plan.icon;
-                return (
-                  <Card 
-                    key={plan.id} 
-                    className={`relative border-2 transition-all duration-300 hover:border-primary/50 ${
-                      plan.popular ? "border-primary shadow-lg scale-105" : "border-border"
-                    }`}
+        {/* Pricing Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+          {plans.map((plan) => {
+            const Icon = plan.icon;
+            const isLoading = loading === plan.id;
+            return (
+              <Card 
+                key={plan.id} 
+                className={`relative border-2 transition-all duration-300 hover:border-primary/50 ${
+                  plan.popular ? "border-primary shadow-lg scale-105" : "border-border"
+                }`}
+              >
+                {plan.popular && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                    <Badge className="bg-primary text-primary-foreground">
+                      Most Popular
+                    </Badge>
+                  </div>
+                )}
+                {plan.save && (
+                  <div className="absolute -top-3 right-4">
+                    <Badge className="bg-green-500 text-white">
+                      Save {plan.save}
+                    </Badge>
+                  </div>
+                )}
+                <CardHeader className="text-center pb-4">
+                  <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Icon className="w-6 h-6 text-primary" />
+                  </div>
+                  <CardTitle className="font-heading text-2xl font-bold">
+                    {plan.name}
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground">{plan.duration}</p>
+                </CardHeader>
+                <CardContent className="text-center">
+                  <div className="mb-6">
+                    <span className="font-heading text-5xl font-bold">₹{plan.price.toLocaleString()}</span>
+                  </div>
+                  
+                  <ul className="space-y-3 mb-6 text-left">
+                    {plan.features.map((feature, i) => (
+                      <li key={i} className="flex items-center gap-2 text-sm">
+                        <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+                  
+                  <Button 
+                    className={`w-full ${plan.popular ? "btn-hover" : ""}`}
+                    variant={plan.popular ? "default" : "outline"}
+                    onClick={() => handleSelectPlan(plan.id)}
+                    disabled={isLoading || loading !== null}
+                    data-testid={`plan-${plan.id}-btn`}
                   >
-                    {plan.popular && (
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                        <Badge className="bg-primary text-primary-foreground">
-                          Most Popular
-                        </Badge>
-                      </div>
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      "Get Started"
                     )}
-                    {plan.save && (
-                      <div className="absolute -top-3 right-4">
-                        <Badge className="bg-green-500 text-white">
-                          Save {plan.save}
-                        </Badge>
-                      </div>
-                    )}
-                    <CardHeader className="text-center pb-4">
-                      <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Icon className="w-6 h-6 text-primary" />
-                      </div>
-                      <CardTitle className="font-heading text-2xl font-bold">
-                        {plan.name}
-                      </CardTitle>
-                      <p className="text-sm text-muted-foreground">{plan.duration}</p>
-                    </CardHeader>
-                    <CardContent className="text-center">
-                      <div className="mb-6">
-                        <span className="font-heading text-5xl font-bold">₹{plan.price.toLocaleString()}</span>
-                      </div>
-                      
-                      <ul className="space-y-3 mb-6 text-left">
-                        {plan.features.map((feature, i) => (
-                          <li key={i} className="flex items-center gap-2 text-sm">
-                            <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
-                            {feature}
-                          </li>
-                        ))}
-                      </ul>
-                      
-                      <Button 
-                        className={`w-full ${plan.popular ? "btn-hover" : ""}`}
-                        variant={plan.popular ? "default" : "outline"}
-                        onClick={() => handleSelectPlan(plan.id)}
-                      >
-                        Get Started
-                      </Button>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
 
-            {/* Lifetime Plan */}
-            <Card className="max-w-2xl mx-auto border-2 border-dashed border-primary/30 bg-primary/5">
-              <CardContent className="p-8 text-center">
-                <Crown className="w-12 h-12 text-primary mx-auto mb-4" />
-                <h3 className="font-heading text-2xl font-bold mb-2">Lifetime Access</h3>
-                <p className="text-muted-foreground mb-6">
-                  One-time payment for forever access. Contact us for custom pricing.
-                </p>
-                <Button onClick={handleContactUs} variant="outline" className="gap-2">
-                  <MessageCircle className="w-4 h-4" />
-                  Contact Us
-                </Button>
-              </CardContent>
-            </Card>
-          </>
-        ) : (
-          /* Payment Section */
-          <Card className="max-w-lg mx-auto">
-            <CardHeader>
-              <CardTitle className="font-heading text-2xl font-bold text-center">
-                Complete Payment
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="p-4 bg-muted/50 rounded-lg">
-                <div className="flex justify-between items-center">
-                  <span className="font-medium">
-                    {plans.find(p => p.id === selectedPlan)?.name} Plan
-                  </span>
-                  <span className="font-heading text-2xl font-bold">
-                    ₹{plans.find(p => p.id === selectedPlan)?.price.toLocaleString()}
-                  </span>
-                </div>
-              </div>
+        {/* Lifetime Plan */}
+        <Card className="max-w-2xl mx-auto border-2 border-dashed border-primary/30 bg-primary/5">
+          <CardContent className="p-8 text-center">
+            <Crown className="w-12 h-12 text-primary mx-auto mb-4" />
+            <h3 className="font-heading text-2xl font-bold mb-2">Lifetime Access</h3>
+            <p className="text-muted-foreground mb-6">
+              One-time payment for forever access. Contact us for custom pricing.
+            </p>
+            <Button onClick={handleContactUs} variant="outline" className="gap-2" data-testid="contact-us-btn">
+              <MessageCircle className="w-4 h-4" />
+              Contact Us
+            </Button>
+          </CardContent>
+        </Card>
 
-              <div className="space-y-4">
-                <h4 className="font-medium">Payment Instructions:</h4>
-                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm space-y-2">
-                  <p>1️⃣ Pay via UPI to: <strong>your-upi@paytm</strong></p>
-                  <p>2️⃣ Or scan QR code (available on request)</p>
-                  <p>3️⃣ Click "I've Paid" below</p>
-                  <p>4️⃣ We'll verify and activate within 30 mins</p>
-                </div>
-
-                <div className="p-4 bg-muted/50 rounded-lg">
-                  <p className="text-sm text-muted-foreground">
-                    <strong>Your Email:</strong> {user.email}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setShowPayment(false)}
-                  className="flex-1"
-                >
-                  Back
-                </Button>
-                <Button 
-                  onClick={handlePaymentDone}
-                  disabled={loading}
-                  className="flex-1 btn-hover"
-                >
-                  {loading ? "Submitting..." : "I've Paid"}
-                </Button>
-              </div>
-
-              <p className="text-xs text-center text-muted-foreground">
-                Having trouble? <button className="text-primary underline" onClick={handleContactUs}>Contact Support</button>
-              </p>
-            </CardContent>
-          </Card>
-        )}
+        {/* Support Link */}
+        <p className="text-center text-sm text-muted-foreground mt-8">
+          Having trouble? <button className="text-primary underline" onClick={handleContactUs}>Contact Support</button>
+        </p>
       </div>
     </div>
   );
