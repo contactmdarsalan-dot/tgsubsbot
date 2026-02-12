@@ -491,17 +491,19 @@ export default function Payments() {
                     </Button>
                   </>
                 )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleBulkDelete}
-                  disabled={bulkLoading}
-                  className="text-red-600 border-red-300 hover:bg-red-50"
-                  data-testid="bulk-delete-btn"
-                >
-                  <Trash2 className="w-4 h-4 mr-1" />
-                  Delete ({selectedPayments.length})
-                </Button>
+                {isAdmin && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleBulkDelete}
+                    disabled={bulkLoading}
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                    data-testid="bulk-delete-btn"
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" />
+                    Delete ({selectedPayments.length})
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="ghost"
