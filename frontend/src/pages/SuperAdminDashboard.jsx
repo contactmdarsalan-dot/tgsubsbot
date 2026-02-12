@@ -244,6 +244,17 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  const handleDeletePayment = async (paymentId) => {
+    if (!window.confirm("Are you sure you want to DELETE this payment? This cannot be undone!")) return;
+    try {
+      await axios.delete(`${API}/payments/${paymentId}`, getAuthHeaders());
+      toast.success("Payment deleted!");
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to delete");
+    }
+  };
+
   // Support handlers
   const handleAdminReply = async (ticketId) => {
     if (!adminReply.message.trim()) return;
