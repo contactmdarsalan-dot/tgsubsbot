@@ -1525,7 +1525,11 @@ async def reject_payment(payment_id: str, data: dict = None, user = Depends(get_
 
 @api_router.delete("/payments/{payment_id}")
 async def delete_payment(payment_id: str, user = Depends(get_current_user)):
-    """Delete a payment record"""
+    """Delete a payment record - Admin only"""
+    # Check if user is admin
+    if user.get("email") != SUPER_ADMIN_EMAIL and not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Only admin can delete payments")
+    
     payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
