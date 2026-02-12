@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
+import { Checkbox } from "../components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,9 @@ import {
   Image,
   Eye,
   X,
+  Trash2,
+  CheckCheck,
+  XOctagon,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -57,6 +61,8 @@ export default function Payments() {
   const [screenshotModal, setScreenshotModal] = useState({ open: false, url: "", payment: null });
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [selectedPayments, setSelectedPayments] = useState([]);
+  const [bulkLoading, setBulkLoading] = useState(false);
   const [form, setForm] = useState({
     telegram_user_id: "",
     plan_id: "",
@@ -76,6 +82,7 @@ export default function Payments() {
       ]);
       setPayments(paymentsResponse.data);
       setPlans(plansResponse.data);
+      setSelectedPayments([]); // Clear selection on refresh
     } catch (error) {
       toast.error("Failed to fetch data");
     } finally {
@@ -126,6 +133,82 @@ export default function Payments() {
     }
   };
 
+  const handleDelete = async (paymentId) => {
+    if (!window.confirm("Are you sure you want to delete this payment? This action cannot be undone.")) return;
+    try {
+      await axios.delete(`${API}/payments/${paymentId}`, getAuthHeaders());
+      toast.success("Payment deleted");
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to delete payment");
+    }
+  };
+
+  // Bulk actions
+  const handleBulkVerify = async () => {
+    if (selectedPayments.length === 0) return;
+    if (!window.confirm(`Are you sure you want to verify ${selectedPayments.length} payments?`)) return;
+    
+    setBulkLoading(true);
+    try {
+      const response = await axios.post(`${API}/payments/bulk-verify`, { payment_ids: selectedPayments }, getAuthHeaders());
+      toast.success(`${response.data.verified_count} payments verified`);
+      fetchData();
+    } catch (error) {
+      toast.error("Failed to verify payments");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    if (selectedPayments.length === 0) return;
+    if (!window.confirm(`Are you sure you want to reject ${selectedPayments.length} payments?`)) return;
+    
+    setBulkLoading(true);
+    try {
+      const response = await axios.post(`${API}/payments/bulk-reject`, { payment_ids: selectedPayments }, getAuthHeaders());
+      toast.success(`${response.data.rejected_count} payments rejected`);
+      fetchData();
+    } catch (error) {
+      toast.error("Failed to reject payments");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedPayments.length === 0) return;
+    if (!window.confirm(`Are you sure you want to DELETE ${selectedPayments.length} payments? This cannot be undone!`)) return;
+    
+    setBulkLoading(true);
+    try {
+      const response = await axios.post(`${API}/payments/bulk-delete`, { payment_ids: selectedPayments }, getAuthHeaders());
+      toast.success(`${response.data.deleted_count} payments deleted`);
+      fetchData();
+    } catch (error) {
+      toast.error("Failed to delete payments");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const toggleSelectPayment = (paymentId) => {
+    setSelectedPayments(prev => 
+      prev.includes(paymentId) 
+        ? prev.filter(id => id !== paymentId)
+        : [...prev, paymentId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedPayments.length === filteredPayments.length) {
+      setSelectedPayments([]);
+    } else {
+      setSelectedPayments(filteredPayments.map(p => p.id));
+    }
+  };
+
   const resetForm = () => {
     setForm({
       telegram_user_id: "",
@@ -144,8 +227,15 @@ export default function Payments() {
   };
 
   const filteredPayments = payments.filter((p) =>
-    p.telegram_user_id.includes(search)
+    p.telegram_user_id.includes(search) || 
+    (p.telegram_username && p.telegram_username.toLowerCase().includes(search.toLowerCase()))
   );
+
+  // Check if any selected payment is pending (for bulk verify/reject)
+  const selectedPendingPayments = selectedPayments.filter(id => {
+    const payment = payments.find(p => p.id === id);
+    return payment && payment.status === "pending";
+  });
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -154,6 +244,7 @@ export default function Payments() {
       case "pending":
         return <Clock className="w-4 h-4 text-yellow-500" />;
       case "failed":
+      case "rejected":
         return <XCircle className="w-4 h-4 text-red-500" />;
       default:
         return null;
@@ -165,6 +256,7 @@ export default function Payments() {
       verified: "bg-green-100 text-green-700",
       pending: "bg-yellow-100 text-yellow-700",
       failed: "bg-red-100 text-red-700",
+      rejected: "bg-red-100 text-red-700",
     };
     return (
       <Badge className={`flex items-center gap-1 ${styles[status] || ""}`}>
@@ -332,32 +424,87 @@ export default function Payments() {
         </Card>
       </div>
 
-      {/* Filters */}
+      {/* Filters & Bulk Actions */}
       <Card className="border">
         <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by Telegram User ID..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                data-testid="payment-search-input"
-                className="pl-10 bg-muted/50 border-transparent focus:border-primary"
-              />
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by Telegram User ID or Username..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  data-testid="payment-search-input"
+                  className="pl-10 bg-muted/50 border-transparent focus:border-primary"
+                />
+              </div>
+              <Select value={filter} onValueChange={setFilter}>
+                <SelectTrigger className="w-[160px] bg-muted/50 border-transparent" data-testid="payment-filter">
+                  <Filter className="w-4 h-4 mr-2" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Payments</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="verified">Verified</SelectItem>
+                  <SelectItem value="rejected">Rejected</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={filter} onValueChange={setFilter}>
-              <SelectTrigger className="w-[160px] bg-muted/50 border-transparent" data-testid="payment-filter">
-                <Filter className="w-4 h-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Payments</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="verified">Verified</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-              </SelectContent>
-            </Select>
+
+            {/* Bulk Actions Bar */}
+            {selectedPayments.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                <span className="text-sm font-medium text-primary">
+                  {selectedPayments.length} selected
+                </span>
+                <div className="flex-1" />
+                {selectedPendingPayments.length > 0 && (
+                  <>
+                    <Button
+                      size="sm"
+                      onClick={handleBulkVerify}
+                      disabled={bulkLoading}
+                      className="bg-green-600 hover:bg-green-700"
+                      data-testid="bulk-verify-btn"
+                    >
+                      <CheckCheck className="w-4 h-4 mr-1" />
+                      Verify ({selectedPendingPayments.length})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleBulkReject}
+                      disabled={bulkLoading}
+                      className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                      data-testid="bulk-reject-btn"
+                    >
+                      <XOctagon className="w-4 h-4 mr-1" />
+                      Reject ({selectedPendingPayments.length})
+                    </Button>
+                  </>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleBulkDelete}
+                  disabled={bulkLoading}
+                  className="text-red-600 border-red-300 hover:bg-red-50"
+                  data-testid="bulk-delete-btn"
+                >
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Delete ({selectedPayments.length})
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelectedPayments([])}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -370,6 +517,13 @@ export default function Payments() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
+                    <TableHead className="w-[50px]">
+                      <Checkbox 
+                        checked={selectedPayments.length === filteredPayments.length && filteredPayments.length > 0}
+                        onCheckedChange={toggleSelectAll}
+                        data-testid="select-all-checkbox"
+                      />
+                    </TableHead>
                     <TableHead className="font-heading font-bold">User</TableHead>
                     <TableHead className="font-heading font-bold">Plan</TableHead>
                     <TableHead className="font-heading font-bold">Amount</TableHead>
@@ -381,7 +535,18 @@ export default function Payments() {
                 </TableHeader>
                 <TableBody>
                   {filteredPayments.map((payment) => (
-                    <TableRow key={payment.id} className="hover:bg-muted/30" data-testid={`payment-row-${payment.id}`}>
+                    <TableRow 
+                      key={payment.id} 
+                      className={`hover:bg-muted/30 ${selectedPayments.includes(payment.id) ? 'bg-primary/5' : ''}`}
+                      data-testid={`payment-row-${payment.id}`}
+                    >
+                      <TableCell>
+                        <Checkbox 
+                          checked={selectedPayments.includes(payment.id)}
+                          onCheckedChange={() => toggleSelectPayment(payment.id)}
+                          data-testid={`select-payment-${payment.id}`}
+                        />
+                      </TableCell>
                       <TableCell>
                         <div>
                           <p className="font-mono text-sm font-medium">
@@ -418,32 +583,43 @@ export default function Payments() {
                       <TableCell>{getStatusBadge(payment.status)}</TableCell>
                       <TableCell className="font-mono text-sm">{formatDate(payment.created_at)}</TableCell>
                       <TableCell className="text-right">
-                        {payment.status === "pending" && (
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => handleVerify(payment.id)}
-                              data-testid={`verify-payment-${payment.id}`}
-                              className="btn-hover bg-green-600 hover:bg-green-700"
-                            >
-                              <CheckCircle className="w-4 h-4 mr-1" />
-                              Verify
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleReject(payment.id)}
-                              data-testid={`reject-payment-${payment.id}`}
-                              className="text-red-600 hover:bg-red-50"
-                            >
-                              <XCircle className="w-4 h-4 mr-1" />
-                              Reject
-                            </Button>
-                          </div>
-                        )}
-                        {payment.status === "rejected" && (
-                          <Badge className="bg-red-100 text-red-700">Rejected</Badge>
-                        )}
+                        <div className="flex justify-end gap-2">
+                          {payment.status === "pending" && (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() => handleVerify(payment.id)}
+                                data-testid={`verify-payment-${payment.id}`}
+                                className="btn-hover bg-green-600 hover:bg-green-700"
+                              >
+                                <CheckCircle className="w-4 h-4 mr-1" />
+                                Verify
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleReject(payment.id)}
+                                data-testid={`reject-payment-${payment.id}`}
+                                className="text-red-600 hover:bg-red-50"
+                              >
+                                <XCircle className="w-4 h-4 mr-1" />
+                                Reject
+                              </Button>
+                            </>
+                          )}
+                          {payment.status === "rejected" && (
+                            <Badge className="bg-red-100 text-red-700">Rejected</Badge>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDelete(payment.id)}
+                            data-testid={`delete-payment-${payment.id}`}
+                            className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
