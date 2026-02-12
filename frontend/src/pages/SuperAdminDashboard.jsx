@@ -745,34 +745,47 @@ export default function SuperAdminDashboard() {
                               {formatDate(payment.created_at)}
                             </TableCell>
                             <TableCell>
-                              {payment.status === "pending" && (
-                                <div className="flex justify-end gap-2">
-                                  {payment.screenshot_url && (
+                              <div className="flex justify-end gap-2">
+                                {/* View Screenshot - always show if exists */}
+                                {payment.screenshot_url && (
+                                  <Button 
+                                    size="sm" 
+                                    variant="ghost"
+                                    onClick={() => setScreenshotModal({ open: true, url: payment.screenshot_url, payment })}
+                                    className="text-blue-400 hover:bg-blue-500/20"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </Button>
+                                )}
+                                {/* Verify & Reject - only for pending */}
+                                {payment.status === "pending" && (
+                                  <>
                                     <Button 
                                       size="sm" 
-                                      variant="ghost"
-                                      onClick={() => setScreenshotModal({ open: true, url: payment.screenshot_url, payment })}
-                                      className="text-blue-400 hover:bg-blue-500/20"
+                                      onClick={() => handleVerifyPayment(payment.id)}
+                                      className="bg-green-500/20 hover:bg-green-500/30 text-green-300"
                                     >
-                                      <Eye className="w-4 h-4" />
+                                      <CheckCircle className="w-4 h-4" />
                                     </Button>
-                                  )}
-                                  <Button 
-                                    size="sm" 
-                                    onClick={() => handleVerifyPayment(payment.id)}
-                                    className="bg-green-500/20 hover:bg-green-500/30 text-green-300"
-                                  >
-                                    <CheckCircle className="w-4 h-4" />
-                                  </Button>
-                                  <Button 
-                                    size="sm" 
-                                    onClick={() => handleRejectPayment(payment.id)}
-                                    className="bg-red-500/20 hover:bg-red-500/30 text-red-300"
-                                  >
-                                    <XCircle className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              )}
+                                    <Button 
+                                      size="sm" 
+                                      onClick={() => handleRejectPayment(payment.id)}
+                                      className="bg-red-500/20 hover:bg-red-500/30 text-red-300"
+                                    >
+                                      <XCircle className="w-4 h-4" />
+                                    </Button>
+                                  </>
+                                )}
+                                {/* Delete - always available for admin */}
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost"
+                                  onClick={() => handleDeletePayment(payment.id)}
+                                  className="text-red-400 hover:bg-red-500/20"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
