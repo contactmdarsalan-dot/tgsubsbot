@@ -1598,7 +1598,11 @@ async def bulk_reject_payments(data: dict, user = Depends(get_current_user)):
 
 @api_router.post("/payments/bulk-delete")
 async def bulk_delete_payments(data: dict, user = Depends(get_current_user)):
-    """Delete multiple payments at once"""
+    """Delete multiple payments at once - Admin only"""
+    # Check if user is admin
+    if user.get("email") != SUPER_ADMIN_EMAIL and not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Only admin can delete payments")
+    
     payment_ids = data.get("payment_ids", [])
     if not payment_ids:
         raise HTTPException(status_code=400, detail="No payment IDs provided")
