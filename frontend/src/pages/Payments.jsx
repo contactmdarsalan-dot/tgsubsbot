@@ -618,15 +618,17 @@ export default function Payments() {
                           {payment.status === "rejected" && (
                             <Badge className="bg-red-100 text-red-700">Rejected</Badge>
                           )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDelete(payment.id)}
-                            data-testid={`delete-payment-${payment.id}`}
-                            className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          {isAdmin && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDelete(payment.id)}
+                              data-testid={`delete-payment-${payment.id}`}
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
