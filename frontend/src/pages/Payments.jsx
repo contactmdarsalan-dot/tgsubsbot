@@ -49,6 +49,8 @@ import {
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+const SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com";
+
 const getAuthHeaders = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
 });
@@ -68,6 +70,10 @@ export default function Payments() {
     plan_id: "",
     amount: "",
   });
+
+  // Check if user is admin
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const isAdmin = user.email === SUPER_ADMIN_EMAIL || user.is_admin;
 
   useEffect(() => {
     fetchData();
