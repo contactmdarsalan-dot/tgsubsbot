@@ -1523,6 +1523,114 @@ async def reject_payment(payment_id: str, data: dict = None, user = Depends(get_
     
     return {"message": "Payment rejected"}
 
+@api_router.delete("/payments/{payment_id}")
+async def delete_payment(payment_id: str, user = Depends(get_current_user)):
+    """Delete a payment record"""
+    payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    
+    await db.payments.delete_one({"id": payment_id})
+    return {"message": "Payment deleted"}
+
+@api_router.post("/payments/bulk-verify")
+async def bulk_verify_payments(data: dict, background_tasks: BackgroundTasks, user = Depends(get_current_user)):
+    """Verify multiple payments at once"""
+    payment_ids = data.get("payment_ids", [])
+    if not payment_ids:
+        raise HTTPException(status_code=400, detail="No payment IDs provided")
+    
+    verified_count = 0
+    for payment_id in payment_ids:
+        payment = await db.payments.find_one({"id": payment_id, "status": "pending"}, {"_id": 0})
+        if payment:
+            await db.payments.update_one({"id": payment_id}, {"$set": {"status": "verified"}})
+            
+            # Create subscriber
+            plan = await db.plans.find_one({"id": payment["plan_id"]}, {"_id": 0})
+            if plan:
+                subscriber_create = SubscriberCreate(
+                    telegram_user_id=payment["telegram_user_id"],
+                    telegram_username=payment.get("telegram_username"),
+                    plan_id=payment["plan_id"],
+                    payment_method=payment.get("payment_method", "manual"),
+                    payment_id=payment["id"]
+                )
+                background_tasks.add_task(create_subscriber_task, subscriber_create, plan)
+            verified_count += 1
+    
+    return {"message": f"{verified_count} payments verified", "verified_count": verified_count}
+
+@api_router.post("/payments/bulk-reject")
+async def bulk_reject_payments(data: dict, user = Depends(get_current_user)):
+    """Reject multiple payments at once"""
+    payment_ids = data.get("payment_ids", [])
+    reason = data.get("reason", "Payment rejected by admin")
+    if not payment_ids:
+        raise HTTPException(status_code=400, detail="No payment IDs provided")
+    
+    rejected_count = 0
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    for payment_id in payment_ids:
+        payment = await db.payments.find_one({"id": payment_id, "status": "pending"}, {"_id": 0})
+        if payment:
+            await db.payments.update_one(
+                {"id": payment_id}, 
+                {"$set": {"status": "rejected", "rejection_reason": reason, "rejected_at": datetime.now(timezone.utc).isoformat()}}
+            )
+            
+            # Notify user via Telegram
+            if bot_token and payment.get("telegram_user_id"):
+                msg = f"❌ <b>Payment Rejected</b>\n\n"
+                msg += f"📦 Plan: {payment.get('plan_name', 'N/A')}\n"
+                msg += f"💰 Amount: ₹{payment.get('amount', 0)}\n\n"
+                msg += f"📝 Reason: {reason}"
+                await send_telegram_message(payment["telegram_user_id"], msg, bot_token)
+            rejected_count += 1
+    
+    return {"message": f"{rejected_count} payments rejected", "rejected_count": rejected_count}
+
+@api_router.post("/payments/bulk-delete")
+async def bulk_delete_payments(data: dict, user = Depends(get_current_user)):
+    """Delete multiple payments at once"""
+    payment_ids = data.get("payment_ids", [])
+    if not payment_ids:
+        raise HTTPException(status_code=400, detail="No payment IDs provided")
+    
+    result = await db.payments.delete_many({"id": {"$in": payment_ids}})
+    return {"message": f"{result.deleted_count} payments deleted", "deleted_count": result.deleted_count}
+
+async def create_subscriber_task(subscriber_create: SubscriberCreate, plan: dict):
+    """Background task to create subscriber after payment verification"""
+    settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
+    grace_days = settings.get("grace_period_days", 2)
+    plan_channel = plan.get("channel_id", "")
+    
+    end_date = datetime.now(timezone.utc) + timedelta(days=plan["duration_days"])
+    grace_end = end_date + timedelta(days=grace_days)
+    
+    subscriber_obj = Subscriber(
+        telegram_user_id=subscriber_create.telegram_user_id,
+        telegram_username=subscriber_create.telegram_username,
+        plan_id=subscriber_create.plan_id,
+        plan_name=plan["name"],
+        payment_method=subscriber_create.payment_method,
+        payment_id=subscriber_create.payment_id,
+        end_date=end_date,
+        grace_end_date=grace_end
+    )
+    
+    doc = subscriber_obj.model_dump()
+    doc['start_date'] = doc['start_date'].isoformat()
+    doc['end_date'] = doc['end_date'].isoformat()
+    doc['grace_end_date'] = doc['grace_end_date'].isoformat()
+    doc['created_at'] = doc['created_at'].isoformat()
+    
+    await db.subscribers.insert_one(doc)
+    await add_to_channel(subscriber_create.telegram_user_id, plan_channel, plan["name"])
+
 # ============== SETTINGS ROUTES ==============
 
 @api_router.get("/settings")
