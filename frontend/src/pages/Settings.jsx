@@ -260,20 +260,45 @@ export default function Settings() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="qr_code">Payment QR Code URL</Label>
-              <Input
-                id="qr_code"
-                type="url"
-                value={settings.qr_code_url}
-                onChange={(e) =>
-                  setSettings({ ...settings, qr_code_url: e.target.value })
-                }
-                placeholder="https://example.com/qr-code.png"
-                data-testid="qr-code-input"
-                className="bg-muted/50 border-transparent focus:border-primary"
-              />
+              <Label htmlFor="qr_code">Payment QR Code</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="qr_code"
+                  type="url"
+                  value={settings.qr_code_url}
+                  onChange={(e) =>
+                    setSettings({ ...settings, qr_code_url: e.target.value })
+                  }
+                  placeholder="https://example.com/qr-code.png"
+                  data-testid="qr-code-input"
+                  className="bg-muted/50 border-transparent focus:border-primary flex-1"
+                />
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleQRUpload}
+                    className="hidden"
+                    data-testid="qr-upload-input"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={uploading}
+                    asChild
+                  >
+                    <span>
+                      {uploading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Upload className="w-4 h-4" />
+                      )}
+                    </span>
+                  </Button>
+                </label>
+              </div>
               <p className="text-xs text-muted-foreground">
-                URL of your UPI/Payment QR code image for manual payments
+                Paste URL or click upload button to upload QR code image (max 5MB)
               </p>
             </div>
 
