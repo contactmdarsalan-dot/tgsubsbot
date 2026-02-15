@@ -395,6 +395,7 @@ export default function Payments() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Stats Cards */}
