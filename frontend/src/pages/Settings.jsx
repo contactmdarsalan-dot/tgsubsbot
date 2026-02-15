@@ -175,7 +175,7 @@ export default function Settings() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="channel_id">Private Channel ID</Label>
+              <Label htmlFor="channel_id">Private Channel ID (Subscribers)</Label>
               <Input
                 id="channel_id"
                 value={settings.telegram_channel_id}
@@ -187,7 +187,24 @@ export default function Settings() {
                 className="bg-muted/50 border-transparent focus:border-primary font-mono text-sm"
               />
               <p className="text-xs text-muted-foreground">
-                The channel where subscribers will be added. Must start with -100
+                The private channel where paid subscribers will be added
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="promo_channel_id">Promo Channel ID (Subscribe Button)</Label>
+              <Input
+                id="promo_channel_id"
+                value={settings.promo_channel_id}
+                onChange={(e) =>
+                  setSettings({ ...settings, promo_channel_id: e.target.value })
+                }
+                placeholder="e.g., -1001234567890"
+                data-testid="promo-channel-id-input"
+                className="bg-muted/50 border-transparent focus:border-primary font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Public channel where "Subscribe Now" button will appear on every post
               </p>
             </div>
 
