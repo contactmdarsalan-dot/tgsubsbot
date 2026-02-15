@@ -28,6 +28,7 @@ export default function Settings() {
   const [settings, setSettings] = useState({
     telegram_bot_token: "",
     telegram_channel_id: "",
+    promo_channel_id: "",
     website_link: "",
     qr_code_url: "",
   });
