@@ -219,10 +219,32 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 telegram_last_request = {}
 TELEGRAM_MIN_INTERVAL = 0.05  # 50ms between messages per chat
 
+# Cache for bot username
+_bot_username_cache = {}
+
 async def get_bot_settings():
     """Get bot settings from database"""
     settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0})
     return settings or {}
+
+async def get_bot_username(bot_token: str) -> str:
+    """Get bot username from Telegram API (cached)"""
+    if bot_token in _bot_username_cache:
+        return _bot_username_cache[bot_token]
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http_client:
+            url = f"https://api.telegram.org/bot{bot_token}/getMe"
+            response = await http_client.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                username = data.get("result", {}).get("username", "")
+                if username:
+                    _bot_username_cache[bot_token] = username
+                return username
+    except Exception as e:
+        logger.error(f"Failed to get bot username: {e}")
+    return ""
 
 async def send_telegram_message(chat_id: str, message: str, bot_token: str = None, retries: int = 3):
     """Send message via Telegram Bot API with rate limiting and retry"""
