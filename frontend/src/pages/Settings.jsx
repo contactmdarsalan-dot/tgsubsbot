@@ -71,6 +71,47 @@ export default function Settings() {
     toast.success("Webhook URL copied!");
   };
 
+  const handleQRUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File size must be less than 5MB");
+      return;
+    }
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await axios.post(`${API}/upload/qr-code`, formData, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      // Construct full URL
+      const baseUrl = process.env.REACT_APP_BACKEND_URL.replace("/api", "");
+      const fullUrl = `${baseUrl}${response.data.url}`;
+      
+      setSettings({ ...settings, qr_code_url: fullUrl });
+      toast.success("QR code uploaded! Click Save to apply.");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to upload QR code");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
