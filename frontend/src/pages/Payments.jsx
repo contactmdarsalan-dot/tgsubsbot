@@ -312,16 +312,26 @@ export default function Payments() {
             Track and verify subscription payments
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) resetForm();
-        }}>
-          <DialogTrigger asChild>
-            <Button className="btn-hover" data-testid="create-payment-btn">
-              <Plus className="w-4 h-4 mr-2" />
-              Record Payment
-            </Button>
-          </DialogTrigger>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => fetchData()} 
+            disabled={loading}
+            data-testid="refresh-payments-btn"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Dialog open={dialogOpen} onOpenChange={(open) => {
+            setDialogOpen(open);
+            if (!open) resetForm();
+          }}>
+            <DialogTrigger asChild>
+              <Button className="btn-hover" data-testid="create-payment-btn">
+                <Plus className="w-4 h-4 mr-2" />
+                Record Payment
+              </Button>
+            </DialogTrigger>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle className="font-heading text-xl font-bold">
