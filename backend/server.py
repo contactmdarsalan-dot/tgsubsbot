@@ -1382,7 +1382,8 @@ async def get_payments(status: Optional[str] = None, user = Depends(get_current_
     query = {}
     if status:
         query["status"] = status
-    payments = await db.payments.find(query, {"_id": 0}).to_list(1000)
+    # Sort by created_at descending (newest first)
+    payments = await db.payments.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     for p in payments:
         if isinstance(p.get('created_at'), str):
             p['created_at'] = datetime.fromisoformat(p['created_at'])
