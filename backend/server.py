@@ -1878,16 +1878,16 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
-        channel_id = settings.get("telegram_channel_id", "")
+        promo_channel_id = settings.get("promo_channel_id", "")  # Public promo channel
         
-        # Handle channel posts - Add Subscribe button
+        # Handle channel posts - Add Subscribe button ONLY on promo channel
         channel_post = data.get("channel_post")
-        if channel_post and bot_token:
+        if channel_post and bot_token and promo_channel_id:
             post_chat_id = str(channel_post.get("chat", {}).get("id", ""))
             message_id = channel_post.get("message_id")
             
-            # Only process posts from our channel
-            if post_chat_id == channel_id and message_id:
+            # Only process posts from PROMO channel (not subscriber channel)
+            if post_chat_id == promo_channel_id and message_id:
                 # Wait a bit to ensure message is fully processed
                 await asyncio.sleep(0.5)
                 
@@ -1907,7 +1907,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             "message_id": message_id,
                             "reply_markup": {"inline_keyboard": subscribe_button}
                         })
-                        logger.info(f"Added subscribe button to channel post: {response.status_code}")
+                        logger.info(f"Added subscribe button to promo channel post: {response.status_code}")
                 except Exception as e:
                     logger.error(f"Failed to add subscribe button: {e}")
             
