@@ -33,6 +33,7 @@ export default function Settings() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
