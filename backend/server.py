@@ -1851,6 +1851,45 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
         data = await request.json()
         
+        logger.info(f"Webhook received: {data}")
+        
+        settings = await get_bot_settings()
+        bot_token = settings.get("telegram_bot_token", "")
+        channel_id = settings.get("telegram_channel_id", "")
+        
+        # Handle channel posts - Add Subscribe button
+        channel_post = data.get("channel_post")
+        if channel_post and bot_token:
+            post_chat_id = str(channel_post.get("chat", {}).get("id", ""))
+            message_id = channel_post.get("message_id")
+            
+            # Only process posts from our channel
+            if post_chat_id == channel_id and message_id:
+                # Wait a bit to ensure message is fully processed
+                await asyncio.sleep(0.5)
+                
+                # Add Subscribe button by editing the message
+                try:
+                    bot_username = await get_bot_username(bot_token)
+                    subscribe_button = [[{
+                        "text": "🔔 Subscribe Now",
+                        "url": f"https://t.me/{bot_username}?start=subscribe"
+                    }]]
+                    
+                    async with httpx.AsyncClient(timeout=10.0) as http_client:
+                        # Try to edit message with reply markup
+                        url = f"https://api.telegram.org/bot{bot_token}/editMessageReplyMarkup"
+                        response = await http_client.post(url, json={
+                            "chat_id": post_chat_id,
+                            "message_id": message_id,
+                            "reply_markup": {"inline_keyboard": subscribe_button}
+                        })
+                        logger.info(f"Added subscribe button to channel post: {response.status_code}")
+                except Exception as e:
+                    logger.error(f"Failed to add subscribe button: {e}")
+            
+            return {"ok": True}
+        
         # Skip old messages (older than 30 seconds)
         message = data.get("message") or data.get("callback_query", {}).get("message")
         if message:
@@ -1859,8 +1898,6 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             if current_time - msg_date > 30:
                 logger.info(f"Skipping old message from {current_time - msg_date}s ago")
                 return {"ok": True}
-        
-        logger.info(f"Webhook received: {data}")
         
         # Handle callback queries (button clicks)
         callback_query = data.get("callback_query")
