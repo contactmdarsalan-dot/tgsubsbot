@@ -77,6 +77,9 @@ export default function Payments() {
 
   useEffect(() => {
     fetchData();
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
   }, [filter]);
 
   const fetchData = async () => {
