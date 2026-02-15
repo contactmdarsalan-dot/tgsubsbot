@@ -2236,6 +2236,12 @@ async def shutdown():
 # Include router
 app.include_router(api_router)
 
+# Mount static files for uploads
+import os as os_module
+uploads_dir = os_module.path.join(os_module.path.dirname(__file__), "uploads")
+os_module.makedirs(uploads_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
