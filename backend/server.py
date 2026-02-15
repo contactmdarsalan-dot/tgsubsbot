@@ -159,7 +159,8 @@ class BotSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = "bot_settings"
     telegram_bot_token: str = ""
-    telegram_channel_id: str = ""
+    telegram_channel_id: str = ""  # Private subscriber channel
+    promo_channel_id: str = ""     # Public promo channel (Subscribe button will appear here)
     website_link: str = ""
     qr_code_url: str = ""
     reminder_days_before: int = 3
