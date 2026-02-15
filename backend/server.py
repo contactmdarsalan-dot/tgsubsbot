@@ -1662,6 +1662,74 @@ async def update_settings(settings: BotSettings, user = Depends(get_current_user
     
     return {"message": "Settings updated"}
 
+# ============== FILE UPLOAD ROUTES ==============
+
+@api_router.post("/upload/qr-code")
+async def upload_qr_code(file: UploadFile = File(...), user = Depends(get_current_user)):
+    """Upload QR code image"""
+    # Validate file type
+    allowed_types = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Only image files are allowed (PNG, JPG, WEBP, GIF)")
+    
+    # Validate file size (max 5MB)
+    contents = await file.read()
+    if len(contents) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size must be less than 5MB")
+    
+    # Generate unique filename
+    ext = file.filename.split(".")[-1] if "." in file.filename else "png"
+    filename = f"qr_code_{uuid.uuid4().hex[:8]}.{ext}"
+    
+    # Save file
+    import os as os_mod
+    uploads_path = os_mod.path.join(os_mod.path.dirname(__file__), "uploads")
+    os_mod.makedirs(uploads_path, exist_ok=True)
+    file_path = os_mod.path.join(uploads_path, filename)
+    
+    with open(file_path, "wb") as f:
+        f.write(contents)
+    
+    # Return the URL - use REACT_APP_BACKEND_URL from environment or construct it
+    base_url = os.environ.get("BACKEND_URL", "")
+    if not base_url:
+        # Fallback to constructing URL
+        base_url = os.environ.get("REACT_APP_BACKEND_URL", "").replace("/api", "")
+    
+    file_url = f"/uploads/{filename}"
+    
+    return {"url": file_url, "filename": filename}
+
+@api_router.post("/upload/image")
+async def upload_image(file: UploadFile = File(...), user = Depends(get_current_user)):
+    """Upload general image"""
+    # Validate file type
+    allowed_types = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Only image files are allowed")
+    
+    # Validate file size (max 10MB)
+    contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size must be less than 10MB")
+    
+    # Generate unique filename
+    ext = file.filename.split(".")[-1] if "." in file.filename else "png"
+    filename = f"img_{uuid.uuid4().hex[:8]}.{ext}"
+    
+    # Save file
+    import os as os_mod
+    uploads_path = os_mod.path.join(os_mod.path.dirname(__file__), "uploads")
+    os_mod.makedirs(uploads_path, exist_ok=True)
+    file_path = os_mod.path.join(uploads_path, filename)
+    
+    with open(file_path, "wb") as f:
+        f.write(contents)
+    
+    file_url = f"/uploads/{filename}"
+    
+    return {"url": file_url, "filename": filename}
+
 # ============== ANALYTICS ROUTES ==============
 
 @api_router.get("/analytics")
