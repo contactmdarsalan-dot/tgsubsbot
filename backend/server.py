@@ -2589,44 +2589,6 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 msg += "/start se shuru karo!"
                 await send_telegram_message(chat_id, msg, bot_token)
                 return {"ok": True}
-                    
-                    subscriber_obj = {
-                        "id": str(uuid.uuid4()),
-                        "telegram_user_id": chat_id,
-                        "telegram_username": username or pending.get("telegram_username", ""),
-                        "plan_id": plan["id"],
-                        "plan_name": plan["name"],
-                        "payment_method": "qr_screenshot",
-                        "payment_id": payment_obj["id"],
-                        "status": "active",
-                        "start_date": datetime.now(timezone.utc).isoformat(),
-                        "end_date": end_date.isoformat(),
-                        "grace_end_date": grace_end.isoformat(),
-                        "reminder_sent": False,
-                        "created_at": datetime.now(timezone.utc).isoformat()
-                    }
-                    await db.subscribers.insert_one(subscriber_obj)
-                    
-                    # Delete pending screenshot record
-                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
-                    
-                    # Send success message
-                    success_msg = "✅ <b>Payment Received!</b>\n\n"
-                    success_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
-                    success_msg += f"💰 Amount: <b>₹{plan['price']}</b>\n"
-                    success_msg += f"⏱ Valid till: <b>{end_date.strftime('%d %b %Y')}</b>\n\n"
-                    success_msg += "🎉 <b>Your subscription is now active!</b>\n\n"
-                    success_msg += "📢 Channel invite link aa raha hai..."
-                    
-                    await send_telegram_message(chat_id, success_msg, bot_token)
-                    
-                    # Add to channel and send invite link
-                    plan_channel = plan.get("channel_id", "")
-                    if plan_channel:
-                        await add_to_channel(chat_id, plan_channel, plan["name"])
-                    
-                    logger.info(f"Auto-verified payment for user {chat_id}, plan {plan['name']}")
-                    return {"ok": True}
         
         if text == "/start":
             plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
