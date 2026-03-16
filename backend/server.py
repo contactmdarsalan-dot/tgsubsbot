@@ -2348,6 +2348,94 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
                 await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
             
+            elif callback_data.startswith("confirm_ss_"):
+                # User confirmed it's a payment screenshot - VERIFY
+                plan_id = callback_data.replace("confirm_ss_", "")
+                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+                pending = await db.pending_screenshots.find_one({"telegram_user_id": chat_id}, {"_id": 0})
+                
+                if plan and pending:
+                    photo_file_id = pending.get("photo_file_id")
+                    
+                    # Create payment record
+                    payment_obj = {
+                        "id": str(uuid.uuid4()),
+                        "subscriber_id": None,
+                        "telegram_user_id": chat_id,
+                        "telegram_username": username or pending.get("telegram_username", ""),
+                        "amount": pending.get("discounted_price") or plan["price"],
+                        "plan_id": plan_id,
+                        "plan_name": plan["name"],
+                        "payment_method": "qr_screenshot",
+                        "screenshot_file_id": photo_file_id,
+                        "status": "verified",
+                        "auto_verified": True,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    await db.payments.insert_one(payment_obj)
+                    
+                    # Create subscriber
+                    grace_days = settings.get("grace_period_days", 2)
+                    end_date = datetime.now(timezone.utc) + timedelta(days=plan["duration_days"])
+                    grace_end = end_date + timedelta(days=grace_days)
+                    
+                    subscriber_obj = {
+                        "id": str(uuid.uuid4()),
+                        "telegram_user_id": chat_id,
+                        "telegram_username": username or pending.get("telegram_username", ""),
+                        "plan_id": plan["id"],
+                        "plan_name": plan["name"],
+                        "payment_method": "qr_screenshot",
+                        "payment_id": payment_obj["id"],
+                        "status": "active",
+                        "start_date": datetime.now(timezone.utc).isoformat(),
+                        "end_date": end_date.isoformat(),
+                        "grace_end_date": grace_end.isoformat(),
+                        "reminder_sent": False,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    await db.subscribers.insert_one(subscriber_obj)
+                    
+                    # Delete pending screenshot record
+                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                    
+                    # Send success message
+                    success_msg = "✅ <b>Payment Verified!</b>\n\n"
+                    success_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
+                    success_msg += f"💰 Amount: <b>₹{payment_obj['amount']}</b>\n"
+                    success_msg += f"⏱ Valid till: <b>{end_date.strftime('%d %b %Y')}</b>\n\n"
+                    success_msg += "🎉 <b>Subscription Activated!</b>\n\n"
+                    success_msg += "📢 Channel link aa raha hai..."
+                    
+                    await send_telegram_message(chat_id, success_msg, bot_token)
+                    
+                    # Add to channel
+                    plan_channel = plan.get("channel_id", "")
+                    if plan_channel:
+                        await add_to_channel(chat_id, plan_channel, plan["name"])
+                    
+                    logger.info(f"Payment verified for user {chat_id}, plan {plan['name']}")
+                else:
+                    await send_telegram_message(chat_id, "❌ Error. /start se dobara try karo.", bot_token)
+            
+            elif callback_data == "wrong_ss":
+                # User sent wrong image - decline and ask for correct one
+                await db.pending_screenshots.update_one(
+                    {"telegram_user_id": chat_id},
+                    {"$set": {"status": "waiting"}}  # Reset to waiting
+                )
+                
+                msg = "❌ <b>Galat Image!</b>\n\n"
+                msg += "📸 <b>Sirf payment screenshot bhejo:</b>\n"
+                msg += "• GPay ✅\n"
+                msg += "• PhonePe ✅\n"
+                msg += "• Paytm ✅\n"
+                msg += "• UPI ✅\n\n"
+                msg += "⏳ <b>Sahi screenshot ka wait kar raha hun...</b>"
+                
+                buttons = [[{"text": "❌ Cancel", "callback_data": "cancel_payment"}]]
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
             elif callback_data.startswith("discount_"):
                 # Show discounted price
                 plan_id = callback_data.replace("discount_", "")
