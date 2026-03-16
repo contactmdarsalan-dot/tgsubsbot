@@ -2449,6 +2449,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         text = message.get("text", "")
         username = message.get("from", {}).get("username", "")
         photo = message.get("photo")  # Check if message has photo
+        caption = message.get("caption", "").lower()  # Get caption if any
         
         if not chat_id:
             return {"ok": True}
@@ -2469,35 +2470,37 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     # Get the photo file_id (largest size)
                     photo_file_id = photo[-1]["file_id"] if photo else None
                     
-                    # Mark screenshot as received
+                    # Save photo and ask for confirmation
                     await db.pending_screenshots.update_one(
                         {"telegram_user_id": chat_id},
-                        {"$set": {"status": "received", "photo_file_id": photo_file_id}}
+                        {"$set": {
+                            "status": "confirming",
+                            "photo_file_id": photo_file_id
+                        }}
                     )
                     
-                    # Auto-verify: Create payment and subscriber
-                    payment_obj = {
-                        "id": str(uuid.uuid4()),
-                        "subscriber_id": None,
-                        "telegram_user_id": chat_id,
-                        "telegram_username": username or pending.get("telegram_username", ""),
-                        "amount": plan["price"],
-                        "plan_id": plan_id,
-                        "plan_name": plan["name"],
-                        "payment_method": "qr_screenshot",
-                        "screenshot_file_id": photo_file_id,
-                        "razorpay_order_id": None,
-                        "razorpay_payment_id": None,
-                        "status": "verified",
-                        "auto_verified": True,
-                        "created_at": datetime.now(timezone.utc).isoformat()
-                    }
-                    await db.payments.insert_one(payment_obj)
+                    # Ask user to confirm if it's a payment screenshot
+                    confirm_msg = "📸 <b>Image Received!</b>\n\n"
+                    confirm_msg += "⚠️ <b>Kya yeh payment screenshot hai?</b>\n"
+                    confirm_msg += "(GPay / PhonePe / Paytm / UPI)\n\n"
+                    confirm_msg += "✅ <b>Yes</b> - Agar payment screenshot hai\n"
+                    confirm_msg += "❌ <b>No</b> - Agar kuch aur bheja hai"
                     
-                    # Create subscriber
-                    grace_days = settings.get("grace_period_days", 2)
-                    end_date = datetime.now(timezone.utc) + timedelta(days=plan["duration_days"])
-                    grace_end = end_date + timedelta(days=grace_days)
+                    buttons = [
+                        [
+                            {"text": "✅ Yes, Payment SS", "callback_data": f"confirm_ss_{plan_id}"},
+                            {"text": "❌ No", "callback_data": "wrong_ss"}
+                        ]
+                    ]
+                    await send_telegram_message_with_buttons(chat_id, confirm_msg, buttons, bot_token)
+                    return {"ok": True}
+            else:
+                # User sent image but we're not waiting for it
+                msg = "❌ <b>Screenshot not expected!</b>\n\n"
+                msg += "Pehle plan select karo, phir QR code se payment karo, phir screenshot bhejo.\n\n"
+                msg += "/start se shuru karo!"
+                await send_telegram_message(chat_id, msg, bot_token)
+                return {"ok": True}
                     
                     subscriber_obj = {
                         "id": str(uuid.uuid4()),
