@@ -1413,6 +1413,123 @@ async def get_payments(status: Optional[str] = None, user = Depends(get_current_
             p['created_at'] = datetime.fromisoformat(p['created_at'])
     return payments
 
+# ============== BOT CHECKOUT ROUTES ==============
+
+@api_router.get("/bot-checkout/{order_id}")
+async def get_bot_checkout(order_id: str):
+    """Get order details for bot checkout page"""
+    order = await db.bot_orders.find_one({"razorpay_order_id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    plan = await db.plans.find_one({"id": order["plan_id"]}, {"_id": 0})
+    
+    return {
+        "order_id": order_id,
+        "plan_id": order["plan_id"],
+        "plan_name": order.get("plan_name", plan["name"] if plan else ""),
+        "amount": order["amount"],
+        "key_id": RAZORPAY_KEY_ID,
+        "telegram_user_id": order.get("telegram_user_id", "")
+    }
+
+@api_router.post("/bot-checkout/verify")
+async def verify_bot_checkout(data: dict, background_tasks: BackgroundTasks):
+    """Verify Razorpay payment and activate subscription"""
+    if not razorpay_client:
+        raise HTTPException(status_code=400, detail="Razorpay not configured")
+    
+    try:
+        # Verify signature
+        razorpay_client.utility.verify_payment_signature({
+            'razorpay_order_id': data['razorpay_order_id'],
+            'razorpay_payment_id': data['razorpay_payment_id'],
+            'razorpay_signature': data['razorpay_signature']
+        })
+    except Exception as e:
+        logger.error(f"Payment verification failed: {e}")
+        raise HTTPException(status_code=400, detail="Payment verification failed")
+    
+    # Get order
+    order = await db.bot_orders.find_one({"razorpay_order_id": data['razorpay_order_id']}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Update order status
+    await db.bot_orders.update_one(
+        {"razorpay_order_id": data['razorpay_order_id']},
+        {"$set": {"status": "paid", "razorpay_payment_id": data['razorpay_payment_id']}}
+    )
+    
+    # Get plan details
+    plan = await db.plans.find_one({"id": order["plan_id"]}, {"_id": 0})
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    
+    telegram_user_id = data.get("telegram_user_id") or order.get("telegram_user_id")
+    telegram_username = order.get("telegram_username", "")
+    
+    # Create payment record
+    payment_obj = {
+        "id": str(uuid.uuid4()),
+        "subscriber_id": None,
+        "telegram_user_id": telegram_user_id,
+        "telegram_username": telegram_username,
+        "amount": order["amount"],
+        "plan_id": order["plan_id"],
+        "plan_name": plan["name"],
+        "payment_method": "razorpay",
+        "razorpay_order_id": data['razorpay_order_id'],
+        "razorpay_payment_id": data['razorpay_payment_id'],
+        "status": "verified",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.payments.insert_one(payment_obj)
+    
+    # Create subscriber
+    settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
+    grace_days = settings.get("grace_period_days", 2)
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    end_date = datetime.now(timezone.utc) + timedelta(days=plan["duration_days"])
+    grace_end = end_date + timedelta(days=grace_days)
+    
+    subscriber_obj = {
+        "id": str(uuid.uuid4()),
+        "telegram_user_id": telegram_user_id,
+        "telegram_username": telegram_username,
+        "plan_id": plan["id"],
+        "plan_name": plan["name"],
+        "payment_method": "razorpay",
+        "payment_id": payment_obj["id"],
+        "status": "active",
+        "start_date": datetime.now(timezone.utc).isoformat(),
+        "end_date": end_date.isoformat(),
+        "grace_end_date": grace_end.isoformat(),
+        "reminder_sent": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.subscribers.insert_one(subscriber_obj)
+    
+    # Add to channel
+    plan_channel = plan.get("channel_id", "")
+    if plan_channel and bot_token:
+        background_tasks.add_task(add_to_channel, telegram_user_id, plan_channel, plan["name"])
+    
+    # Send success message to user
+    if bot_token and telegram_user_id:
+        success_msg = "🎉 <b>Payment Successful!</b>\n\n"
+        success_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
+        success_msg += f"💰 Amount: <b>₹{order['amount']}</b>\n"
+        success_msg += f"⏱ Valid till: <b>{end_date.strftime('%d %b %Y')}</b>\n\n"
+        success_msg += "✅ Your subscription is now active!\n"
+        success_msg += "📢 You will receive channel invite link shortly."
+        await send_telegram_message(telegram_user_id, success_msg, bot_token)
+    
+    logger.info(f"Bot subscription activated for user {telegram_user_id}, plan {plan['name']}")
+    
+    return {"success": True, "message": "Subscription activated"}
+
 @api_router.post("/payments/create-order")
 async def create_razorpay_order(payment: PaymentCreate, user = Depends(get_current_user)):
     if not razorpay_client:
