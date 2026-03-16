@@ -1959,8 +1959,11 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     payment_msg += "(Share this with admin after payment)"
                     
                     buttons = []
+                    # Add Razorpay payment button if configured
+                    if razorpay_client:
+                        buttons.append([{"text": "💳 Pay Now (Auto Verify)", "callback_data": f"razorpay_{plan_id}"}])
                     if qr_code_url:
-                        buttons.append([{"text": "📱 Show QR Code", "callback_data": f"qr_{plan_id}"}])
+                        buttons.append([{"text": "📱 Show QR Code (Manual)", "callback_data": f"qr_{plan_id}"}])
                     buttons.append([{"text": "✅ I've Paid - Contact Admin", "callback_data": f"paid_{plan_id}"}])
                     buttons.append([{"text": "◀️ Back to Plans", "callback_data": "back_plans"}])
                     
