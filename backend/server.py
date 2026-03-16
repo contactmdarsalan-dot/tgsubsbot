@@ -2086,6 +2086,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             elif callback_data.startswith("qr_"):
                 # Send QR code image and wait for screenshot
                 plan_id = callback_data.replace("qr_", "")
+                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
                 qr_url = settings.get("qr_code_url", "")
                 
                 # Save that we're waiting for screenshot from this user
@@ -2095,7 +2096,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "telegram_user_id": chat_id,
                         "telegram_username": username,
                         "plan_id": plan_id,
+                        "plan_name": plan["name"] if plan else "",
+                        "amount": plan["price"] if plan else 0,
                         "status": "waiting",
+                        "reminder_count": 0,
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }},
                     upsert=True
@@ -2108,12 +2112,26 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             await http_client.post(url, json={
                                 "chat_id": chat_id,
                                 "photo": qr_url,
-                                "caption": "📱 <b>Scan this QR code to pay</b>\n\n💰 After payment, send your <b>payment screenshot</b> here.\n\n⏳ Waiting for your screenshot..."
+                                "caption": f"📱 <b>Scan & Pay ₹{plan['price'] if plan else ''}</b>\n\n"
+                                          f"📦 Plan: <b>{plan['name'] if plan else ''}</b>\n\n"
+                                          f"⚠️ <b>Payment ke baad turant screenshot bhejo!</b>\n\n"
+                                          f"⏳ Waiting for your screenshot...",
+                                "parse_mode": "HTML"
                             })
-                    except:
-                        await send_telegram_message(chat_id, f"QR Code: {qr_url}\n\n📸 Payment ke baad screenshot bhejo!", bot_token)
-                else:
-                    await send_telegram_message(chat_id, "❌ QR Code not set. Please contact admin.", bot_token)
+                    except Exception as e:
+                        logger.error(f"Failed to send QR: {e}")
+                        await send_telegram_message(chat_id, f"QR Code: {qr_url}\n\n📸 Screenshot bhejo!", bot_token)
+                
+                # Send reminder message
+                reminder_msg = f"👆 @{username if username else 'User'}\n\n"
+                reminder_msg += "⚠️ <b>Screenshot bhejo payment ka!</b>\n\n"
+                reminder_msg += "📸 Bina screenshot ke verification nahi hoga.\n"
+                reminder_msg += "⏳ <b>Waiting...</b>"
+                
+                await send_telegram_message(chat_id, reminder_msg, bot_token)
+                
+                # Schedule reminders using background task
+                background_tasks.add_task(send_screenshot_reminders, chat_id, username, bot_token)
             
             elif callback_data.startswith("razorpay_"):
                 # Create Razorpay payment link
