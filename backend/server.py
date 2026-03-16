@@ -287,6 +287,45 @@ async def send_telegram_message(chat_id: str, message: str, bot_token: str = Non
                 await asyncio.sleep(0.5)
     return False
 
+async def send_screenshot_reminders(chat_id: str, username: str, bot_token: str):
+    """Send reminder messages until user sends screenshot"""
+    reminder_messages = [
+        "⏰ <b>Reminder!</b>\n\n📸 Screenshot bhejo payment ka!\n⏳ Waiting...",
+        "👀 <b>Hey!</b>\n\n📸 Payment screenshot upload karo!\n✅ Turant verify ho jayega!",
+        "⚠️ <b>Screenshot pending!</b>\n\n📸 Bina screenshot ke access nahi milega!\n🔄 Upload karo...",
+        "🔔 <b>Last Reminder!</b>\n\n📸 Screenshot bhejo!\n⏳ Still waiting..."
+    ]
+    
+    for i, msg in enumerate(reminder_messages):
+        # Wait 30 seconds between reminders
+        await asyncio.sleep(30)
+        
+        # Check if still waiting for screenshot
+        pending = await db.pending_screenshots.find_one({"telegram_user_id": chat_id, "status": "waiting"}, {"_id": 0})
+        if not pending:
+            # Screenshot received or cancelled
+            return
+        
+        # Send reminder
+        full_msg = f"👆 @{username if username else 'User'}\n\n{msg}"
+        await send_telegram_message(chat_id, full_msg, bot_token)
+        
+        # Update reminder count
+        await db.pending_screenshots.update_one(
+            {"telegram_user_id": chat_id},
+            {"$set": {"reminder_count": i + 1}}
+        )
+    
+    # After all reminders, send final message
+    await asyncio.sleep(60)
+    pending = await db.pending_screenshots.find_one({"telegram_user_id": chat_id, "status": "waiting"}, {"_id": 0})
+    if pending:
+        final_msg = f"❌ <b>Time Out!</b>\n\n"
+        final_msg += "Screenshot nahi mila. Agar payment kiya hai toh:\n"
+        final_msg += "📸 Abhi screenshot bhejo!\n\n"
+        final_msg += "Ya phir /start karke dobara try karo."
+        await send_telegram_message(chat_id, final_msg, bot_token)
+
 async def add_to_channel(user_id: str, plan_channel_id: str = None, plan_name: str = ""):
     """Add user to private channel by sending invite link"""
     settings = await get_bot_settings()
