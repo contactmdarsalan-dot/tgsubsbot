@@ -2525,13 +2525,16 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             
             buttons = []
             for plan in plans:
+                inflated_price = plan['price'] + 500  # Show +500 price
                 welcome_msg += f"📦 <b>{plan['name']}</b>\n"
-                welcome_msg += f"   💰 ₹{plan['price']} • ⏱ {plan['duration_days']} days\n\n"
-                buttons.append([{"text": f"📦 {plan['name']} - ₹{plan['price']}", "callback_data": f"buy_{plan['id']}"}])
+                welcome_msg += f"   💰 ₹{inflated_price} • ⏱ {plan['duration_days']} days\n\n"
+                buttons.append([{"text": f"📦 {plan['name']} - ₹{inflated_price}", "callback_data": f"buy_{plan['id']}"}])
             
             if not plans:
                 welcome_msg += "No plans available at the moment.\n"
             
+            # Add Special Discount button
+            buttons.append([{"text": "🎁 Special Discount For You!", "callback_data": "special_discount"}])
             buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
             
             await send_telegram_message_with_buttons(chat_id, welcome_msg, buttons)
