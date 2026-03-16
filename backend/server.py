@@ -290,15 +290,24 @@ async def send_telegram_message(chat_id: str, message: str, bot_token: str = Non
 async def send_screenshot_reminders(chat_id: str, username: str, bot_token: str):
     """Send reminder messages until user sends screenshot"""
     reminder_messages = [
-        "⏰ <b>Reminder!</b>\n\n📸 Screenshot bhejo payment ka!\n⏳ Waiting...",
-        "👀 <b>Hey!</b>\n\n📸 Payment screenshot upload karo!\n✅ Turant verify ho jayega!",
-        "⚠️ <b>Screenshot pending!</b>\n\n📸 Bina screenshot ke access nahi milega!\n🔄 Upload karo...",
-        "🔔 <b>Last Reminder!</b>\n\n📸 Screenshot bhejo!\n⏳ Still waiting...",
+        "⏰ <b>Reminder!</b>\n\n📸 Screenshot bhejo payment ka!",
+        "👀 <b>Hey!</b>\n\n📸 Payment screenshot upload karo!",
+        "⚠️ <b>Screenshot pending!</b>\n\n📸 Bina screenshot ke access nahi milega!",
+        "🔔 <b>Reminder!</b>\n\n📸 Screenshot bhejo!",
         "📸 <b>Waiting...</b>\n\nScreenshot upload karo!",
-        "⏳ <b>Jaldi karo!</b>\n\n📸 Screenshot bhejo payment ka!"
+        "⏳ <b>Jaldi karo!</b>\n\n📸 Screenshot bhejo payment ka!",
+        "👆 <b>Payment kiya?</b>\n\n📸 Screenshot bhejo!",
+        "🔄 <b>Pending!</b>\n\n📸 Screenshot upload karo!",
+        "⚡ <b>Quick!</b>\n\n📸 Screenshot bhejo verify ke liye!",
+        "📱 <b>Screenshot?</b>\n\n📸 Payment proof bhejo!",
+        "⏰ <b>Still waiting...</b>\n\n📸 Screenshot bhejo!",
+        "👀 <b>Kaha ho?</b>\n\n📸 Screenshot upload karo!",
+        "🔔 <b>Hello!</b>\n\n📸 Payment screenshot bhejo!",
+        "⚠️ <b>Pending!</b>\n\n📸 Screenshot bhejo jaldi!",
+        "📸 <b>Last chance!</b>\n\nScreenshot bhejo ya discount lo!"
     ]
     
-    for i, msg in enumerate(reminder_messages):
+    for i in range(20):  # 20 reminders max
         # Wait 10 seconds between reminders
         await asyncio.sleep(10)
         
@@ -308,9 +317,17 @@ async def send_screenshot_reminders(chat_id: str, username: str, bot_token: str)
             # Screenshot received or cancelled
             return
         
-        # Send reminder
+        # Get message (cycle through if more than 15)
+        msg = reminder_messages[i] if i < len(reminder_messages) else reminder_messages[i % len(reminder_messages)]
         full_msg = f"👆 @{username if username else 'User'}\n\n{msg}"
-        await send_telegram_message(chat_id, full_msg, bot_token)
+        
+        # Buttons - Cancel always, Discount after 15 reminders
+        buttons = []
+        if i >= 14:  # After 15 reminders (0-indexed, so 14)
+            buttons.append([{"text": "🎁 Get Discount!", "callback_data": f"discount_{pending.get('plan_id', '')}"}])
+        buttons.append([{"text": "❌ Cancel", "callback_data": "cancel_payment"}])
+        
+        await send_telegram_message_with_buttons(chat_id, full_msg, buttons, bot_token)
         
         # Update reminder count
         await db.pending_screenshots.update_one(
@@ -318,15 +335,18 @@ async def send_screenshot_reminders(chat_id: str, username: str, bot_token: str)
             {"$set": {"reminder_count": i + 1}}
         )
     
-    # After all reminders, send final message
-    await asyncio.sleep(20)
+    # After all reminders, send final message with discount
     pending = await db.pending_screenshots.find_one({"telegram_user_id": chat_id, "status": "waiting"}, {"_id": 0})
     if pending:
-        final_msg = f"❌ <b>Time Out!</b>\n\n"
-        final_msg += "Screenshot nahi mila. Agar payment kiya hai toh:\n"
-        final_msg += "📸 Abhi screenshot bhejo!\n\n"
-        final_msg += "Ya phir /start karke dobara try karo."
-        await send_telegram_message(chat_id, final_msg, bot_token)
+        final_msg = f"🎁 <b>Special Offer!</b>\n\n"
+        final_msg += "Screenshot nahi mila, but aapke liye special discount!\n\n"
+        final_msg += "📸 Screenshot bhejo ya discount lo!"
+        
+        buttons = [
+            [{"text": "🎁 Get Discount!", "callback_data": f"discount_{pending.get('plan_id', '')}"}],
+            [{"text": "❌ Cancel", "callback_data": "cancel_payment"}]
+        ]
+        await send_telegram_message_with_buttons(chat_id, final_msg, buttons, bot_token)
 
 async def add_to_channel(user_id: str, plan_channel_id: str = None, plan_name: str = ""):
     """Add user to private channel by sending invite link"""
