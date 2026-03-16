@@ -1984,6 +1984,66 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     except:
                         await send_telegram_message(chat_id, f"QR Code: {qr_url}", bot_token)
             
+            elif callback_data.startswith("razorpay_"):
+                # Create Razorpay payment link
+                plan_id = callback_data.replace("razorpay_", "")
+                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+                
+                if plan and razorpay_client:
+                    try:
+                        # Create Razorpay order
+                        order = razorpay_client.order.create({
+                            "amount": int(plan["price"] * 100),  # paise
+                            "currency": "INR",
+                            "payment_capture": 1,
+                            "notes": {
+                                "telegram_user_id": chat_id,
+                                "telegram_username": username,
+                                "plan_id": plan_id,
+                                "plan_name": plan["name"],
+                                "type": "bot_subscription"
+                            }
+                        })
+                        
+                        # Store order in database
+                        order_obj = {
+                            "id": str(uuid.uuid4()),
+                            "razorpay_order_id": order["id"],
+                            "telegram_user_id": chat_id,
+                            "telegram_username": username,
+                            "plan_id": plan_id,
+                            "plan_name": plan["name"],
+                            "amount": plan["price"],
+                            "status": "created",
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        await db.bot_orders.insert_one(order_obj)
+                        
+                        # Create payment link
+                        payment_link = f"https://rzp.io/l/{order['id']}"
+                        
+                        # Actually we need to use Razorpay payment page
+                        # Send user to a web page that handles Razorpay checkout
+                        settings = await get_bot_settings()
+                        website_url = settings.get("website_link", "https://tgsubsbot.com")
+                        checkout_url = f"{website_url}/bot-checkout?order_id={order['id']}&plan_id={plan_id}&user_id={chat_id}"
+                        
+                        msg = "💳 <b>Pay via Razorpay</b>\n\n"
+                        msg += f"📦 Plan: <b>{plan['name']}</b>\n"
+                        msg += f"💰 Amount: <b>₹{plan['price']}</b>\n\n"
+                        msg += "Click below to complete payment.\n"
+                        msg += "<b>Auto-verify hoga payment ke baad!</b>"
+                        
+                        buttons = [
+                            [{"text": "💳 Pay Now", "url": checkout_url}],
+                            [{"text": "◀️ Back to Plans", "callback_data": "back_plans"}]
+                        ]
+                        await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                        
+                    except Exception as e:
+                        logger.error(f"Razorpay error: {e}")
+                        await send_telegram_message(chat_id, "❌ Payment error. Please try QR code method.", bot_token)
+            
             elif callback_data.startswith("paid_"):
                 plan_id = callback_data.replace("paid_", "")
                 plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
