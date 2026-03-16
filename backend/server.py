@@ -2328,6 +2328,26 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 buttons = [[{"text": "🔄 Start Again", "callback_data": "back_plans"}]]
                 await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
             
+            elif callback_data == "special_discount":
+                # Show actual prices (500 less than displayed)
+                plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+                
+                msg = "🎁 <b>Special Discount Unlocked!</b>\n\n"
+                msg += "🔥 <b>Sirf aapke liye special prices:</b>\n\n"
+                
+                buttons = []
+                for plan in plans:
+                    inflated_price = plan['price'] + 500
+                    actual_price = plan['price']
+                    msg += f"📦 <b>{plan['name']}</b>\n"
+                    msg += f"   <s>₹{inflated_price}</s> → 💰 <b>₹{actual_price}</b> 🔥\n\n"
+                    buttons.append([{"text": f"🔥 {plan['name']} - ₹{actual_price}", "callback_data": f"buy_{plan['id']}"}])
+                
+                msg += "⚡ <i>Limited time offer!</i>"
+                
+                buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
             elif callback_data.startswith("discount_"):
                 # Show discounted price
                 plan_id = callback_data.replace("discount_", "")
