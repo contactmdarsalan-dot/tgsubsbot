@@ -293,12 +293,14 @@ async def send_screenshot_reminders(chat_id: str, username: str, bot_token: str)
         "⏰ <b>Reminder!</b>\n\n📸 Screenshot bhejo payment ka!\n⏳ Waiting...",
         "👀 <b>Hey!</b>\n\n📸 Payment screenshot upload karo!\n✅ Turant verify ho jayega!",
         "⚠️ <b>Screenshot pending!</b>\n\n📸 Bina screenshot ke access nahi milega!\n🔄 Upload karo...",
-        "🔔 <b>Last Reminder!</b>\n\n📸 Screenshot bhejo!\n⏳ Still waiting..."
+        "🔔 <b>Last Reminder!</b>\n\n📸 Screenshot bhejo!\n⏳ Still waiting...",
+        "📸 <b>Waiting...</b>\n\nScreenshot upload karo!",
+        "⏳ <b>Jaldi karo!</b>\n\n📸 Screenshot bhejo payment ka!"
     ]
     
     for i, msg in enumerate(reminder_messages):
-        # Wait 30 seconds between reminders
-        await asyncio.sleep(30)
+        # Wait 10 seconds between reminders
+        await asyncio.sleep(10)
         
         # Check if still waiting for screenshot
         pending = await db.pending_screenshots.find_one({"telegram_user_id": chat_id, "status": "waiting"}, {"_id": 0})
@@ -317,7 +319,7 @@ async def send_screenshot_reminders(chat_id: str, username: str, bot_token: str)
         )
     
     # After all reminders, send final message
-    await asyncio.sleep(60)
+    await asyncio.sleep(20)
     pending = await db.pending_screenshots.find_one({"telegram_user_id": chat_id, "status": "waiting"}, {"_id": 0})
     if pending:
         final_msg = f"❌ <b>Time Out!</b>\n\n"
