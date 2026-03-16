@@ -106,6 +106,7 @@ function AppRouter() {
       <Route path="/login" element={<Login />} />
       <Route path="/pricing" element={<PricingRoute />} />
       <Route path="/renew" element={<RenewSubscription />} />
+      <Route path="/bot-checkout" element={<BotCheckout />} />
       <Route
         path="/"
         element={
