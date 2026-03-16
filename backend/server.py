@@ -2317,6 +2317,47 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
                 await send_telegram_message_with_buttons(chat_id, welcome_msg, buttons, bot_token)
             
+            elif callback_data == "cancel_payment":
+                # Cancel pending screenshot/payment
+                await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                
+                msg = "❌ <b>Cancelled!</b>\n\n"
+                msg += "Payment process cancel ho gaya.\n\n"
+                msg += "Phir se try karne ke liye /start bhejo!"
+                
+                buttons = [[{"text": "🔄 Start Again", "callback_data": "back_plans"}]]
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            elif callback_data.startswith("discount_"):
+                # Show discounted price
+                plan_id = callback_data.replace("discount_", "")
+                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+                
+                if plan:
+                    original_price = plan["price"]
+                    discounted_price = int(original_price * 0.7)  # 30% discount
+                    
+                    msg = "🎁 <b>Special Discount!</b>\n\n"
+                    msg += f"📦 Plan: <b>{plan['name']}</b>\n"
+                    msg += f"💰 Original: <s>₹{original_price}</s>\n"
+                    msg += f"🔥 <b>Discounted: ₹{discounted_price}</b> (30% OFF!)\n\n"
+                    msg += "📸 Payment karke screenshot bhejo!\n"
+                    msg += "✅ Turant verify ho jayega!"
+                    
+                    # Update pending screenshot with discounted price
+                    await db.pending_screenshots.update_one(
+                        {"telegram_user_id": chat_id},
+                        {"$set": {"discounted_price": discounted_price, "discount_applied": True}}
+                    )
+                    
+                    buttons = [
+                        [{"text": "📱 Show QR Code", "callback_data": f"qr_{plan_id}"}],
+                        [{"text": "❌ Cancel", "callback_data": "cancel_payment"}]
+                    ]
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Plan not found. /start karke dobara try karo.", bot_token)
+            
             elif callback_data.startswith("renew_"):
                 # Handle renewal - go directly to payment for the same plan
                 plan_id = callback_data.replace("renew_", "")
