@@ -19,6 +19,10 @@ import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
 from twilio.rest import Client as TwilioClient
+import pytesseract
+from PIL import Image
+from io import BytesIO
+import re
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -286,6 +290,125 @@ async def send_telegram_message(chat_id: str, message: str, bot_token: str = Non
             if attempt < retries - 1:
                 await asyncio.sleep(0.5)
     return False
+
+
+# ============== OCR PAYMENT DETECTION ==============
+
+async def download_telegram_photo(file_id: str, bot_token: str) -> bytes:
+    """Download photo from Telegram servers"""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as http_client:
+            # First get file path
+            file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+            response = await http_client.get(file_info_url)
+            if response.status_code == 200:
+                file_path = response.json().get("result", {}).get("file_path")
+                if file_path:
+                    # Download the actual file
+                    download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+                    file_response = await http_client.get(download_url)
+                    if file_response.status_code == 200:
+                        return file_response.content
+    except Exception as e:
+        logger.error(f"Error downloading photo: {e}")
+    return None
+
+def detect_payment_screenshot(image_bytes: bytes) -> dict:
+    """
+    Use OCR to detect if image is a valid payment screenshot.
+    Returns dict with is_valid and detected_keywords.
+    """
+    # Payment-related keywords to look for (case-insensitive)
+    payment_keywords = [
+        # UPI Apps
+        "gpay", "google pay", "phonepe", "paytm", "bhim", "amazon pay", "whatsapp pay",
+        # Transaction indicators
+        "upi", "paid", "payment", "successful", "completed", "transaction",
+        "transfer", "sent", "credited", "debited", "received",
+        # Amount indicators
+        "₹", "inr", "rupee", "rs.", "rs ",
+        # Transaction ID patterns
+        "utr", "ref", "txn", "transaction id", "reference",
+        # Bank names (common)
+        "sbi", "hdfc", "icici", "axis", "kotak", "pnb", "bob", "canara",
+        # Success messages
+        "success", "done", "complete", "approved"
+    ]
+    
+    try:
+        # Open image from bytes
+        image = Image.open(BytesIO(image_bytes))
+        
+        # Convert to RGB if necessary (for PNG with transparency)
+        if image.mode in ('RGBA', 'P'):
+            image = image.convert('RGB')
+        
+        # Extract text using OCR
+        extracted_text = pytesseract.image_to_string(image, lang='eng')
+        text_lower = extracted_text.lower()
+        
+        logger.info(f"OCR extracted text (first 500 chars): {text_lower[:500]}")
+        
+        # Find matching keywords
+        found_keywords = []
+        for keyword in payment_keywords:
+            if keyword.lower() in text_lower:
+                found_keywords.append(keyword)
+        
+        # Check for amount pattern (₹XXX or Rs. XXX)
+        amount_pattern = r'[₹]?\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?|rs\.?\s*\d+'
+        amounts = re.findall(amount_pattern, text_lower)
+        if amounts:
+            found_keywords.append(f"amount: {amounts[0]}")
+        
+        # UPI ID pattern check
+        upi_pattern = r'[a-zA-Z0-9._-]+@[a-zA-Z]+'
+        upi_ids = re.findall(upi_pattern, text_lower)
+        if upi_ids:
+            found_keywords.append("upi_id_detected")
+        
+        # Determine if valid payment screenshot
+        # Need at least 2 strong indicators:
+        # - UPI app name OR transaction keyword
+        # - Amount OR success indicator
+        strong_app_indicators = ["gpay", "google pay", "phonepe", "paytm", "bhim", "amazon pay", "whatsapp pay"]
+        strong_transaction_indicators = ["paid", "payment", "successful", "completed", "transaction", "transfer", "sent", "credited", "success", "done", "approved"]
+        
+        has_app = any(k.lower() in text_lower for k in strong_app_indicators)
+        has_transaction = any(k.lower() in text_lower for k in strong_transaction_indicators)
+        has_amount = bool(amounts)
+        has_upi = "upi" in text_lower or bool(upi_ids)
+        
+        # Valid if: (app name OR UPI) AND (transaction indicator OR amount)
+        is_valid = (has_app or has_upi) and (has_transaction or has_amount)
+        
+        # Additional check: if "upi" and amount found, likely valid
+        if has_upi and has_amount:
+            is_valid = True
+            
+        # If found 3+ keywords, consider valid
+        if len(found_keywords) >= 3:
+            is_valid = True
+        
+        return {
+            "is_valid": is_valid,
+            "found_keywords": found_keywords,
+            "has_app": has_app,
+            "has_transaction": has_transaction,
+            "has_amount": has_amount,
+            "has_upi": has_upi,
+            "extracted_text_preview": text_lower[:200]
+        }
+        
+    except Exception as e:
+        logger.error(f"OCR detection error: {e}")
+        return {
+            "is_valid": False,
+            "error": str(e),
+            "found_keywords": []
+        }
+
+
 
 async def send_screenshot_reminders(chat_id: str, username: str, bot_token: str):
     """Send reminder messages until user sends screenshot"""
@@ -2545,7 +2668,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
         
-        # Handle screenshot/photo for payment verification
+        # Handle screenshot/photo for payment verification with OCR
         if photo and bot_token:
             # Check if we're waiting for screenshot from this user
             pending = await db.pending_screenshots.find_one({"telegram_user_id": chat_id, "status": "waiting"}, {"_id": 0})
@@ -2558,29 +2681,145 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     # Get the photo file_id (largest size)
                     photo_file_id = photo[-1]["file_id"] if photo else None
                     
-                    # Save photo and ask for confirmation
-                    await db.pending_screenshots.update_one(
-                        {"telegram_user_id": chat_id},
-                        {"$set": {
-                            "status": "confirming",
-                            "photo_file_id": photo_file_id
-                        }}
-                    )
+                    # Send processing message
+                    await send_telegram_message(chat_id, "🔍 <b>Analyzing screenshot...</b>\n\nPlease wait while we verify your payment.", bot_token)
                     
-                    # Ask user to confirm if it's a payment screenshot
-                    confirm_msg = "📸 <b>Image Received!</b>\n\n"
-                    confirm_msg += "⚠️ <b>Kya yeh payment screenshot hai?</b>\n"
-                    confirm_msg += "(GPay / PhonePe / Paytm / UPI)\n\n"
-                    confirm_msg += "✅ <b>Yes</b> - Agar payment screenshot hai\n"
-                    confirm_msg += "❌ <b>No</b> - Agar kuch aur bheja hai"
+                    # Download and analyze photo with OCR
+                    image_bytes = await download_telegram_photo(photo_file_id, bot_token)
                     
-                    buttons = [
-                        [
-                            {"text": "✅ Yes, Payment SS", "callback_data": f"confirm_ss_{plan_id}"},
-                            {"text": "❌ No", "callback_data": "wrong_ss"}
+                    if image_bytes:
+                        # Run OCR detection
+                        ocr_result = detect_payment_screenshot(image_bytes)
+                        logger.info(f"OCR Result for user {chat_id}: {ocr_result}")
+                        
+                        if ocr_result.get("is_valid"):
+                            # Valid payment screenshot detected - AUTO VERIFY
+                            logger.info(f"Valid payment screenshot detected for user {chat_id}")
+                            
+                            # Check if user already has active subscription
+                            existing_sub = await db.subscribers.find_one({
+                                "telegram_user_id": chat_id,
+                                "status": "active"
+                            }, {"_id": 0})
+                            
+                            # Get discounted price if available
+                            discounted_price = pending.get("discounted_price")
+                            final_price = discounted_price if discounted_price else plan['price']
+                            
+                            if existing_sub:
+                                # Extend subscription
+                                current_end = datetime.fromisoformat(existing_sub["end_date"]) if isinstance(existing_sub["end_date"], str) else existing_sub["end_date"]
+                                new_end = current_end + timedelta(days=plan['duration_days'])
+                                
+                                await db.subscribers.update_one(
+                                    {"telegram_user_id": chat_id},
+                                    {"$set": {
+                                        "end_date": new_end.isoformat(),
+                                        "plan_id": plan_id,
+                                        "plan_name": plan['name']
+                                    }}
+                                )
+                            else:
+                                # Create new subscriber
+                                new_subscriber = {
+                                    "id": str(uuid.uuid4()),
+                                    "telegram_user_id": chat_id,
+                                    "telegram_username": username,
+                                    "plan_id": plan_id,
+                                    "plan_name": plan['name'],
+                                    "status": "active",
+                                    "payment_method": "qr_screenshot",
+                                    "start_date": datetime.now(timezone.utc).isoformat(),
+                                    "end_date": (datetime.now(timezone.utc) + timedelta(days=plan['duration_days'])).isoformat(),
+                                    "created_at": datetime.now(timezone.utc).isoformat()
+                                }
+                                await db.subscribers.insert_one(new_subscriber)
+                            
+                            # Create payment record
+                            payment_record = {
+                                "id": str(uuid.uuid4()),
+                                "telegram_user_id": chat_id,
+                                "telegram_username": username,
+                                "amount": final_price,
+                                "plan_id": plan_id,
+                                "plan_name": plan['name'],
+                                "payment_method": "qr_screenshot",
+                                "screenshot_file_id": photo_file_id,
+                                "status": "verified",
+                                "ocr_verified": True,
+                                "ocr_keywords": ocr_result.get("found_keywords", []),
+                                "created_at": datetime.now(timezone.utc).isoformat(),
+                                "verified_at": datetime.now(timezone.utc).isoformat()
+                            }
+                            await db.payments.insert_one(payment_record)
+                            
+                            # Delete pending screenshot record
+                            await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                            
+                            # Send success message
+                            success_msg = "✅ <b>Payment Verified Successfully!</b>\n\n"
+                            success_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
+                            success_msg += f"💰 Amount: <b>₹{final_price}</b>\n"
+                            success_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
+                            success_msg += "🎉 <b>Your subscription is now active!</b>"
+                            
+                            await send_telegram_message(chat_id, success_msg, bot_token)
+                            
+                            # Add user to premium channel
+                            plan_channel = plan.get("channel_id", "")
+                            await add_to_channel(chat_id, plan_channel, plan['name'])
+                            
+                        else:
+                            # Invalid screenshot - ask to send correct one
+                            logger.info(f"Invalid screenshot for user {chat_id}: {ocr_result}")
+                            
+                            # Save photo file_id for reference
+                            await db.pending_screenshots.update_one(
+                                {"telegram_user_id": chat_id},
+                                {"$set": {
+                                    "last_invalid_photo": photo_file_id,
+                                    "ocr_result": ocr_result
+                                }}
+                            )
+                            
+                            invalid_msg = "❌ <b>Invalid Screenshot!</b>\n\n"
+                            invalid_msg += "Yeh payment screenshot nahi lagta.\n\n"
+                            invalid_msg += "✅ <b>Valid screenshot mein hona chahiye:</b>\n"
+                            invalid_msg += "• GPay / PhonePe / Paytm ka naam\n"
+                            invalid_msg += "• 'Paid' ya 'Success' message\n"
+                            invalid_msg += "• Transaction amount\n"
+                            invalid_msg += "• UPI ID ya Reference number\n\n"
+                            invalid_msg += "📸 <b>Sahi payment screenshot bhejo!</b>"
+                            
+                            buttons = [
+                                [{"text": "❌ Cancel Payment", "callback_data": "cancel_payment"}]
+                            ]
+                            await send_telegram_message_with_buttons(chat_id, invalid_msg, buttons, bot_token)
+                    else:
+                        # Could not download image - fallback to manual confirmation
+                        logger.error(f"Could not download image for user {chat_id}")
+                        
+                        await db.pending_screenshots.update_one(
+                            {"telegram_user_id": chat_id},
+                            {"$set": {
+                                "status": "confirming",
+                                "photo_file_id": photo_file_id
+                            }}
+                        )
+                        
+                        fallback_msg = "📸 <b>Image Received!</b>\n\n"
+                        fallback_msg += "⚠️ Auto-verification fail hua. Manual confirm karo:\n\n"
+                        fallback_msg += "✅ <b>Yes</b> - Agar payment screenshot hai\n"
+                        fallback_msg += "❌ <b>No</b> - Agar kuch aur bheja hai"
+                        
+                        buttons = [
+                            [
+                                {"text": "✅ Yes, Payment SS", "callback_data": f"confirm_ss_{plan_id}"},
+                                {"text": "❌ No", "callback_data": "wrong_ss"}
+                            ]
                         ]
-                    ]
-                    await send_telegram_message_with_buttons(chat_id, confirm_msg, buttons, bot_token)
+                        await send_telegram_message_with_buttons(chat_id, fallback_msg, buttons, bot_token)
+                    
                     return {"ok": True}
             else:
                 # User sent image but we're not waiting for it
