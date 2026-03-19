@@ -191,6 +191,40 @@ class SupportTicket(BaseModel):
     status: str = "open"  # open, in_progress, resolved, closed
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+# ============== CHAT GROUPS POOL MODEL ==============
+
+class ChatGroupPool(BaseModel):
+    """Pool of pre-created groups for time-limited chat feature"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    group_id: str  # Telegram group/supergroup ID
+    group_name: str = ""
+    group_invite_link: str = ""
+    status: str = "available"  # available, in_use, needs_cleanup
+    assigned_to_user_id: str = ""  # Telegram user ID
+    assigned_to_username: str = ""
+    plan_type: str = ""  # "5min" or "30min"
+    session_start: Optional[datetime] = None
+    session_end: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class ActiveChatSession(BaseModel):
+    """Track active time-limited chat sessions"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str  # Telegram user ID
+    username: str = ""
+    group_id: str  # Telegram group ID
+    plan_type: str  # "5min" or "30min"
+    duration_minutes: int
+    start_time: datetime
+    end_time: datetime
+    status: str = "active"  # active, expired, renewed
+    renewal_message_sent: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+
 # ============== AUTH HELPERS ==============
 
 def hash_password(password: str) -> str:
@@ -526,6 +560,225 @@ async def remove_from_channel(user_id: str, plan_channel_id: str = None):
     except Exception as e:
         logger.error(f"Failed to remove user from channel: {e}")
         return False
+
+
+# ============== CHAT POOL HELPER FUNCTIONS ==============
+
+async def get_available_chat_group():
+    """Get an available group from the pool"""
+    group = await db.chat_groups_pool.find_one({"status": "available"}, {"_id": 0})
+    return group
+
+async def assign_chat_group(group_id: str, user_id: str, username: str, plan_type: str, duration_minutes: int):
+    """Assign a group to a user for time-limited chat"""
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    now = datetime.now(timezone.utc)
+    end_time = now + timedelta(minutes=duration_minutes)
+    
+    # Update group status
+    await db.chat_groups_pool.update_one(
+        {"group_id": group_id},
+        {"$set": {
+            "status": "in_use",
+            "assigned_to_user_id": user_id,
+            "assigned_to_username": username,
+            "plan_type": plan_type,
+            "session_start": now.isoformat(),
+            "session_end": end_time.isoformat()
+        }}
+    )
+    
+    # Create active session record
+    session = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "username": username,
+        "group_id": group_id,
+        "plan_type": plan_type,
+        "duration_minutes": duration_minutes,
+        "start_time": now.isoformat(),
+        "end_time": end_time.isoformat(),
+        "status": "active",
+        "renewal_message_sent": False,
+        "created_at": now.isoformat()
+    }
+    await db.chat_sessions.insert_one(session)
+    
+    # Create invite link for the group
+    try:
+        async with httpx.AsyncClient() as http_client:
+            url = f"https://api.telegram.org/bot{bot_token}/createChatInviteLink"
+            response = await http_client.post(url, json={
+                "chat_id": group_id,
+                "member_limit": 1,
+                "expire_date": int((now + timedelta(minutes=10)).timestamp())  # Link valid for 10 min
+            })
+            if response.status_code == 200:
+                data = response.json()
+                invite_link = data.get("result", {}).get("invite_link")
+                return {"success": True, "invite_link": invite_link, "session": session}
+    except Exception as e:
+        logger.error(f"Error creating invite link: {e}")
+    
+    return {"success": False, "error": "Could not create invite link"}
+
+async def restrict_user_in_group(group_id: str, user_id: str, can_send: bool = False):
+    """Restrict or unrestrict user from sending messages in group"""
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    try:
+        async with httpx.AsyncClient() as http_client:
+            url = f"https://api.telegram.org/bot{bot_token}/restrictChatMember"
+            permissions = {
+                "can_send_messages": can_send,
+                "can_send_audios": can_send,
+                "can_send_documents": can_send,
+                "can_send_photos": can_send,
+                "can_send_videos": can_send,
+                "can_send_video_notes": can_send,
+                "can_send_voice_notes": can_send,
+                "can_send_polls": can_send,
+                "can_send_other_messages": can_send,
+                "can_add_web_page_previews": can_send
+            }
+            response = await http_client.post(url, json={
+                "chat_id": group_id,
+                "user_id": int(user_id),
+                "permissions": permissions
+            })
+            logger.info(f"Restrict user response: {response.status_code} - {response.text}")
+            return response.status_code == 200
+    except Exception as e:
+        logger.error(f"Error restricting user: {e}")
+        return False
+
+async def kick_user_from_group(group_id: str, user_id: str):
+    """Kick user from group"""
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    try:
+        async with httpx.AsyncClient() as http_client:
+            # First kick (ban temporarily)
+            url = f"https://api.telegram.org/bot{bot_token}/banChatMember"
+            response = await http_client.post(url, json={
+                "chat_id": group_id,
+                "user_id": int(user_id),
+                "until_date": int((datetime.now(timezone.utc) + timedelta(seconds=35)).timestamp())
+            })
+            logger.info(f"Kick user response: {response.status_code}")
+            return response.status_code == 200
+    except Exception as e:
+        logger.error(f"Error kicking user: {e}")
+        return False
+
+async def release_chat_group(group_id: str):
+    """Release a group back to the pool after session ends"""
+    # Get session info before releasing
+    group = await db.chat_groups_pool.find_one({"group_id": group_id}, {"_id": 0})
+    
+    if group and group.get("assigned_to_user_id"):
+        user_id = group.get("assigned_to_user_id")
+        # Kick user from group
+        await kick_user_from_group(group_id, user_id)
+    
+    # Reset group to available
+    await db.chat_groups_pool.update_one(
+        {"group_id": group_id},
+        {"$set": {
+            "status": "available",
+            "assigned_to_user_id": "",
+            "assigned_to_username": "",
+            "plan_type": "",
+            "session_start": None,
+            "session_end": None
+        }}
+    )
+
+async def check_expired_chat_sessions():
+    """Background task to check and handle expired chat sessions"""
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    now = datetime.now(timezone.utc)
+    
+    # Find active sessions that have expired
+    expired_sessions = await db.chat_sessions.find({
+        "status": "active",
+        "end_time": {"$lte": now.isoformat()}
+    }, {"_id": 0}).to_list(100)
+    
+    for session in expired_sessions:
+        user_id = session.get("user_id")
+        group_id = session.get("group_id")
+        plan_type = session.get("plan_type")
+        
+        # Restrict user from sending messages
+        await restrict_user_in_group(group_id, user_id, can_send=False)
+        
+        # Send renewal message
+        if not session.get("renewal_message_sent"):
+            renewal_msg = "⏰ <b>Time's Up!</b>\n\n"
+            renewal_msg += f"Your {plan_type} chat session has ended.\n\n"
+            renewal_msg += "🔄 <b>Want to continue?</b>\n"
+            renewal_msg += "Click below to renew your chat session!"
+            
+            # Send message in group
+            try:
+                async with httpx.AsyncClient() as http_client:
+                    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                    buttons = [[{"text": "🔄 Renew Chat", "callback_data": f"renew_chat_{session['id']}"}]]
+                    await http_client.post(url, json={
+                        "chat_id": group_id,
+                        "text": renewal_msg,
+                        "parse_mode": "HTML",
+                        "reply_markup": {"inline_keyboard": buttons}
+                    })
+            except Exception as e:
+                logger.error(f"Error sending renewal message: {e}")
+            
+            # Also send to user's private chat
+            try:
+                async with httpx.AsyncClient() as http_client:
+                    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                    private_msg = "⏰ <b>Chat Session Ended!</b>\n\n"
+                    private_msg += f"Your {plan_type} chat time is over.\n\n"
+                    private_msg += "To continue chatting, buy another session!\n\n"
+                    private_msg += "/start - See available plans"
+                    await http_client.post(url, json={
+                        "chat_id": user_id,
+                        "text": private_msg,
+                        "parse_mode": "HTML"
+                    })
+            except Exception as e:
+                logger.error(f"Error sending private renewal message: {e}")
+            
+            # Update session
+            await db.chat_sessions.update_one(
+                {"id": session["id"]},
+                {"$set": {"renewal_message_sent": True, "status": "expired"}}
+            )
+        
+        # Wait 5 minutes after expiry, then kick user if not renewed
+        session_end = datetime.fromisoformat(session["end_time"]) if isinstance(session["end_time"], str) else session["end_time"]
+        if now > session_end + timedelta(minutes=5):
+            # Check if renewed
+            renewed = await db.chat_sessions.find_one({
+                "user_id": user_id,
+                "group_id": group_id,
+                "status": "active",
+                "start_time": {"$gt": session["end_time"]}
+            })
+            
+            if not renewed:
+                # Kick user and release group
+                await release_chat_group(group_id)
+                logger.info(f"Released group {group_id} after session expiry")
+
+
 
 
 # ============== AUTH ROUTES ==============
@@ -1583,6 +1836,105 @@ async def delete_subscriber(subscriber_id: str, background_tasks: BackgroundTask
     
     return {"message": "Subscriber removed"}
 
+
+# ============== CHAT GROUPS POOL ROUTES ==============
+
+class AddChatGroupRequest(BaseModel):
+    group_id: str
+    group_name: str = ""
+
+@api_router.get("/chat-groups")
+async def get_chat_groups(user = Depends(get_current_user)):
+    """Get all chat groups in the pool"""
+    groups = await db.chat_groups_pool.find({}, {"_id": 0}).to_list(100)
+    return groups
+
+@api_router.post("/chat-groups")
+async def add_chat_group(request: AddChatGroupRequest, user = Depends(get_current_user)):
+    """Add a group to the chat pool"""
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    # Verify bot is admin in the group
+    try:
+        async with httpx.AsyncClient() as http_client:
+            url = f"https://api.telegram.org/bot{bot_token}/getChatAdministrators?chat_id={request.group_id}"
+            response = await http_client.get(url)
+            if response.status_code != 200:
+                raise HTTPException(status_code=400, detail="Bot is not admin in this group or group doesn't exist")
+            
+            admins = response.json().get("result", [])
+            bot_is_admin = False
+            for admin in admins:
+                if admin.get("user", {}).get("is_bot"):
+                    bot_is_admin = True
+                    break
+            
+            if not bot_is_admin:
+                raise HTTPException(status_code=400, detail="Bot must be admin in this group")
+            
+            # Get group info
+            info_url = f"https://api.telegram.org/bot{bot_token}/getChat?chat_id={request.group_id}"
+            info_response = await http_client.get(info_url)
+            group_name = request.group_name
+            if info_response.status_code == 200:
+                group_name = info_response.json().get("result", {}).get("title", group_name)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error verifying group: {e}")
+        raise HTTPException(status_code=400, detail=f"Error verifying group: {str(e)}")
+    
+    # Check if group already in pool
+    existing = await db.chat_groups_pool.find_one({"group_id": request.group_id})
+    if existing:
+        raise HTTPException(status_code=400, detail="Group already in pool")
+    
+    # Add to pool
+    group_doc = {
+        "id": str(uuid.uuid4()),
+        "group_id": request.group_id,
+        "group_name": group_name,
+        "status": "available",
+        "assigned_to_user_id": "",
+        "assigned_to_username": "",
+        "plan_type": "",
+        "session_start": None,
+        "session_end": None,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.chat_groups_pool.insert_one(group_doc)
+    
+    return {"message": "Group added to pool", "group": group_doc}
+
+@api_router.delete("/chat-groups/{group_id}")
+async def remove_chat_group(group_id: str, user = Depends(get_current_user)):
+    """Remove a group from the pool"""
+    result = await db.chat_groups_pool.delete_one({"group_id": group_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Group not found in pool")
+    return {"message": "Group removed from pool"}
+
+@api_router.get("/chat-sessions")
+async def get_chat_sessions(status: Optional[str] = None, user = Depends(get_current_user)):
+    """Get all chat sessions"""
+    query = {}
+    if status:
+        query["status"] = status
+    sessions = await db.chat_sessions.find(query, {"_id": 0}).to_list(100)
+    return sessions
+
+@api_router.post("/chat-groups/{group_id}/release")
+async def force_release_group(group_id: str, user = Depends(get_current_user)):
+    """Force release a group back to pool"""
+    group = await db.chat_groups_pool.find_one({"group_id": group_id}, {"_id": 0})
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    await release_chat_group(group_id)
+    return {"message": "Group released"}
+
+
 # ============== PAYMENTS ROUTES ==============
 
 @api_router.get("/payments")
@@ -2479,6 +2831,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 
                 if plan and pending:
                     photo_file_id = pending.get("photo_file_id")
+                    final_amount = pending.get("discounted_price") or plan["price"]
                     
                     # Create payment record
                     payment_obj = {
@@ -2486,7 +2839,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "subscriber_id": None,
                         "telegram_user_id": chat_id,
                         "telegram_username": username or pending.get("telegram_username", ""),
-                        "amount": pending.get("discounted_price") or plan["price"],
+                        "amount": final_amount,
                         "plan_id": plan_id,
                         "plan_name": plan["name"],
                         "payment_method": "qr_screenshot",
@@ -2497,45 +2850,95 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     }
                     await db.payments.insert_one(payment_obj)
                     
-                    # Create subscriber
-                    grace_days = settings.get("grace_period_days", 2)
-                    end_date = datetime.now(timezone.utc) + timedelta(days=plan["duration_days"])
-                    grace_end = end_date + timedelta(days=grace_days)
-                    
-                    subscriber_obj = {
-                        "id": str(uuid.uuid4()),
-                        "telegram_user_id": chat_id,
-                        "telegram_username": username or pending.get("telegram_username", ""),
-                        "plan_id": plan["id"],
-                        "plan_name": plan["name"],
-                        "payment_method": "qr_screenshot",
-                        "payment_id": payment_obj["id"],
-                        "status": "active",
-                        "start_date": datetime.now(timezone.utc).isoformat(),
-                        "end_date": end_date.isoformat(),
-                        "grace_end_date": grace_end.isoformat(),
-                        "reminder_sent": False,
-                        "created_at": datetime.now(timezone.utc).isoformat()
-                    }
-                    await db.subscribers.insert_one(subscriber_obj)
-                    
                     # Delete pending screenshot record
                     await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
                     
-                    # Send success message
-                    success_msg = "✅ <b>Payment Verified!</b>\n\n"
-                    success_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
-                    success_msg += f"💰 Amount: <b>₹{payment_obj['amount']}</b>\n"
-                    success_msg += f"⏱ Valid till: <b>{end_date.strftime('%d %b %Y')}</b>\n\n"
-                    success_msg += "🎉 <b>Subscription Activated!</b>\n\n"
-                    success_msg += "📢 Channel link aa raha hai..."
+                    # Check if this is a Chat plan (5 Min or 30 Min)
+                    plan_name_lower = plan['name'].lower()
+                    is_chat_plan = "min chat" in plan_name_lower or "minute chat" in plan_name_lower
                     
-                    await send_telegram_message(chat_id, success_msg, bot_token)
-                    
-                    # Add to channel
-                    plan_channel = plan.get("channel_id", "")
-                    if plan_channel:
-                        await add_to_channel(chat_id, plan_channel, plan["name"])
+                    if is_chat_plan:
+                        # Handle time-limited chat plan
+                        if "5" in plan_name_lower:
+                            duration_minutes = 5
+                            plan_type = "5min"
+                        elif "30" in plan_name_lower:
+                            duration_minutes = 30
+                            plan_type = "30min"
+                        else:
+                            duration_minutes = 5
+                            plan_type = "5min"
+                        
+                        # Get available group from pool
+                        available_group = await get_available_chat_group()
+                        
+                        if available_group:
+                            result = await assign_chat_group(
+                                available_group["group_id"],
+                                chat_id,
+                                username,
+                                plan_type,
+                                duration_minutes
+                            )
+                            
+                            if result.get("success"):
+                                invite_link = result.get("invite_link")
+                                
+                                success_msg = "✅ <b>Payment Verified!</b>\n\n"
+                                success_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
+                                success_msg += f"💰 Amount: <b>₹{final_amount}</b>\n"
+                                success_msg += f"⏱ Duration: <b>{duration_minutes} minutes</b>\n\n"
+                                success_msg += "🔗 <b>Join the chat now:</b>\n"
+                                success_msg += f"{invite_link}\n\n"
+                                success_msg += f"⚠️ <b>Note:</b> You have {duration_minutes} minutes to chat.\n"
+                                success_msg += "After time ends, you'll need to renew!"
+                                
+                                await send_telegram_message(chat_id, success_msg, bot_token)
+                            else:
+                                error_msg = "✅ <b>Payment Verified!</b>\n\n"
+                                error_msg += "But chat group assignment failed.\n"
+                                error_msg += "Admin will contact you shortly!"
+                                await send_telegram_message(chat_id, error_msg, bot_token)
+                        else:
+                            no_group_msg = "✅ <b>Payment Verified!</b>\n\n"
+                            no_group_msg += "⚠️ All chat slots are currently busy.\n\n"
+                            no_group_msg += "Admin will assign you a chat slot soon!"
+                            await send_telegram_message(chat_id, no_group_msg, bot_token)
+                    else:
+                        # Regular subscription - create subscriber and add to channel
+                        grace_days = settings.get("grace_period_days", 2)
+                        end_date = datetime.now(timezone.utc) + timedelta(days=plan["duration_days"])
+                        grace_end = end_date + timedelta(days=grace_days)
+                        
+                        subscriber_obj = {
+                            "id": str(uuid.uuid4()),
+                            "telegram_user_id": chat_id,
+                            "telegram_username": username or pending.get("telegram_username", ""),
+                            "plan_id": plan["id"],
+                            "plan_name": plan["name"],
+                            "payment_method": "qr_screenshot",
+                            "payment_id": payment_obj["id"],
+                            "status": "active",
+                            "start_date": datetime.now(timezone.utc).isoformat(),
+                            "end_date": end_date.isoformat(),
+                            "grace_end_date": grace_end.isoformat(),
+                            "reminder_sent": False,
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        await db.subscribers.insert_one(subscriber_obj)
+                        
+                        success_msg = "✅ <b>Payment Verified!</b>\n\n"
+                        success_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
+                        success_msg += f"💰 Amount: <b>₹{final_amount}</b>\n"
+                        success_msg += f"⏱ Valid till: <b>{end_date.strftime('%d %b %Y')}</b>\n\n"
+                        success_msg += "🎉 <b>Subscription Activated!</b>\n\n"
+                        success_msg += "📢 Channel link aa raha hai..."
+                        
+                        await send_telegram_message(chat_id, success_msg, bot_token)
+                        
+                        plan_channel = plan.get("channel_id", "")
+                        if plan_channel:
+                            await add_to_channel(chat_id, plan_channel, plan["name"])
                     
                     logger.info(f"Payment verified for user {chat_id}, plan {plan['name']}")
                 else:
@@ -2588,6 +2991,44 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
                 else:
                     await send_telegram_message(chat_id, "❌ Plan not found. /start karke dobara try karo.", bot_token)
+            
+            elif callback_data.startswith("renew_chat_"):
+                # Handle chat session renewal
+                session_id = callback_data.replace("renew_chat_", "")
+                session = await db.chat_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session:
+                    plan_type = session.get("plan_type", "5min")
+                    
+                    # Find matching plan
+                    if plan_type == "5min":
+                        plan = await db.plans.find_one({"name": {"$regex": "5.*min.*chat", "$options": "i"}}, {"_id": 0})
+                    else:
+                        plan = await db.plans.find_one({"name": {"$regex": "30.*min.*chat", "$options": "i"}}, {"_id": 0})
+                    
+                    if plan:
+                        qr_code_url = settings.get("qr_code_url", "")
+                        
+                        renew_msg = f"🔄 <b>Renew Chat Session</b>\n\n"
+                        renew_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
+                        renew_msg += f"💰 Price: <b>₹{plan['price']}</b>\n\n"
+                        renew_msg += "━━━━━━━━━━━━━━━\n"
+                        renew_msg += "<b>💳 Payment:</b>\n\n"
+                        renew_msg += "1️⃣ Pay via UPI/QR Code\n"
+                        renew_msg += "2️⃣ Send screenshot\n"
+                        renew_msg += "3️⃣ Get more chat time!\n\n"
+                        renew_msg += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"
+                        
+                        buttons = []
+                        if qr_code_url:
+                            buttons.append([{"text": "📱 Show QR Code", "callback_data": f"qr_{plan['id']}"}])
+                        buttons.append([{"text": "✅ I've Paid", "callback_data": f"paid_{plan['id']}"}])
+                        
+                        await send_telegram_message_with_buttons(chat_id, renew_msg, buttons, bot_token)
+                    else:
+                        await send_telegram_message(chat_id, "Plan not found. Use /start to see plans.", bot_token)
+                else:
+                    await send_telegram_message(chat_id, "Session not found. Use /start to buy new plan.", bot_token)
             
             elif callback_data.startswith("renew_"):
                 # Handle renewal - go directly to payment for the same plan
@@ -2756,18 +3197,80 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             # Delete pending screenshot record
                             await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
                             
-                            # Send success message
-                            success_msg = "✅ <b>Payment Verified Successfully!</b>\n\n"
-                            success_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
-                            success_msg += f"💰 Amount: <b>₹{final_price}</b>\n"
-                            success_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
-                            success_msg += "🎉 <b>Your subscription is now active!</b>"
+                            # Check if this is a Chat plan (5 Min or 30 Min)
+                            plan_name_lower = plan['name'].lower()
+                            is_chat_plan = "min chat" in plan_name_lower or "minute chat" in plan_name_lower
                             
-                            await send_telegram_message(chat_id, success_msg, bot_token)
-                            
-                            # Add user to premium channel
-                            plan_channel = plan.get("channel_id", "")
-                            await add_to_channel(chat_id, plan_channel, plan['name'])
+                            if is_chat_plan:
+                                # Handle time-limited chat plan
+                                # Determine duration from plan name
+                                if "5" in plan_name_lower:
+                                    duration_minutes = 5
+                                    plan_type = "5min"
+                                elif "30" in plan_name_lower:
+                                    duration_minutes = 30
+                                    plan_type = "30min"
+                                else:
+                                    duration_minutes = 5  # default
+                                    plan_type = "5min"
+                                
+                                # Get available group from pool
+                                available_group = await get_available_chat_group()
+                                
+                                if available_group:
+                                    # Assign group to user
+                                    result = await assign_chat_group(
+                                        available_group["group_id"],
+                                        chat_id,
+                                        username,
+                                        plan_type,
+                                        duration_minutes
+                                    )
+                                    
+                                    if result.get("success"):
+                                        invite_link = result.get("invite_link")
+                                        session = result.get("session")
+                                        
+                                        success_msg = "✅ <b>Payment Verified!</b>\n\n"
+                                        success_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
+                                        success_msg += f"💰 Amount: <b>₹{final_price}</b>\n"
+                                        success_msg += f"⏱ Duration: <b>{duration_minutes} minutes</b>\n\n"
+                                        success_msg += "🔗 <b>Join the chat now:</b>\n"
+                                        success_msg += f"{invite_link}\n\n"
+                                        success_msg += f"⚠️ <b>Note:</b> You have {duration_minutes} minutes to chat.\n"
+                                        success_msg += "After time ends, you'll need to renew!"
+                                        
+                                        await send_telegram_message(chat_id, success_msg, bot_token)
+                                    else:
+                                        # Group assignment failed
+                                        error_msg = "✅ <b>Payment Verified!</b>\n\n"
+                                        error_msg += "But chat group assignment failed.\n"
+                                        error_msg += "Admin will contact you shortly!\n\n"
+                                        error_msg += "Your payment is safe."
+                                        await send_telegram_message(chat_id, error_msg, bot_token)
+                                else:
+                                    # No groups available
+                                    no_group_msg = "✅ <b>Payment Verified!</b>\n\n"
+                                    no_group_msg += "⚠️ All chat slots are currently busy.\n\n"
+                                    no_group_msg += "Admin will assign you a chat slot soon!\n"
+                                    no_group_msg += "Your payment is recorded."
+                                    await send_telegram_message(chat_id, no_group_msg, bot_token)
+                                    
+                                    # Notify admin (you can customize this)
+                                    logger.warning(f"No chat groups available for user {chat_id}")
+                            else:
+                                # Regular subscription plan - add to channel
+                                success_msg = "✅ <b>Payment Verified Successfully!</b>\n\n"
+                                success_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
+                                success_msg += f"💰 Amount: <b>₹{final_price}</b>\n"
+                                success_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
+                                success_msg += "🎉 <b>Your subscription is now active!</b>"
+                                
+                                await send_telegram_message(chat_id, success_msg, bot_token)
+                                
+                                # Add user to premium channel
+                                plan_channel = plan.get("channel_id", "")
+                                await add_to_channel(chat_id, plan_channel, plan['name'])
                             
                         else:
                             # Invalid screenshot - ask to send correct one
@@ -3067,6 +3570,7 @@ async def startup():
     # Schedule tasks
     scheduler.add_job(check_subscriptions, 'interval', hours=6)
     scheduler.add_job(send_followups, 'cron', day_of_week='mon,thu', hour=10)
+    scheduler.add_job(check_expired_chat_sessions, 'interval', seconds=30)  # Check every 30 seconds
     scheduler.start()
     logger.info("Scheduler started")
 
