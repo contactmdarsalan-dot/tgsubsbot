@@ -2915,11 +2915,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 
                 # Send welcome message with plans directly to user's private chat
                 if user_id and not user.get("is_bot"):
-                    # Get plans
+                    # Get plans and settings
                     plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+                    settings = await get_bot_settings()
+                    website_link = settings.get("website_link", "https://miraclecouplee.syke.club")
                     
                     welcome_msg = f"🎉 <b>Welcome {first_name}!</b>\n\n"
                     welcome_msg += "Thanks for joining our channel! 💕\n\n"
+                    welcome_msg += f"🌐 <b>Visit:</b> {website_link}\n\n"
                     welcome_msg += "🔥 <b>Get Exclusive Content!</b>\n"
                     welcome_msg += "Subscribe now for premium access!\n\n"
                     welcome_msg += "━━━━━━━━━━━━━━━\n"
@@ -2931,6 +2934,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         welcome_msg += f"📦 <b>{plan['name']}</b> - ₹{inflated_price}\n"
                         buttons.append([{"text": f"📦 {plan['name']} - ₹{inflated_price}", "callback_data": f"buy_{plan['id']}"}])
                     
+                    buttons.append([{"text": "🌐 Visit Website", "url": website_link}])
                     buttons.append([{"text": "🎁 Special Discount!", "callback_data": "special_discount"}])
                     
                     try:
@@ -3309,6 +3313,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         success_msg += f"💰 Amount: <b>₹{final_amount}</b>\n"
                         success_msg += f"⏱ Valid till: <b>{end_date.strftime('%d %b %Y')}</b>\n\n"
                         success_msg += "🎉 <b>Subscription Activated!</b>\n\n"
+                        success_msg += f"🌐 <b>Visit:</b> {settings.get('website_link', 'https://miraclecouplee.syke.club')}\n\n"
                         success_msg += "📢 Channel link aa raha hai..."
                         
                         await send_telegram_message(chat_id, success_msg, bot_token)
@@ -3746,8 +3751,13 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         if text == "/start" or text == "/start subscribe" or text == "/plans":
             # Show plans directly
             plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+            settings = await get_bot_settings()
+            website_link = settings.get("website_link", "https://miraclecouplee.syke.club")
             
             welcome_msg = "🎉 <b>Welcome!</b>\n\n"
+            welcome_msg += "🔥 <b>Exclusive Content Awaits!</b>\n\n"
+            welcome_msg += f"🌐 <b>Visit:</b> {website_link}\n\n"
+            welcome_msg += "━━━━━━━━━━━━━━━\n"
             welcome_msg += "🎯 <b>Choose Your Plan:</b>\n\n"
             
             buttons = []
@@ -3760,7 +3770,8 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             if not plans:
                 welcome_msg += "No plans available at the moment.\n"
             
-            # Add Special Discount button
+            # Add website link button, Special Discount and Status
+            buttons.append([{"text": "🌐 Visit Website", "url": website_link}])
             buttons.append([{"text": "🎁 Special Discount For You!", "callback_data": "special_discount"}])
             buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
             
@@ -3979,6 +3990,7 @@ async def send_daily_reminders():
     """Send daily reminders to expired subscribers and non-subscribers"""
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
+    website_link = settings.get("website_link", "https://miraclecouplee.syke.club")
     
     if not bot_token:
         return
@@ -3992,6 +4004,7 @@ async def send_daily_reminders():
     for plan in plans:
         inflated_price = plan['price'] + 500
         buttons.append([{"text": f"📦 {plan['name']} - ₹{inflated_price}", "callback_data": f"buy_{plan['id']}"}])
+    buttons.append([{"text": "🌐 Visit Website", "url": website_link}])
     buttons.append([{"text": "🎁 Special Discount!", "callback_data": "special_discount"}])
     
     sent_count = 0
@@ -4005,6 +4018,7 @@ async def send_daily_reminders():
         try:
             msg = "⚠️ <b>Subscription Expired!</b>\n\n"
             msg += f"Your {sub.get('plan_name', 'subscription')} has expired.\n\n"
+            msg += f"🌐 <b>Visit:</b> {website_link}\n\n"
             msg += "🔥 <b>Don't miss out on exclusive content!</b>\n"
             msg += "Renew now to continue access:\n\n"
             
@@ -4028,6 +4042,7 @@ async def send_daily_reminders():
                 days_left = (end_date - datetime.now(timezone.utc)).days
                 msg = f"⏰ <b>Subscription Expiring Soon!</b>\n\n"
                 msg += f"Your {sub.get('plan_name', 'subscription')} expires in <b>{days_left} days</b>.\n\n"
+                msg += f"🌐 <b>Visit:</b> {website_link}\n\n"
                 msg += "🔄 <b>Renew now to avoid interruption:</b>\n\n"
                 
                 await send_telegram_message_with_buttons(sub["telegram_user_id"], msg, buttons, bot_token)
@@ -4052,6 +4067,7 @@ async def send_daily_reminders():
             try:
                 msg = "🔔 <b>You're Missing Out!</b>\n\n"
                 msg += "We noticed you haven't subscribed yet.\n\n"
+                msg += f"🌐 <b>Visit:</b> {website_link}\n\n"
                 msg += "🔥 <b>Get exclusive content today!</b>\n"
                 msg += "Limited time offers available:\n\n"
                 
