@@ -14,6 +14,7 @@ import AdminSubscriptions from "./pages/AdminSubscriptions";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import SupportPage from "./pages/SupportPage";
 import BotCheckout from "./pages/BotCheckout";
+import ChatGroups from "./pages/ChatGroups";
 import Layout from "./components/Layout";
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -119,6 +120,7 @@ function AppRouter() {
         <Route path="plans" element={<Plans />} />
         <Route path="subscribers" element={<Subscribers />} />
         <Route path="payments" element={<Payments />} />
+        <Route path="chat-groups" element={<ChatGroups />} />
         <Route path="automation" element={<Automation />} />
         <Route path="settings" element={<Settings />} />
         <Route path="admin-subs" element={<AdminSubscriptions />} />

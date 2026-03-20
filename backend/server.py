@@ -2663,9 +2663,12 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             
             return {"ok": True}
         
-        # Skip old messages (older than 30 seconds)
-        message = data.get("message") or data.get("callback_query", {}).get("message")
-        if message:
+        # Skip old messages (older than 30 seconds) - but allow callback queries
+        callback_query = data.get("callback_query")
+        message = data.get("message") or (callback_query.get("message") if callback_query else None)
+        
+        # Only skip old regular messages, not callback queries (button clicks)
+        if message and not callback_query:
             msg_date = message.get("date", 0)
             current_time = int(datetime.now(timezone.utc).timestamp())
             if current_time - msg_date > 30:
@@ -2673,7 +2676,6 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 return {"ok": True}
         
         # Handle callback queries (button clicks)
-        callback_query = data.get("callback_query")
         if callback_query:
             callback_data = callback_query.get("data", "")
             chat_id = str(callback_query.get("from", {}).get("id", ""))
