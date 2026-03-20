@@ -3370,31 +3370,34 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 await add_to_channel(chat_id, plan_channel, plan['name'])
                             
                         else:
-                            # Invalid screenshot - ask to send correct one
-                            logger.info(f"Invalid screenshot for user {chat_id}: {ocr_result}")
+                            # OCR couldn't detect - show manual confirmation buttons
+                            logger.info(f"OCR couldn't detect payment for user {chat_id}, showing manual confirmation")
                             
-                            # Save photo file_id for reference
+                            # Save photo file_id for manual confirmation
                             await db.pending_screenshots.update_one(
                                 {"telegram_user_id": chat_id},
                                 {"$set": {
-                                    "last_invalid_photo": photo_file_id,
+                                    "status": "confirming",
+                                    "photo_file_id": photo_file_id,
                                     "ocr_result": ocr_result
                                 }}
                             )
                             
-                            invalid_msg = "❌ <b>Invalid Screenshot!</b>\n\n"
-                            invalid_msg += "Yeh payment screenshot nahi lagta.\n\n"
-                            invalid_msg += "✅ <b>Valid screenshot mein hona chahiye:</b>\n"
-                            invalid_msg += "• GPay / PhonePe / Paytm ka naam\n"
-                            invalid_msg += "• 'Paid' ya 'Success' message\n"
-                            invalid_msg += "• Transaction amount\n"
-                            invalid_msg += "• UPI ID ya Reference number\n\n"
-                            invalid_msg += "📸 <b>Sahi payment screenshot bhejo!</b>"
+                            # Show manual confirmation with both Yes and No options
+                            confirm_msg = "📸 <b>Screenshot Received!</b>\n\n"
+                            confirm_msg += "🔍 Auto-detection couldn't verify.\n\n"
+                            confirm_msg += "⚠️ <b>Kya yeh payment screenshot hai?</b>\n"
+                            confirm_msg += "(GPay / PhonePe / Paytm / UPI)\n\n"
+                            confirm_msg += "✅ <b>Haan</b> - Agar payment screenshot hai\n"
+                            confirm_msg += "❌ <b>Nahi</b> - Agar kuch aur bheja hai"
                             
                             buttons = [
-                                [{"text": "❌ Cancel Payment", "callback_data": "cancel_payment"}]
+                                [
+                                    {"text": "✅ Haan, Payment SS hai", "callback_data": f"confirm_ss_{plan_id}"},
+                                    {"text": "❌ Nahi", "callback_data": "wrong_ss"}
+                                ]
                             ]
-                            await send_telegram_message_with_buttons(chat_id, invalid_msg, buttons, bot_token)
+                            await send_telegram_message_with_buttons(chat_id, confirm_msg, buttons, bot_token)
                     else:
                         # Could not download image - fallback to manual confirmation
                         logger.error(f"Could not download image for user {chat_id}")
