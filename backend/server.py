@@ -351,22 +351,24 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
     """
     Use OCR to detect if image is a valid payment screenshot.
     Returns dict with is_valid and detected_keywords.
+    More lenient detection to avoid false negatives.
     """
     # Payment-related keywords to look for (case-insensitive)
     payment_keywords = [
         # UPI Apps
         "gpay", "google pay", "phonepe", "paytm", "bhim", "amazon pay", "whatsapp pay",
+        "phone pe", "g pay", "google", "amazon",
         # Transaction indicators
         "upi", "paid", "payment", "successful", "completed", "transaction",
-        "transfer", "sent", "credited", "debited", "received",
+        "transfer", "sent", "credited", "debited", "received", "to",
         # Amount indicators
-        "₹", "inr", "rupee", "rs.", "rs ",
+        "₹", "inr", "rupee", "rs.", "rs ", "rs",
         # Transaction ID patterns
-        "utr", "ref", "txn", "transaction id", "reference",
+        "utr", "ref", "txn", "transaction id", "reference", "id",
         # Bank names (common)
-        "sbi", "hdfc", "icici", "axis", "kotak", "pnb", "bob", "canara",
+        "sbi", "hdfc", "icici", "axis", "kotak", "pnb", "bob", "canara", "oksbi", "okaxis", "okicici",
         # Success messages
-        "success", "done", "complete", "approved"
+        "success", "done", "complete", "approved", "confirmed"
     ]
     
     try:
@@ -377,11 +379,33 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
         
-        # Extract text using OCR
-        extracted_text = pytesseract.image_to_string(image, lang='eng')
+        # Try multiple OCR configurations for better results
+        extracted_text = ""
+        
+        # Config 1: Default
+        try:
+            text1 = pytesseract.image_to_string(image, lang='eng')
+            extracted_text += " " + text1
+        except:
+            pass
+        
+        # Config 2: With PSM 6 (uniform block of text)
+        try:
+            text2 = pytesseract.image_to_string(image, lang='eng', config='--psm 6')
+            extracted_text += " " + text2
+        except:
+            pass
+        
+        # Config 3: With PSM 11 (sparse text)
+        try:
+            text3 = pytesseract.image_to_string(image, lang='eng', config='--psm 11')
+            extracted_text += " " + text3
+        except:
+            pass
+        
         text_lower = extracted_text.lower()
         
-        logger.info(f"OCR extracted text (first 500 chars): {text_lower[:500]}")
+        logger.info(f"OCR extracted text (first 800 chars): {text_lower[:800]}")
         
         # Find matching keywords
         found_keywords = []
@@ -389,40 +413,82 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
             if keyword.lower() in text_lower:
                 found_keywords.append(keyword)
         
-        # Check for amount pattern (₹XXX or Rs. XXX)
-        amount_pattern = r'[₹]?\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?|rs\.?\s*\d+'
-        amounts = re.findall(amount_pattern, text_lower)
-        if amounts:
-            found_keywords.append(f"amount: {amounts[0]}")
+        # Check for amount pattern (₹XXX or Rs. XXX or just numbers with ₹)
+        amount_patterns = [
+            r'₹\s*\d+',
+            r'rs\.?\s*\d+',
+            r'\d+\s*₹',
+            r'[₹]\d{1,6}',
+            r'\b\d{1,3}(?:,\d{3})*(?:\.\d{2})?\b'
+        ]
+        amounts = []
+        for pattern in amount_patterns:
+            found = re.findall(pattern, text_lower)
+            amounts.extend(found)
         
-        # UPI ID pattern check
-        upi_pattern = r'[a-zA-Z0-9._-]+@[a-zA-Z]+'
-        upi_ids = re.findall(upi_pattern, text_lower)
+        if amounts:
+            found_keywords.append(f"amount_detected")
+        
+        # UPI ID pattern check (more flexible)
+        upi_patterns = [
+            r'[a-zA-Z0-9._-]+@[a-zA-Z]+',
+            r'@ok[a-z]+',
+            r'@paytm',
+            r'@ybl',
+            r'@upi'
+        ]
+        upi_ids = []
+        for pattern in upi_patterns:
+            found = re.findall(pattern, text_lower)
+            upi_ids.extend(found)
+        
         if upi_ids:
             found_keywords.append("upi_id_detected")
         
-        # Determine if valid payment screenshot
-        # Need at least 2 strong indicators:
-        # - UPI app name OR transaction keyword
-        # - Amount OR success indicator
-        strong_app_indicators = ["gpay", "google pay", "phonepe", "paytm", "bhim", "amazon pay", "whatsapp pay"]
-        strong_transaction_indicators = ["paid", "payment", "successful", "completed", "transaction", "transfer", "sent", "credited", "success", "done", "approved"]
+        # UTR/Transaction ID pattern
+        utr_pattern = r'[a-zA-Z]?\d{12,22}'
+        utrs = re.findall(utr_pattern, extracted_text)
+        if utrs:
+            found_keywords.append("utr_detected")
+        
+        # Determine if valid payment screenshot (MORE LENIENT)
+        strong_app_indicators = ["gpay", "google pay", "phonepe", "paytm", "bhim", "amazon pay", "whatsapp pay", "phone pe", "g pay", "google"]
+        strong_transaction_indicators = ["paid", "payment", "successful", "completed", "transaction", "transfer", "sent", "credited", "success", "done", "approved", "confirmed"]
         
         has_app = any(k.lower() in text_lower for k in strong_app_indicators)
         has_transaction = any(k.lower() in text_lower for k in strong_transaction_indicators)
         has_amount = bool(amounts)
         has_upi = "upi" in text_lower or bool(upi_ids)
+        has_utr = bool(utrs)
         
-        # Valid if: (app name OR UPI) AND (transaction indicator OR amount)
-        is_valid = (has_app or has_upi) and (has_transaction or has_amount)
+        # RELAXED VALIDATION LOGIC
+        is_valid = False
         
-        # Additional check: if "upi" and amount found, likely valid
-        if has_upi and has_amount:
+        # Rule 1: App name + any other indicator
+        if has_app and (has_transaction or has_amount or has_upi or has_utr):
+            is_valid = True
+        
+        # Rule 2: UPI + any other indicator
+        if has_upi and (has_transaction or has_amount or has_app):
+            is_valid = True
+        
+        # Rule 3: UTR number alone is strong indicator
+        if has_utr and (has_amount or has_app or has_transaction):
+            is_valid = True
+        
+        # Rule 4: Transaction word + amount
+        if has_transaction and has_amount:
             is_valid = True
             
-        # If found 3+ keywords, consider valid
-        if len(found_keywords) >= 3:
+        # Rule 5: Found 2+ keywords (very lenient)
+        if len(found_keywords) >= 2:
             is_valid = True
+        
+        # Rule 6: Contains "successful" or "success" - very strong indicator
+        if "successful" in text_lower or "success" in text_lower:
+            is_valid = True
+        
+        logger.info(f"OCR Result - is_valid: {is_valid}, keywords: {found_keywords}, has_app: {has_app}, has_transaction: {has_transaction}, has_amount: {has_amount}, has_upi: {has_upi}, has_utr: {has_utr}")
         
         return {
             "is_valid": is_valid,
@@ -431,15 +497,18 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
             "has_transaction": has_transaction,
             "has_amount": has_amount,
             "has_upi": has_upi,
-            "extracted_text_preview": text_lower[:200]
+            "has_utr": has_utr,
+            "extracted_text_preview": text_lower[:300]
         }
         
     except Exception as e:
         logger.error(f"OCR detection error: {e}")
+        # On error, be lenient and allow manual verification
         return {
             "is_valid": False,
             "error": str(e),
-            "found_keywords": []
+            "found_keywords": [],
+            "fallback_to_manual": True
         }
 
 

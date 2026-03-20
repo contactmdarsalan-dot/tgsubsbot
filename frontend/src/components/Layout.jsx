@@ -14,6 +14,7 @@ import {
   Shield,
   MessageSquare,
   UserCog,
+  MessagesSquare,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -22,6 +23,7 @@ const navItems = [
   { path: "/plans", label: "Plans", icon: Package },
   { path: "/subscribers", label: "Subscribers", icon: Users },
   { path: "/payments", label: "Payments", icon: CreditCard },
+  { path: "/chat-groups", label: "Chat Groups", icon: MessagesSquare },
   { path: "/automation", label: "Automation", icon: Bell },
   { path: "/settings", label: "Settings", icon: Settings },
   { path: "/support", label: "Support", icon: MessageSquare },
