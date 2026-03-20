@@ -2913,23 +2913,29 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             if new_status in ["member", "administrator"] and old_status in ["left", "kicked", ""]:
                 logger.info(f"New member {user_id} (@{username}) joined channel {chat_id}")
                 
-                # Send welcome message to user's private chat
+                # Send welcome message with plans directly to user's private chat
                 if user_id and not user.get("is_bot"):
+                    # Get plans
+                    plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+                    
                     welcome_msg = f"🎉 <b>Welcome {first_name}!</b>\n\n"
                     welcome_msg += "Thanks for joining our channel! 💕\n\n"
-                    welcome_msg += "🔥 <b>Want exclusive content?</b>\n"
-                    welcome_msg += "Subscribe to get access to premium content!\n\n"
-                    welcome_msg += "👇 Click below to see our plans:"
+                    welcome_msg += "🔥 <b>Get Exclusive Content!</b>\n"
+                    welcome_msg += "Subscribe now for premium access!\n\n"
+                    welcome_msg += "━━━━━━━━━━━━━━━\n"
+                    welcome_msg += "🎯 <b>Choose Your Plan:</b>\n\n"
                     
-                    bot_username = await get_bot_username(bot_token)
-                    buttons = [[{
-                        "text": "🔔 View Plans & Subscribe",
-                        "url": f"https://t.me/{bot_username}?start=subscribe"
-                    }]]
+                    buttons = []
+                    for plan in plans:
+                        inflated_price = plan['price'] + 500
+                        welcome_msg += f"📦 <b>{plan['name']}</b> - ₹{inflated_price}\n"
+                        buttons.append([{"text": f"📦 {plan['name']} - ₹{inflated_price}", "callback_data": f"buy_{plan['id']}"}])
+                    
+                    buttons.append([{"text": "🎁 Special Discount!", "callback_data": "special_discount"}])
                     
                     try:
                         await send_telegram_message_with_buttons(user_id, welcome_msg, buttons, bot_token)
-                        logger.info(f"Sent welcome message to new member {user_id}")
+                        logger.info(f"Sent welcome message with plans to new member {user_id}")
                     except Exception as e:
                         logger.error(f"Failed to send welcome message: {e}")
             
@@ -3737,7 +3743,8 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 await send_telegram_message(chat_id, msg, bot_token)
                 return {"ok": True}
         
-        if text == "/start":
+        if text == "/start" or text == "/start subscribe" or text == "/plans":
+            # Show plans directly
             plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
             
             welcome_msg = "🎉 <b>Welcome!</b>\n\n"
@@ -3968,6 +3975,95 @@ async def send_followups():
     for sub in subscribers:
         await send_telegram_message(sub["telegram_user_id"], followup_msg)
 
+async def send_daily_reminders():
+    """Send daily reminders to expired subscribers and non-subscribers"""
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    if not bot_token:
+        return
+    
+    logger.info("Starting daily reminders...")
+    
+    # Get plans for buttons
+    plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+    
+    buttons = []
+    for plan in plans:
+        inflated_price = plan['price'] + 500
+        buttons.append([{"text": f"📦 {plan['name']} - ₹{inflated_price}", "callback_data": f"buy_{plan['id']}"}])
+    buttons.append([{"text": "🎁 Special Discount!", "callback_data": "special_discount"}])
+    
+    sent_count = 0
+    
+    # 1. Expired subscribers
+    expired_subs = await db.subscribers.find({
+        "status": {"$in": ["expired", "grace"]}
+    }, {"_id": 0}).to_list(10000)
+    
+    for sub in expired_subs:
+        try:
+            msg = "⚠️ <b>Subscription Expired!</b>\n\n"
+            msg += f"Your {sub.get('plan_name', 'subscription')} has expired.\n\n"
+            msg += "🔥 <b>Don't miss out on exclusive content!</b>\n"
+            msg += "Renew now to continue access:\n\n"
+            
+            await send_telegram_message_with_buttons(sub["telegram_user_id"], msg, buttons, bot_token)
+            sent_count += 1
+            await asyncio.sleep(0.2)  # Rate limiting
+        except Exception as e:
+            logger.error(f"Failed to send reminder to {sub.get('telegram_user_id')}: {e}")
+    
+    # 2. Subscribers expiring soon (within 3 days)
+    three_days_later = datetime.now(timezone.utc) + timedelta(days=3)
+    active_subs = await db.subscribers.find({"status": "active"}, {"_id": 0}).to_list(10000)
+    
+    for sub in active_subs:
+        try:
+            end_date = datetime.fromisoformat(sub["end_date"]) if isinstance(sub["end_date"], str) else sub["end_date"]
+            if end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=timezone.utc)
+            
+            if end_date <= three_days_later:
+                days_left = (end_date - datetime.now(timezone.utc)).days
+                msg = f"⏰ <b>Subscription Expiring Soon!</b>\n\n"
+                msg += f"Your {sub.get('plan_name', 'subscription')} expires in <b>{days_left} days</b>.\n\n"
+                msg += "🔄 <b>Renew now to avoid interruption:</b>\n\n"
+                
+                await send_telegram_message_with_buttons(sub["telegram_user_id"], msg, buttons, bot_token)
+                sent_count += 1
+                await asyncio.sleep(0.2)
+        except Exception as e:
+            logger.error(f"Failed to send expiry reminder: {e}")
+    
+    # 3. Non-subscribers who interacted but never bought
+    # Get all user IDs from payments (pending/rejected)
+    non_buyers = await db.payments.find({
+        "status": {"$in": ["pending", "rejected"]}
+    }, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+    
+    # Get active subscriber IDs
+    active_ids = {s["telegram_user_id"] for s in await db.subscribers.find({"status": "active"}, {"telegram_user_id": 1}).to_list(10000)}
+    
+    sent_user_ids = set()
+    for p in non_buyers:
+        user_id = p.get("telegram_user_id")
+        if user_id and user_id not in active_ids and user_id not in sent_user_ids:
+            try:
+                msg = "🔔 <b>You're Missing Out!</b>\n\n"
+                msg += "We noticed you haven't subscribed yet.\n\n"
+                msg += "🔥 <b>Get exclusive content today!</b>\n"
+                msg += "Limited time offers available:\n\n"
+                
+                await send_telegram_message_with_buttons(user_id, msg, buttons, bot_token)
+                sent_user_ids.add(user_id)
+                sent_count += 1
+                await asyncio.sleep(0.2)
+            except Exception as e:
+                logger.error(f"Failed to send non-buyer reminder: {e}")
+    
+    logger.info(f"Daily reminders completed: {sent_count} messages sent")
+
 # ============== STARTUP/SHUTDOWN ==============
 
 @app.on_event("startup")
@@ -3975,9 +4071,15 @@ async def startup():
     # Schedule tasks
     scheduler.add_job(check_subscriptions, 'interval', hours=6)
     scheduler.add_job(send_followups, 'cron', day_of_week='mon,thu', hour=10)
-    scheduler.add_job(check_expired_chat_sessions, 'interval', seconds=30)  # Check every 30 seconds
+    scheduler.add_job(check_expired_chat_sessions, 'interval', seconds=30)
+    
+    # Daily reminders - 3 times a day (morning, afternoon, evening IST)
+    scheduler.add_job(send_daily_reminders, 'cron', hour=9, minute=0)   # 9 AM
+    scheduler.add_job(send_daily_reminders, 'cron', hour=14, minute=30) # 2:30 PM
+    scheduler.add_job(send_daily_reminders, 'cron', hour=20, minute=0)  # 8 PM
+    
     scheduler.start()
-    logger.info("Scheduler started")
+    logger.info("Scheduler started with daily reminders")
 
 @app.on_event("shutdown")
 async def shutdown():
