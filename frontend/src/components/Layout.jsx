@@ -15,6 +15,7 @@ import {
   MessageSquare,
   UserCog,
   MessagesSquare,
+  Radio,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -24,6 +25,7 @@ const navItems = [
   { path: "/subscribers", label: "Subscribers", icon: Users },
   { path: "/payments", label: "Payments", icon: CreditCard },
   { path: "/chat-groups", label: "Chat Groups", icon: MessagesSquare },
+  { path: "/broadcast", label: "Broadcast", icon: Radio },
   { path: "/automation", label: "Automation", icon: Bell },
   { path: "/settings", label: "Settings", icon: Settings },
   { path: "/support", label: "Support", icon: MessageSquare },

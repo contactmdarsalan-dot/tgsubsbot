@@ -2650,6 +2650,141 @@ async def delete_template(template_id: str, user = Depends(get_current_user)):
     await db.templates.delete_one({"id": template_id})
     return {"message": "Template deleted"}
 
+# ============== BROADCAST ROUTES ==============
+
+class BroadcastRequest(BaseModel):
+    message: str
+    target: str = "all"  # all, subscribers, channel_members
+    include_button: bool = False
+    button_text: str = "🔔 Subscribe Now"
+    button_url: str = ""
+
+@api_router.post("/broadcast")
+async def send_broadcast(request: BroadcastRequest, background_tasks: BackgroundTasks, user = Depends(get_current_user)):
+    """Send broadcast message to users"""
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="Bot token not configured")
+    
+    # Get target users based on selection
+    user_ids = set()
+    
+    if request.target in ["all", "subscribers"]:
+        # Get all subscribers
+        subscribers = await db.subscribers.find({"status": "active"}, {"_id": 0}).to_list(10000)
+        for sub in subscribers:
+            if sub.get("telegram_user_id"):
+                user_ids.add(str(sub["telegram_user_id"]))
+    
+    if request.target in ["all", "channel_members"]:
+        # Get users from payments (they interacted with bot)
+        payments = await db.payments.find({}, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+        for p in payments:
+            if p.get("telegram_user_id"):
+                user_ids.add(str(p["telegram_user_id"]))
+        
+        # Get from pending screenshots
+        pending = await db.pending_screenshots.find({}, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+        for p in pending:
+            if p.get("telegram_user_id"):
+                user_ids.add(str(p["telegram_user_id"]))
+    
+    if not user_ids:
+        raise HTTPException(status_code=400, detail="No users found to broadcast to")
+    
+    # Prepare button if needed
+    buttons = None
+    if request.include_button and request.button_url:
+        buttons = [[{"text": request.button_text, "url": request.button_url}]]
+    elif request.include_button:
+        bot_username = await get_bot_username(bot_token)
+        buttons = [[{"text": request.button_text, "url": f"https://t.me/{bot_username}?start=subscribe"}]]
+    
+    # Create broadcast record
+    broadcast_id = str(uuid.uuid4())
+    broadcast_record = {
+        "id": broadcast_id,
+        "message": request.message,
+        "target": request.target,
+        "total_users": len(user_ids),
+        "sent_count": 0,
+        "failed_count": 0,
+        "status": "in_progress",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": user.get("email", "")
+    }
+    await db.broadcasts.insert_one(broadcast_record)
+    
+    # Send in background
+    background_tasks.add_task(
+        send_broadcast_messages, 
+        broadcast_id, 
+        list(user_ids), 
+        request.message, 
+        buttons, 
+        bot_token
+    )
+    
+    return {
+        "message": f"Broadcast started to {len(user_ids)} users",
+        "broadcast_id": broadcast_id,
+        "total_users": len(user_ids)
+    }
+
+async def send_broadcast_messages(broadcast_id: str, user_ids: list, message: str, buttons: list, bot_token: str):
+    """Background task to send broadcast messages"""
+    sent_count = 0
+    failed_count = 0
+    
+    for user_id in user_ids:
+        try:
+            success = await send_telegram_message_with_buttons(user_id, message, buttons, bot_token)
+            if success:
+                sent_count += 1
+            else:
+                failed_count += 1
+        except Exception as e:
+            logger.error(f"Broadcast failed for {user_id}: {e}")
+            failed_count += 1
+        
+        # Rate limiting - wait between messages
+        await asyncio.sleep(0.1)
+        
+        # Update progress every 10 messages
+        if (sent_count + failed_count) % 10 == 0:
+            await db.broadcasts.update_one(
+                {"id": broadcast_id},
+                {"$set": {"sent_count": sent_count, "failed_count": failed_count}}
+            )
+    
+    # Final update
+    await db.broadcasts.update_one(
+        {"id": broadcast_id},
+        {"$set": {
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    logger.info(f"Broadcast {broadcast_id} completed: {sent_count} sent, {failed_count} failed")
+
+@api_router.get("/broadcasts")
+async def get_broadcasts(user = Depends(get_current_user)):
+    """Get all broadcast history"""
+    broadcasts = await db.broadcasts.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return broadcasts
+
+@api_router.get("/broadcasts/{broadcast_id}")
+async def get_broadcast(broadcast_id: str, user = Depends(get_current_user)):
+    """Get broadcast status"""
+    broadcast = await db.broadcasts.find_one({"id": broadcast_id}, {"_id": 0})
+    if not broadcast:
+        raise HTTPException(status_code=404, detail="Broadcast not found")
+    return broadcast
+
 # ============== TELEGRAM WEBHOOK ==============
 
 async def send_telegram_message_with_buttons(chat_id: str, message: str, buttons: list = None, bot_token: str = None, retries: int = 3):
@@ -2756,6 +2891,47 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             
                 except Exception as e:
                     logger.error(f"Failed to add subscribe button: {e}")
+            
+            return {"ok": True}
+        
+        # Handle new channel members - Send welcome message
+        chat_member_update = data.get("chat_member")
+        if chat_member_update and bot_token:
+            chat_id = str(chat_member_update.get("chat", {}).get("id", ""))
+            new_member = chat_member_update.get("new_chat_member", {})
+            old_member = chat_member_update.get("old_chat_member", {})
+            user = new_member.get("user", {})
+            user_id = str(user.get("id", ""))
+            username = user.get("username", "")
+            first_name = user.get("first_name", "")
+            
+            # Check if user joined (status changed to "member" or "administrator")
+            old_status = old_member.get("status", "")
+            new_status = new_member.get("status", "")
+            
+            # Only process if user is joining (not leaving)
+            if new_status in ["member", "administrator"] and old_status in ["left", "kicked", ""]:
+                logger.info(f"New member {user_id} (@{username}) joined channel {chat_id}")
+                
+                # Send welcome message to user's private chat
+                if user_id and not user.get("is_bot"):
+                    welcome_msg = f"🎉 <b>Welcome {first_name}!</b>\n\n"
+                    welcome_msg += "Thanks for joining our channel! 💕\n\n"
+                    welcome_msg += "🔥 <b>Want exclusive content?</b>\n"
+                    welcome_msg += "Subscribe to get access to premium content!\n\n"
+                    welcome_msg += "👇 Click below to see our plans:"
+                    
+                    bot_username = await get_bot_username(bot_token)
+                    buttons = [[{
+                        "text": "🔔 View Plans & Subscribe",
+                        "url": f"https://t.me/{bot_username}?start=subscribe"
+                    }]]
+                    
+                    try:
+                        await send_telegram_message_with_buttons(user_id, welcome_msg, buttons, bot_token)
+                        logger.info(f"Sent welcome message to new member {user_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to send welcome message: {e}")
             
             return {"ok": True}
         
