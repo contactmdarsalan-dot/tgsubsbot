@@ -2715,7 +2715,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             message_id = channel_post.get("message_id")
             
             # Only process posts from PROMO channel (not subscriber channel)
-            if post_chat_id == promo_channel_id and message_id:
+            # Skip forwarded messages (they can't be edited)
+            is_forwarded = channel_post.get("forward_from_chat") or channel_post.get("forward_origin")
+            
+            if post_chat_id == promo_channel_id and message_id and not is_forwarded:
                 # Wait a bit to ensure message is fully processed
                 await asyncio.sleep(0.5)
                 
@@ -2735,7 +2738,22 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             "message_id": message_id,
                             "reply_markup": {"inline_keyboard": subscribe_button}
                         })
-                        logger.info(f"Added subscribe button to promo channel post: {response.status_code}")
+                        
+                        if response.status_code == 200:
+                            logger.info(f"Added subscribe button to promo channel post: SUCCESS")
+                        else:
+                            # If edit fails, send a reply message with button
+                            logger.info(f"Edit failed ({response.status_code}), sending reply with button")
+                            reply_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                            await http_client.post(reply_url, json={
+                                "chat_id": post_chat_id,
+                                "text": "👆 <b>Interested?</b>\n\n🔔 Click below to subscribe!",
+                                "parse_mode": "HTML",
+                                "reply_to_message_id": message_id,
+                                "reply_markup": {"inline_keyboard": subscribe_button}
+                            })
+                            logger.info("Sent reply message with subscribe button")
+                            
                 except Exception as e:
                     logger.error(f"Failed to add subscribe button: {e}")
             
