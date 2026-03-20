@@ -821,13 +821,18 @@ async def check_expired_chat_sessions():
             renewal_msg = "⏰ <b>Time's Up!</b>\n\n"
             renewal_msg += f"Your {plan_type} chat session has ended.\n\n"
             renewal_msg += "🔄 <b>Want to continue?</b>\n"
-            renewal_msg += "Click below to renew your chat session!"
+            renewal_msg += "Click below to renew or exit!"
             
-            # Send message in group
+            # Send message in group with Renew and Cancel buttons
             try:
                 async with httpx.AsyncClient() as http_client:
                     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-                    buttons = [[{"text": "🔄 Renew Chat", "callback_data": f"renew_chat_{session['id']}"}]]
+                    buttons = [
+                        [
+                            {"text": "🔄 Renew Chat", "callback_data": f"renew_chat_{session['id']}"},
+                            {"text": "❌ Exit Chat", "callback_data": f"exit_chat_{session['id']}"}
+                        ]
+                    ]
                     await http_client.post(url, json={
                         "chat_id": group_id,
                         "text": renewal_msg,
@@ -3201,6 +3206,37 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         await send_telegram_message(chat_id, "Plan not found. Use /start to see plans.", bot_token)
                 else:
                     await send_telegram_message(chat_id, "Session not found. Use /start to buy new plan.", bot_token)
+            
+            elif callback_data.startswith("exit_chat_"):
+                # Handle chat session exit/cancel
+                session_id = callback_data.replace("exit_chat_", "")
+                session = await db.chat_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session:
+                    group_id = session.get("group_id")
+                    user_id = session.get("user_id")
+                    
+                    # Release the group and kick user
+                    if group_id:
+                        await release_chat_group(group_id)
+                    
+                    # Update session status
+                    await db.chat_sessions.update_one(
+                        {"id": session_id},
+                        {"$set": {"status": "cancelled", "cancelled_at": datetime.now(timezone.utc).isoformat()}}
+                    )
+                    
+                    # Send goodbye message
+                    exit_msg = "👋 <b>Chat Session Ended</b>\n\n"
+                    exit_msg += "Thank you for using our service!\n\n"
+                    exit_msg += "💬 Want to chat again?\n"
+                    exit_msg += "Use /start to buy a new session."
+                    
+                    await send_telegram_message(chat_id, exit_msg, bot_token)
+                    
+                    logger.info(f"User {chat_id} exited chat session {session_id}")
+                else:
+                    await send_telegram_message(chat_id, "Session not found.", bot_token)
             
             elif callback_data.startswith("renew_"):
                 # Handle renewal - go directly to payment for the same plan
