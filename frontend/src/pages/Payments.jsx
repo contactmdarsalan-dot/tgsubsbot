@@ -143,6 +143,30 @@ export default function Payments() {
     }
   };
 
+  const handleUnverify = async (paymentId) => {
+    if (!window.confirm("Are you sure you want to unverify this payment? Subscriber access will be removed.")) return;
+    try {
+      await axios.put(`${API}/payments/${paymentId}/unverify`, {}, getAuthHeaders());
+      toast.success("Payment unverified - subscriber removed");
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to unverify payment");
+    }
+  };
+
+  const handleViewScreenshot = async (payment) => {
+    if (!payment.screenshot_file_id) {
+      toast.error("No screenshot available for this payment");
+      return;
+    }
+    try {
+      const response = await axios.get(`${API}/payments/${payment.id}/screenshot`, getAuthHeaders());
+      setScreenshotModal({ open: true, url: response.data.screenshot_url, payment });
+    } catch (error) {
+      toast.error("Failed to load screenshot");
+    }
+  };
+
   const handleDelete = async (paymentId) => {
     if (!window.confirm("Are you sure you want to delete this payment? This action cannot be undone.")) return;
     try {
@@ -607,6 +631,21 @@ export default function Payments() {
                       <TableCell className="font-mono text-sm">{formatDate(payment.created_at)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
+                          {/* View Screenshot Button */}
+                          {payment.screenshot_file_id && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleViewScreenshot(payment)}
+                              data-testid={`view-ss-${payment.id}`}
+                              className="text-blue-600 hover:bg-blue-50"
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              SS
+                            </Button>
+                          )}
+                          
+                          {/* Pending: Show Verify & Reject */}
                           {payment.status === "pending" && (
                             <>
                               <Button
@@ -630,9 +669,36 @@ export default function Payments() {
                               </Button>
                             </>
                           )}
-                          {payment.status === "rejected" && (
-                            <Badge className="bg-red-100 text-red-700">Rejected</Badge>
+                          
+                          {/* Verified: Show Unverify */}
+                          {payment.status === "verified" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleUnverify(payment.id)}
+                              data-testid={`unverify-payment-${payment.id}`}
+                              className="text-orange-600 hover:bg-orange-50"
+                            >
+                              <XCircle className="w-4 h-4 mr-1" />
+                              Unverify
+                            </Button>
                           )}
+                          
+                          {/* Rejected: Show Re-verify option */}
+                          {payment.status === "rejected" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleVerify(payment.id)}
+                              data-testid={`reverify-payment-${payment.id}`}
+                              className="text-green-600 hover:bg-green-50"
+                            >
+                              <CheckCircle className="w-4 h-4 mr-1" />
+                              Verify
+                            </Button>
+                          )}
+                          
+                          {/* Delete - Admin only */}
                           {isAdmin && (
                             <Button
                               size="sm"

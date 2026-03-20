@@ -2041,10 +2041,82 @@ async def get_payments(status: Optional[str] = None, user = Depends(get_current_
         query["status"] = status
     # Sort by created_at descending (newest first)
     payments = await db.payments.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
     for p in payments:
         if isinstance(p.get('created_at'), str):
             p['created_at'] = datetime.fromisoformat(p['created_at'])
+        
+        # Add screenshot URL if available
+        if p.get('screenshot_file_id') and bot_token:
+            p['screenshot_url'] = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={p['screenshot_file_id']}"
+    
     return payments
+
+@api_router.get("/payments/{payment_id}/screenshot")
+async def get_payment_screenshot(payment_id: str, user = Depends(get_current_user)):
+    """Get screenshot URL for a payment"""
+    payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    
+    if not payment.get("screenshot_file_id"):
+        raise HTTPException(status_code=404, detail="No screenshot available")
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="Bot token not configured")
+    
+    # Get file path from Telegram
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as http_client:
+            file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={payment['screenshot_file_id']}"
+            response = await http_client.get(file_info_url)
+            if response.status_code == 200:
+                file_path = response.json().get("result", {}).get("file_path")
+                if file_path:
+                    download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+                    return {"screenshot_url": download_url}
+    except Exception as e:
+        logger.error(f"Error getting screenshot: {e}")
+    
+    raise HTTPException(status_code=400, detail="Could not retrieve screenshot")
+
+@api_router.put("/payments/{payment_id}/unverify")
+async def unverify_payment(payment_id: str, user = Depends(get_current_user)):
+    """Unverify a payment - changes status back to pending"""
+    payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    
+    if payment.get("status") != "verified":
+        raise HTTPException(status_code=400, detail="Payment is not verified")
+    
+    # Update payment status to pending
+    await db.payments.update_one(
+        {"id": payment_id},
+        {"$set": {"status": "pending", "unverified_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    # Remove subscriber if exists
+    if payment.get("telegram_user_id"):
+        await db.subscribers.delete_one({"telegram_user_id": payment["telegram_user_id"], "plan_id": payment.get("plan_id")})
+    
+    # Notify user
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    if bot_token and payment.get("telegram_user_id"):
+        msg = "⚠️ <b>Payment Status Updated</b>\n\n"
+        msg += f"Your payment for {payment.get('plan_name', 'subscription')} has been marked for review.\n"
+        msg += "Please contact support if needed."
+        await send_telegram_message(payment["telegram_user_id"], msg, bot_token)
+    
+    return {"message": "Payment unverified"}
+
 
 # ============== BOT CHECKOUT ROUTES ==============
 
@@ -2270,13 +2342,14 @@ async def verify_manual_payment(payment_id: str, background_tasks: BackgroundTas
 
 @api_router.put("/payments/{payment_id}/reject")
 async def reject_payment(payment_id: str, data: dict = None, user = Depends(get_current_user)):
-    """Reject a pending payment"""
+    """Reject a payment"""
     payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
     
-    if payment.get("status") != "pending":
-        raise HTTPException(status_code=400, detail="Can only reject pending payments")
+    # Can reject pending or verified payments
+    if payment.get("status") == "rejected":
+        raise HTTPException(status_code=400, detail="Payment is already rejected")
     
     reason = data.get("reason", "Payment rejected by admin") if data else "Payment rejected by admin"
     
