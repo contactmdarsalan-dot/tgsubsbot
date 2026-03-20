@@ -352,7 +352,10 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
     Use OCR to detect if image is a valid payment screenshot.
     Returns dict with is_valid and detected_keywords.
     More lenient detection to avoid false negatives.
+    Includes image preprocessing for dark mode screenshots.
     """
+    from PIL import ImageOps, ImageEnhance, ImageFilter
+    
     # Payment-related keywords to look for (case-insensitive)
     payment_keywords = [
         # UPI Apps
@@ -379,29 +382,55 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
         
-        # Try multiple OCR configurations for better results
+        # Create multiple versions of the image for better OCR
+        images_to_try = []
+        
+        # Version 1: Original
+        images_to_try.append(("original", image))
+        
+        # Version 2: Grayscale
+        gray_image = image.convert('L')
+        images_to_try.append(("grayscale", gray_image))
+        
+        # Version 3: Inverted (for dark mode screenshots)
+        inverted_image = ImageOps.invert(image.convert('RGB'))
+        images_to_try.append(("inverted", inverted_image))
+        
+        # Version 4: High contrast
+        enhancer = ImageEnhance.Contrast(image)
+        high_contrast = enhancer.enhance(2.0)
+        images_to_try.append(("high_contrast", high_contrast))
+        
+        # Version 5: Inverted grayscale (best for dark screenshots)
+        gray_inverted = ImageOps.invert(gray_image)
+        images_to_try.append(("gray_inverted", gray_inverted))
+        
+        # Version 6: Binarized (threshold)
+        threshold = gray_image.point(lambda x: 255 if x > 128 else 0, '1')
+        images_to_try.append(("threshold", threshold))
+        
+        # Version 7: Inverted binarized
+        inv_threshold = gray_inverted.point(lambda x: 255 if x > 128 else 0, '1')
+        images_to_try.append(("inv_threshold", inv_threshold))
+        
+        # Try OCR on all versions and collect text
         extracted_text = ""
         
-        # Config 1: Default
-        try:
-            text1 = pytesseract.image_to_string(image, lang='eng')
-            extracted_text += " " + text1
-        except:
-            pass
-        
-        # Config 2: With PSM 6 (uniform block of text)
-        try:
-            text2 = pytesseract.image_to_string(image, lang='eng', config='--psm 6')
-            extracted_text += " " + text2
-        except:
-            pass
-        
-        # Config 3: With PSM 11 (sparse text)
-        try:
-            text3 = pytesseract.image_to_string(image, lang='eng', config='--psm 11')
-            extracted_text += " " + text3
-        except:
-            pass
+        for name, img in images_to_try:
+            try:
+                # Default config
+                text = pytesseract.image_to_string(img, lang='eng')
+                if text.strip():
+                    extracted_text += " " + text
+                    logger.info(f"OCR {name}: extracted {len(text)} chars")
+                
+                # PSM 6 config
+                text2 = pytesseract.image_to_string(img, lang='eng', config='--psm 6')
+                if text2.strip():
+                    extracted_text += " " + text2
+            except Exception as e:
+                logger.debug(f"OCR {name} failed: {e}")
+                pass
         
         text_lower = extracted_text.lower()
         
@@ -510,7 +539,6 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
             "found_keywords": [],
             "fallback_to_manual": True
         }
-
 
 
 async def send_screenshot_reminders(chat_id: str, username: str, bot_token: str):
