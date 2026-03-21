@@ -349,196 +349,60 @@ async def download_telegram_photo(file_id: str, bot_token: str) -> bytes:
 
 def detect_payment_screenshot(image_bytes: bytes) -> dict:
     """
-    Use OCR to detect if image is a valid payment screenshot.
-    Returns dict with is_valid and detected_keywords.
-    More lenient detection to avoid false negatives.
-    Includes image preprocessing for dark mode screenshots.
+    FAST OCR to detect if image is a valid payment screenshot.
+    Simplified for speed - tries only 2 versions.
     """
-    from PIL import ImageOps, ImageEnhance, ImageFilter
+    from PIL import ImageOps
     
-    # Payment-related keywords to look for (case-insensitive)
     payment_keywords = [
-        # UPI Apps
-        "gpay", "google pay", "phonepe", "paytm", "bhim", "amazon pay", "whatsapp pay",
-        "phone pe", "g pay", "google", "amazon",
-        # Transaction indicators
+        "gpay", "google pay", "phonepe", "paytm", "bhim", "amazon pay",
         "upi", "paid", "payment", "successful", "completed", "transaction",
-        "transfer", "sent", "credited", "debited", "received", "to",
-        # Amount indicators
-        "₹", "inr", "rupee", "rs.", "rs ", "rs",
-        # Transaction ID patterns
-        "utr", "ref", "txn", "transaction id", "reference", "id",
-        # Bank names (common)
-        "sbi", "hdfc", "icici", "axis", "kotak", "pnb", "bob", "canara", "oksbi", "okaxis", "okicici",
-        # Success messages
-        "success", "done", "complete", "approved", "confirmed"
+        "success", "done", "approved", "₹", "rs"
     ]
     
     try:
-        # Open image from bytes
         image = Image.open(BytesIO(image_bytes))
-        
-        # Convert to RGB if necessary (for PNG with transparency)
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
         
-        # Create multiple versions of the image for better OCR
-        images_to_try = []
-        
-        # Version 1: Original
-        images_to_try.append(("original", image))
-        
-        # Version 2: Grayscale
-        gray_image = image.convert('L')
-        images_to_try.append(("grayscale", gray_image))
-        
-        # Version 3: Inverted (for dark mode screenshots)
-        inverted_image = ImageOps.invert(image.convert('RGB'))
-        images_to_try.append(("inverted", inverted_image))
-        
-        # Version 4: High contrast
-        enhancer = ImageEnhance.Contrast(image)
-        high_contrast = enhancer.enhance(2.0)
-        images_to_try.append(("high_contrast", high_contrast))
-        
-        # Version 5: Inverted grayscale (best for dark screenshots)
-        gray_inverted = ImageOps.invert(gray_image)
-        images_to_try.append(("gray_inverted", gray_inverted))
-        
-        # Version 6: Binarized (threshold)
-        threshold = gray_image.point(lambda x: 255 if x > 128 else 0, '1')
-        images_to_try.append(("threshold", threshold))
-        
-        # Version 7: Inverted binarized
-        inv_threshold = gray_inverted.point(lambda x: 255 if x > 128 else 0, '1')
-        images_to_try.append(("inv_threshold", inv_threshold))
-        
-        # Try OCR on all versions and collect text
         extracted_text = ""
         
-        for name, img in images_to_try:
-            try:
-                # Default config
-                text = pytesseract.image_to_string(img, lang='eng')
-                if text.strip():
-                    extracted_text += " " + text
-                    logger.info(f"OCR {name}: extracted {len(text)} chars")
-                
-                # PSM 6 config
-                text2 = pytesseract.image_to_string(img, lang='eng', config='--psm 6')
-                if text2.strip():
-                    extracted_text += " " + text2
-            except Exception as e:
-                logger.debug(f"OCR {name} failed: {e}")
-                pass
+        # Try only 2 versions for speed
+        # Version 1: Grayscale
+        gray = image.convert('L')
+        try:
+            text1 = pytesseract.image_to_string(gray, lang='eng', config='--psm 6 --oem 1')
+            extracted_text += " " + text1
+        except:
+            pass
+        
+        # Version 2: Inverted grayscale (for dark mode)
+        try:
+            inv_gray = ImageOps.invert(gray)
+            text2 = pytesseract.image_to_string(inv_gray, lang='eng', config='--psm 6 --oem 1')
+            extracted_text += " " + text2
+        except:
+            pass
         
         text_lower = extracted_text.lower()
         
-        logger.info(f"OCR extracted text (first 800 chars): {text_lower[:800]}")
+        # Find keywords
+        found_keywords = [k for k in payment_keywords if k in text_lower]
         
-        # Find matching keywords
-        found_keywords = []
-        for keyword in payment_keywords:
-            if keyword.lower() in text_lower:
-                found_keywords.append(keyword)
+        # Simple validation - any 1 keyword = valid (very lenient for speed)
+        is_valid = len(found_keywords) >= 1 or "success" in text_lower or "paid" in text_lower
         
-        # Check for amount pattern (₹XXX or Rs. XXX or just numbers with ₹)
-        amount_patterns = [
-            r'₹\s*\d+',
-            r'rs\.?\s*\d+',
-            r'\d+\s*₹',
-            r'[₹]\d{1,6}',
-            r'\b\d{1,3}(?:,\d{3})*(?:\.\d{2})?\b'
-        ]
-        amounts = []
-        for pattern in amount_patterns:
-            found = re.findall(pattern, text_lower)
-            amounts.extend(found)
-        
-        if amounts:
-            found_keywords.append(f"amount_detected")
-        
-        # UPI ID pattern check (more flexible)
-        upi_patterns = [
-            r'[a-zA-Z0-9._-]+@[a-zA-Z]+',
-            r'@ok[a-z]+',
-            r'@paytm',
-            r'@ybl',
-            r'@upi'
-        ]
-        upi_ids = []
-        for pattern in upi_patterns:
-            found = re.findall(pattern, text_lower)
-            upi_ids.extend(found)
-        
-        if upi_ids:
-            found_keywords.append("upi_id_detected")
-        
-        # UTR/Transaction ID pattern
-        utr_pattern = r'[a-zA-Z]?\d{12,22}'
-        utrs = re.findall(utr_pattern, extracted_text)
-        if utrs:
-            found_keywords.append("utr_detected")
-        
-        # Determine if valid payment screenshot (MORE LENIENT)
-        strong_app_indicators = ["gpay", "google pay", "phonepe", "paytm", "bhim", "amazon pay", "whatsapp pay", "phone pe", "g pay", "google"]
-        strong_transaction_indicators = ["paid", "payment", "successful", "completed", "transaction", "transfer", "sent", "credited", "success", "done", "approved", "confirmed"]
-        
-        has_app = any(k.lower() in text_lower for k in strong_app_indicators)
-        has_transaction = any(k.lower() in text_lower for k in strong_transaction_indicators)
-        has_amount = bool(amounts)
-        has_upi = "upi" in text_lower or bool(upi_ids)
-        has_utr = bool(utrs)
-        
-        # RELAXED VALIDATION LOGIC
-        is_valid = False
-        
-        # Rule 1: App name + any other indicator
-        if has_app and (has_transaction or has_amount or has_upi or has_utr):
-            is_valid = True
-        
-        # Rule 2: UPI + any other indicator
-        if has_upi and (has_transaction or has_amount or has_app):
-            is_valid = True
-        
-        # Rule 3: UTR number alone is strong indicator
-        if has_utr and (has_amount or has_app or has_transaction):
-            is_valid = True
-        
-        # Rule 4: Transaction word + amount
-        if has_transaction and has_amount:
-            is_valid = True
-            
-        # Rule 5: Found 2+ keywords (very lenient)
-        if len(found_keywords) >= 2:
-            is_valid = True
-        
-        # Rule 6: Contains "successful" or "success" - very strong indicator
-        if "successful" in text_lower or "success" in text_lower:
-            is_valid = True
-        
-        logger.info(f"OCR Result - is_valid: {is_valid}, keywords: {found_keywords}, has_app: {has_app}, has_transaction: {has_transaction}, has_amount: {has_amount}, has_upi: {has_upi}, has_utr: {has_utr}")
+        logger.info(f"Fast OCR: found {len(found_keywords)} keywords, valid={is_valid}")
         
         return {
             "is_valid": is_valid,
             "found_keywords": found_keywords,
-            "has_app": has_app,
-            "has_transaction": has_transaction,
-            "has_amount": has_amount,
-            "has_upi": has_upi,
-            "has_utr": has_utr,
-            "extracted_text_preview": text_lower[:300]
+            "extracted_text_preview": text_lower[:200]
         }
         
     except Exception as e:
-        logger.error(f"OCR detection error: {e}")
-        # On error, be lenient and allow manual verification
-        return {
-            "is_valid": False,
-            "error": str(e),
-            "found_keywords": [],
-            "fallback_to_manual": True
-        }
+        logger.error(f"OCR error: {e}")
+        return {"is_valid": False, "error": str(e), "found_keywords": []}
 
 
 async def send_screenshot_reminders(chat_id: str, username: str, bot_token: str):
