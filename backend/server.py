@@ -2718,10 +2718,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             is_forwarded = channel_post.get("forward_from_chat") or channel_post.get("forward_origin")
             
             if post_chat_id == promo_channel_id and message_id and not is_forwarded:
-                # Wait a bit to ensure message is fully processed
-                await asyncio.sleep(0.5)
-                
-                # Add Subscribe button by editing the message
+                # Add Subscribe button by editing the message (no delay)
                 try:
                     bot_username = await get_bot_username(bot_token)
                     subscribe_button = [[{
@@ -3399,10 +3396,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     # Get the photo file_id (largest size)
                     photo_file_id = photo[-1]["file_id"] if photo else None
                     
-                    # Send processing message
-                    await send_telegram_message(chat_id, "🔍 <b>Analyzing screenshot...</b>\n\nPlease wait while we verify your payment.", bot_token)
-                    
-                    # Download and analyze photo with OCR
+                    # Download and analyze photo with OCR (skip "analyzing" message for speed)
                     image_bytes = await download_telegram_photo(photo_file_id, bot_token)
                     
                     if image_bytes:
