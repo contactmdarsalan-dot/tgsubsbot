@@ -172,6 +172,7 @@ class BotSettings(BaseModel):
     promo_channel_id: str = ""     # Public promo channel (Subscribe button will appear here)
     website_link: str = ""
     qr_code_url: str = ""
+    payment_upi_id: str = ""       # UPI ID for payment verification (e.g., miraclecouplee@oksbi)
     reminder_days_before: int = 3
     grace_period_days: int = 2
     followup_enabled: bool = True
@@ -3569,11 +3570,15 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         ocr_result = detect_payment_screenshot(image_bytes)
                         logger.info(f"OCR Result for user {chat_id}: {ocr_result}")
                         
+                        # Get expected UPI ID from settings
+                        settings = await get_bot_settings()
+                        expected_upi = settings.get("payment_upi_id", "")
+                        
                         # Run AI analysis for better accuracy and fake detection
                         ai_result = await analyze_payment_screenshot_with_ai(
                             image_bytes,
                             expected_amount=plan.get('price'),
-                            expected_upi_id=None  # Can get from settings if configured
+                            expected_upi_id=expected_upi if expected_upi else None
                         )
                         logger.info(f"AI Result for user {chat_id}: {ai_result}")
                         

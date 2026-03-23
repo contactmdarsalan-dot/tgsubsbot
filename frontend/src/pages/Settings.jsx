@@ -31,6 +31,7 @@ export default function Settings() {
     promo_channel_id: "",
     website_link: "",
     qr_code_url: "",
+    payment_upi_id: "",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -338,6 +339,31 @@ export default function Settings() {
                 </div>
               </div>
             )}
+
+            <div className="space-y-2">
+              <Label htmlFor="payment_upi_id">Payment UPI ID (AI Verification)</Label>
+              <Input
+                id="payment_upi_id"
+                value={settings.payment_upi_id}
+                onChange={(e) =>
+                  setSettings({ ...settings, payment_upi_id: e.target.value })
+                }
+                placeholder="e.g., miraclecouplee@oksbi"
+                data-testid="payment-upi-input"
+                className="bg-muted/50 border-transparent focus:border-primary font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Your UPI ID for receiving payments. AI will match this with payment screenshots for auto-verification.
+              </p>
+            </div>
+
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+              <h4 className="text-sm font-medium text-green-800 mb-1">🤖 AI Payment Verification</h4>
+              <p className="text-xs text-green-700">
+                GPT-4o Vision analyzes payment screenshots to extract amount, UPI ID, and detect fake screenshots. 
+                Payments with 85%+ confidence are auto-approved!
+              </p>
+            </div>
 
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <h4 className="text-sm font-medium text-yellow-800 mb-1">Razorpay Setup</h4>
