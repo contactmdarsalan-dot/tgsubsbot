@@ -156,7 +156,7 @@ export default function Login() {
             <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur">
               <Bot className="w-6 h-6 text-white" />
             </div>
-            <span className="font-heading text-2xl font-bold text-white">SubsBot</span>
+            <span className="font-heading text-2xl font-bold text-white">Tgsubsbot</span>
           </div>
         </div>
 
@@ -172,7 +172,7 @@ export default function Login() {
         </div>
 
         <div className="text-white/60 text-sm">
-          © 2025 SubsBot. All rights reserved.
+          © 2025 Tgsubsbot. All rights reserved.
         </div>
       </div>
 
@@ -184,7 +184,7 @@ export default function Login() {
             <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
               <Bot className="w-5 h-5 text-white" />
             </div>
-            <span className="font-heading text-xl font-bold">SubsBot</span>
+            <span className="font-heading text-xl font-bold">Tgsubsbot</span>
           </div>
 
           {/* Login Method Toggle */}
