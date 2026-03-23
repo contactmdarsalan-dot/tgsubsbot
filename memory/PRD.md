@@ -44,6 +44,23 @@ User requested a Telegram Subscription Bot with:
   - Dashboard sidebar branding updated
   - Deployment zip file recreated
 
+- [x] **AI Payment Screenshot Analysis (GPT-4o Vision)**
+  - Integrated OpenAI GPT-4o Vision via Emergent Universal Key
+  - Features:
+    - Auto-detect payment amount, UPI ID, transaction ID
+    - Detect fake/edited screenshots
+    - Confidence scoring (0-100%)
+    - Auto-approve payments with confidence >= 85%
+  - Fallback to OCR if AI unavailable/low confidence
+  - AI analysis data stored in payment records
+
+- [x] **Admin Unverify → Kick from Channel**
+  - When admin unverifies a payment, user is automatically kicked from:
+    - Main premium channel
+    - Any assigned chat groups
+  - User receives notification about rejection
+  - Subscription removed from database
+
 ### VPS Deployment (Previous Session - Completed)
 - [x] Full VPS migration from Emergent preview to user's Hostinger VPS
 - [x] Docker Compose setup with Coolify panel
@@ -91,17 +108,19 @@ User requested a Telegram Subscription Bot with:
 - Payment Reject working
 - VPS Deployment complete
 - Branding update complete (Tgsubsbot)
+- AI Payment Analysis (GPT-4o Vision) complete
+- Admin Unverify → Kick from Channel complete
 
 ### P1 (Important) - Pending
-- [ ] Full E2E Testing on VPS deployment (subscription flow, OCR, payments)
+- [ ] Full E2E Testing on VPS deployment (subscription flow, AI verification, payments)
 - [ ] Add Chat Groups in production for Time-Limited Chat feature
 - [ ] Razorpay Gateway for Bot Subscriptions (Needs user API keys)
-- [ ] Twilio OTP for phone login (Needs user credentials)
 
 ### P2 (Nice to have)
 - [ ] Email notifications (Resend integration)
 - [ ] Export to CSV
 - [ ] Backend code refactoring (server.py is 4000+ lines)
+- [ ] Show AI analysis details in admin dashboard payment cards
 
 ## Test Credentials
 - **Super Admin**: gamerxboys8958@gmail.com / Sumit@8958

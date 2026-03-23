@@ -7,6 +7,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import random
+import base64
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
@@ -23,6 +24,7 @@ import pytesseract
 from PIL import Image
 from io import BytesIO
 import re
+from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -50,6 +52,9 @@ if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
 # Telegram Bot Token
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID', '')
+
+# Emergent LLM Key for AI payment analysis
+EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
 
 # JWT Secret
 JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production')
@@ -403,6 +408,140 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
     except Exception as e:
         logger.error(f"OCR error: {e}")
         return {"is_valid": False, "error": str(e), "found_keywords": []}
+
+
+# ============== AI PAYMENT ANALYSIS (GPT-4o Vision) ==============
+
+async def analyze_payment_screenshot_with_ai(image_bytes: bytes, expected_amount: float = None, expected_upi_id: str = None) -> dict:
+    """
+    Use GPT-4o Vision to analyze payment screenshot.
+    Returns: is_valid, confidence, extracted_data, fake_indicators, auto_approve
+    """
+    if not EMERGENT_LLM_KEY:
+        logger.warning("EMERGENT_LLM_KEY not configured, skipping AI analysis")
+        return {"ai_enabled": False, "error": "AI not configured"}
+    
+    try:
+        # Convert image to base64
+        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+        
+        # Create AI chat instance
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"payment-analysis-{uuid.uuid4()}",
+            system_message="""You are an expert payment screenshot analyzer. Your job is to:
+1. Extract payment details (amount, UPI ID, transaction ID, date/time, payment app, status)
+2. Detect if the screenshot is fake/edited (look for: inconsistent fonts, pixel artifacts, wrong shadows, misaligned elements, suspicious timestamps)
+3. Verify if payment status shows "Success", "Completed", or "Paid"
+4. Match amount and UPI ID if provided
+
+RESPOND ONLY IN THIS JSON FORMAT:
+{
+    "is_valid_payment": true/false,
+    "confidence_score": 0-100,
+    "extracted_data": {
+        "amount": "extracted amount or null",
+        "upi_id": "extracted UPI ID or null",
+        "transaction_id": "extracted transaction ID or null",
+        "payment_app": "GPay/PhonePe/Paytm/etc or null",
+        "status": "Success/Completed/Failed/Pending or null",
+        "timestamp": "extracted date/time or null"
+    },
+    "fake_indicators": ["list of suspicious elements found"],
+    "amount_matches": true/false/null,
+    "upi_matches": true/false/null,
+    "auto_approve_recommended": true/false,
+    "reason": "brief explanation"
+}"""
+        ).with_model("openai", "gpt-4o")
+        
+        # Build prompt
+        prompt = "Analyze this payment screenshot and extract all details. Check if it's a genuine payment confirmation."
+        if expected_amount:
+            prompt += f"\n\nExpected payment amount: ₹{expected_amount}"
+        if expected_upi_id:
+            prompt += f"\nExpected UPI ID: {expected_upi_id}"
+        
+        # Create message with image
+        image_content = ImageContent(image_base64=image_base64)
+        user_message = UserMessage(
+            text=prompt,
+            file_contents=[image_content]
+        )
+        
+        # Send to AI
+        response = await chat.send_message(user_message)
+        logger.info(f"AI Payment Analysis Response: {response[:500]}")
+        
+        # Parse JSON response
+        import json
+        try:
+            # Extract JSON from response (handle markdown code blocks)
+            json_str = response
+            if "```json" in response:
+                json_str = response.split("```json")[1].split("```")[0].strip()
+            elif "```" in response:
+                json_str = response.split("```")[1].split("```")[0].strip()
+            
+            result = json.loads(json_str)
+            result["ai_enabled"] = True
+            result["raw_response"] = response[:500]
+            
+            # Auto-approve logic: confidence >= 85 AND is_valid AND no major fake indicators
+            if result.get("confidence_score", 0) >= 85 and result.get("is_valid_payment", False):
+                if not result.get("fake_indicators") or len(result.get("fake_indicators", [])) == 0:
+                    result["auto_approve_recommended"] = True
+                else:
+                    result["auto_approve_recommended"] = False
+            
+            return result
+            
+        except json.JSONDecodeError as je:
+            logger.error(f"Failed to parse AI response as JSON: {je}")
+            return {
+                "ai_enabled": True,
+                "is_valid_payment": False,
+                "confidence_score": 0,
+                "auto_approve_recommended": False,
+                "error": "Failed to parse AI response",
+                "raw_response": response[:500]
+            }
+            
+    except Exception as e:
+        logger.error(f"AI Payment Analysis Error: {e}")
+        return {
+            "ai_enabled": True,
+            "is_valid_payment": False,
+            "confidence_score": 0,
+            "auto_approve_recommended": False,
+            "error": str(e)
+        }
+
+
+async def kick_user_from_channel(telegram_user_id: str):
+    """Kick user from the main channel when payment is unverified"""
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    channel_id = settings.get("telegram_channel_id", "") or TELEGRAM_CHANNEL_ID
+    
+    if not bot_token or not channel_id or not telegram_user_id:
+        logger.warning(f"Cannot kick user - missing: token={bool(bot_token)}, channel={bool(channel_id)}, user={bool(telegram_user_id)}")
+        return False
+    
+    try:
+        async with httpx.AsyncClient() as http_client:
+            # Ban temporarily (35 seconds) to kick
+            url = f"https://api.telegram.org/bot{bot_token}/banChatMember"
+            response = await http_client.post(url, json={
+                "chat_id": channel_id,
+                "user_id": int(telegram_user_id),
+                "until_date": int((datetime.now(timezone.utc) + timedelta(seconds=35)).timestamp())
+            })
+            logger.info(f"Kick from channel response: {response.status_code} - {response.text}")
+            return response.status_code == 200
+    except Exception as e:
+        logger.error(f"Error kicking user from channel: {e}")
+        return False
 
 
 async def send_screenshot_reminders(chat_id: str, username: str, bot_token: str):
@@ -1957,7 +2096,7 @@ async def get_payment_screenshot(payment_id: str, user = Depends(get_current_use
 
 @api_router.put("/payments/{payment_id}/unverify")
 async def unverify_payment(payment_id: str, user = Depends(get_current_user)):
-    """Unverify a payment - changes status back to pending"""
+    """Unverify a payment - changes status back to pending AND kick user from channel"""
     payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
@@ -1965,26 +2104,52 @@ async def unverify_payment(payment_id: str, user = Depends(get_current_user)):
     if payment.get("status") != "verified":
         raise HTTPException(status_code=400, detail="Payment is not verified")
     
-    # Update payment status to pending
+    telegram_user_id = payment.get("telegram_user_id")
+    
+    # Update payment status to rejected (not just pending)
     await db.payments.update_one(
         {"id": payment_id},
-        {"$set": {"status": "pending", "unverified_at": datetime.now(timezone.utc).isoformat()}}
+        {"$set": {
+            "status": "rejected",
+            "unverified_at": datetime.now(timezone.utc).isoformat(),
+            "unverified_by": user.get("email", "admin"),
+            "rejection_reason": "Unverified by admin after review"
+        }}
     )
     
     # Remove subscriber if exists
-    if payment.get("telegram_user_id"):
-        await db.subscribers.delete_one({"telegram_user_id": payment["telegram_user_id"], "plan_id": payment.get("plan_id")})
+    if telegram_user_id:
+        await db.subscribers.delete_one({"telegram_user_id": telegram_user_id, "plan_id": payment.get("plan_id")})
+    
+    # KICK USER FROM CHANNEL
+    kicked = False
+    if telegram_user_id:
+        kicked = await kick_user_from_channel(telegram_user_id)
+        logger.info(f"Kicked user {telegram_user_id} from channel: {kicked}")
+        
+        # Also kick from any assigned chat groups
+        assigned_group = await db.chat_groups_pool.find_one(
+            {"assigned_to_user_id": telegram_user_id},
+            {"_id": 0}
+        )
+        if assigned_group:
+            await kick_user_from_group(assigned_group["group_id"], telegram_user_id)
+            await release_chat_group(assigned_group["group_id"])
     
     # Notify user
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
-    if bot_token and payment.get("telegram_user_id"):
-        msg = "⚠️ <b>Payment Status Updated</b>\n\n"
-        msg += f"Your payment for {payment.get('plan_name', 'subscription')} has been marked for review.\n"
-        msg += "Please contact support if needed."
-        await send_telegram_message(payment["telegram_user_id"], msg, bot_token)
+    if bot_token and telegram_user_id:
+        msg = "❌ <b>Payment Rejected</b>\n\n"
+        msg += f"Your payment for {payment.get('plan_name', 'subscription')} has been rejected after review.\n\n"
+        msg += "🚫 You have been removed from the channel.\n"
+        msg += "📞 Contact support if you believe this is a mistake."
+        await send_telegram_message(telegram_user_id, msg, bot_token)
     
-    return {"message": "Payment unverified"}
+    return {
+        "message": "Payment unverified and user kicked from channel",
+        "user_kicked": kicked
+    }
 
 
 # ============== BOT CHECKOUT ROUTES ==============
@@ -3400,13 +3565,39 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     image_bytes = await download_telegram_photo(photo_file_id, bot_token)
                     
                     if image_bytes:
-                        # Run OCR detection
+                        # Run OCR detection first (fast)
                         ocr_result = detect_payment_screenshot(image_bytes)
                         logger.info(f"OCR Result for user {chat_id}: {ocr_result}")
                         
-                        if ocr_result.get("is_valid"):
+                        # Run AI analysis for better accuracy and fake detection
+                        ai_result = await analyze_payment_screenshot_with_ai(
+                            image_bytes,
+                            expected_amount=plan.get('price'),
+                            expected_upi_id=None  # Can get from settings if configured
+                        )
+                        logger.info(f"AI Result for user {chat_id}: {ai_result}")
+                        
+                        # Decision: Use AI if available and confident, otherwise fall back to OCR
+                        is_valid = False
+                        auto_approve = False
+                        verification_method = "ocr"
+                        
+                        if ai_result.get("ai_enabled") and ai_result.get("confidence_score", 0) >= 70:
+                            # AI is confident - use AI decision
+                            is_valid = ai_result.get("is_valid_payment", False)
+                            auto_approve = ai_result.get("auto_approve_recommended", False) and ai_result.get("confidence_score", 0) >= 85
+                            verification_method = "ai_gpt4o"
+                            logger.info(f"Using AI decision: valid={is_valid}, auto_approve={auto_approve}, confidence={ai_result.get('confidence_score')}")
+                        else:
+                            # Fall back to OCR
+                            is_valid = ocr_result.get("is_valid", False)
+                            auto_approve = is_valid  # OCR based auto-approve (existing behavior)
+                            verification_method = "ocr"
+                            logger.info(f"Using OCR decision: valid={is_valid}")
+                        
+                        if is_valid and auto_approve:
                             # Valid payment screenshot detected - AUTO VERIFY
-                            logger.info(f"Valid payment screenshot detected for user {chat_id}")
+                            logger.info(f"Valid payment screenshot detected for user {chat_id} via {verification_method}")
                             
                             # Check if user already has active subscription
                             existing_sub = await db.subscribers.find_one({
@@ -3458,8 +3649,13 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 "payment_method": "qr_screenshot",
                                 "screenshot_file_id": photo_file_id,
                                 "status": "verified",
-                                "ocr_verified": True,
+                                "verification_method": verification_method,
+                                "ocr_verified": ocr_result.get("is_valid", False),
                                 "ocr_keywords": ocr_result.get("found_keywords", []),
+                                "ai_verified": ai_result.get("is_valid_payment", False) if ai_result.get("ai_enabled") else None,
+                                "ai_confidence": ai_result.get("confidence_score") if ai_result.get("ai_enabled") else None,
+                                "ai_extracted_data": ai_result.get("extracted_data") if ai_result.get("ai_enabled") else None,
+                                "ai_fake_indicators": ai_result.get("fake_indicators", []) if ai_result.get("ai_enabled") else [],
                                 "created_at": datetime.now(timezone.utc).isoformat(),
                                 "verified_at": datetime.now(timezone.utc).isoformat()
                             }
@@ -3544,22 +3740,37 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 await add_to_channel(chat_id, plan_channel, plan['name'])
                             
                         else:
-                            # OCR couldn't detect - show manual confirmation buttons
-                            logger.info(f"OCR couldn't detect payment for user {chat_id}, showing manual confirmation")
+                            # AI/OCR couldn't auto-verify - show manual confirmation buttons
+                            logger.info(f"Auto-verification couldn't confirm payment for user {chat_id}, showing manual confirmation")
                             
-                            # Save photo file_id for manual confirmation
+                            # Save photo file_id and AI analysis for admin review
                             await db.pending_screenshots.update_one(
                                 {"telegram_user_id": chat_id},
                                 {"$set": {
                                     "status": "confirming",
                                     "photo_file_id": photo_file_id,
-                                    "ocr_result": ocr_result
+                                    "ocr_result": ocr_result,
+                                    "ai_result": {
+                                        "enabled": ai_result.get("ai_enabled", False),
+                                        "is_valid": ai_result.get("is_valid_payment"),
+                                        "confidence": ai_result.get("confidence_score"),
+                                        "extracted_data": ai_result.get("extracted_data"),
+                                        "fake_indicators": ai_result.get("fake_indicators", []),
+                                        "reason": ai_result.get("reason")
+                                    } if ai_result.get("ai_enabled") else None
                                 }}
                             )
                             
-                            # Show manual confirmation with both Yes and No options
+                            # Show manual confirmation with AI info if available
                             confirm_msg = "📸 <b>Screenshot Received!</b>\n\n"
-                            confirm_msg += "🔍 Auto-detection couldn't verify.\n\n"
+                            
+                            if ai_result.get("ai_enabled") and ai_result.get("confidence_score"):
+                                confirm_msg += f"🤖 AI Confidence: <b>{ai_result.get('confidence_score')}%</b>\n"
+                                if ai_result.get("fake_indicators"):
+                                    confirm_msg += f"⚠️ Concerns: {', '.join(ai_result.get('fake_indicators', [])[:2])}\n"
+                                confirm_msg += "\n"
+                            
+                            confirm_msg += "🔍 Auto-approval threshold not met.\n\n"
                             confirm_msg += "⚠️ <b>Kya yeh payment screenshot hai?</b>\n"
                             confirm_msg += "(GPay / PhonePe / Paytm / UPI)\n\n"
                             confirm_msg += "✅ <b>Haan</b> - Agar payment screenshot hai\n"
