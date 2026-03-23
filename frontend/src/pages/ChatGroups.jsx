@@ -156,9 +156,9 @@ export default function ChatGroups() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Chat Groups Pool</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Groups Pool</h1>
           <p className="text-muted-foreground mt-1">
-            Manage groups for time-limited chat sessions (5 min / 30 min plans)
+            Manage groups for plans with Auto Groups enabled or time-limited chat sessions
           </p>
         </div>
         <div className="flex gap-3">
@@ -268,7 +268,7 @@ export default function ChatGroups() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="w-5 h-5" />
-              Chat Groups Pool
+              Groups Pool
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -277,7 +277,7 @@ export default function ChatGroups() {
                 <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground mb-4">No groups in pool yet</p>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Add Telegram groups to enable time-limited chat feature
+                  Add Telegram groups to enable Auto Groups feature for plans
                 </p>
                 <Button onClick={() => setDialogOpen(true)}>
                   <Plus className="w-4 h-4 mr-2" />

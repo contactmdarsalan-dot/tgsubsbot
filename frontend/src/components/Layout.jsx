@@ -24,7 +24,7 @@ const navItems = [
   { path: "/plans", label: "Plans", icon: Package },
   { path: "/subscribers", label: "Subscribers", icon: Users },
   { path: "/payments", label: "Payments", icon: CreditCard },
-  { path: "/chat-groups", label: "Chat Groups", icon: MessagesSquare },
+  { path: "/chat-groups", label: "Groups", icon: MessagesSquare },
   { path: "/broadcast", label: "Broadcast", icon: Radio },
   { path: "/automation", label: "Automation", icon: Bell },
   { path: "/settings", label: "Settings", icon: Settings },

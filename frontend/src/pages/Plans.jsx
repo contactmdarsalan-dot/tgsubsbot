@@ -32,6 +32,8 @@ export default function Plans() {
     duration_days: "",
     features: "",
     channel_id: "",
+    group_id: "",
+    auto_assign_group: false,
     is_active: true,
   });
 
@@ -59,6 +61,8 @@ export default function Plans() {
         duration_days: parseInt(form.duration_days),
         features: form.features.split("\n").filter((f) => f.trim()),
         channel_id: form.channel_id,
+        group_id: form.group_id,
+        auto_assign_group: form.auto_assign_group,
         is_active: form.is_active,
       };
 
@@ -86,6 +90,8 @@ export default function Plans() {
       duration_days: plan.duration_days.toString(),
       features: Array.isArray(plan.features) ? plan.features.join("\n") : "",
       channel_id: plan.channel_id || "",
+      group_id: plan.group_id || "",
+      auto_assign_group: plan.auto_assign_group || false,
       is_active: plan.is_active,
     });
     setDialogOpen(true);
@@ -115,6 +121,8 @@ export default function Plans() {
       duration_days: "",
       features: "",
       channel_id: "",
+      group_id: "",
+      auto_assign_group: false,
       is_active: true,
     });
   };
@@ -229,6 +237,37 @@ export default function Plans() {
               <p className="text-xs text-muted-foreground">
                 Leave empty to use default channel. Each plan can have its own channel.
               </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="group_id">Group ID (Manual)</Label>
+              <Input
+                id="group_id"
+                value={form.group_id}
+                onChange={(e) => setForm({ ...form, group_id: e.target.value })}
+                placeholder="-1001234567890"
+                disabled={form.auto_assign_group}
+                data-testid="plan-group-input"
+                className="bg-muted/50 border-transparent focus:border-primary font-mono text-sm disabled:opacity-50"
+              />
+              <p className="text-xs text-muted-foreground">
+                Specific group for this plan. Disabled if Auto Groups is enabled.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="space-y-0.5">
+                <Label htmlFor="auto_group" className="text-blue-800 font-medium">Auto Groups</Label>
+                <p className="text-xs text-blue-600">
+                  Automatically assign available group from Groups pool to customer on purchase
+                </p>
+              </div>
+              <Switch
+                id="auto_group"
+                checked={form.auto_assign_group}
+                onCheckedChange={(checked) => setForm({ ...form, auto_assign_group: checked, group_id: checked ? "" : form.group_id })}
+                data-testid="plan-auto-group-switch"
+              />
             </div>
 
             <div className="flex items-center justify-between">

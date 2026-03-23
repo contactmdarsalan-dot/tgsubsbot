@@ -109,6 +109,8 @@ class SubscriptionPlanCreate(BaseModel):
     features: List[str] = []
     is_active: bool = True
     channel_id: str = ""  # Each plan can have its own channel
+    group_id: str = ""    # Manual group ID for this plan
+    auto_assign_group: bool = False  # Auto-assign from groups pool
 
 class SubscriptionPlan(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -119,6 +121,8 @@ class SubscriptionPlan(BaseModel):
     features: List[str] = []
     is_active: bool = True
     channel_id: str = ""  # Each plan can have its own channel
+    group_id: str = ""    # Manual group ID for this plan
+    auto_assign_group: bool = False  # Auto-assign from groups pool
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class SubscriberCreate(BaseModel):
@@ -3731,11 +3735,52 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                     # Notify admin (you can customize this)
                                     logger.warning(f"No chat groups available for user {chat_id}")
                             else:
-                                # Regular subscription plan - add to channel
+                                # Regular subscription plan
                                 success_msg = "✅ <b>Payment Verified Successfully!</b>\n\n"
                                 success_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
                                 success_msg += f"💰 Amount: <b>₹{final_price}</b>\n"
                                 success_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
+                                
+                                # Check if plan has auto_assign_group enabled
+                                if plan.get("auto_assign_group"):
+                                    # Auto-assign from groups pool
+                                    available_group = await get_available_chat_group()
+                                    
+                                    if available_group:
+                                        # Assign group for plan duration
+                                        result = await assign_chat_group(
+                                            available_group["group_id"],
+                                            chat_id,
+                                            username,
+                                            f"plan_{plan_id}",
+                                            plan['duration_days'] * 24 * 60  # Convert days to minutes
+                                        )
+                                        
+                                        if result.get("success"):
+                                            invite_link = result.get("invite_link")
+                                            success_msg += f"👥 <b>Group Access:</b>\n{invite_link}\n\n"
+                                            logger.info(f"Auto-assigned group {available_group['group_id']} to user {chat_id}")
+                                        else:
+                                            logger.warning(f"Failed to assign group to user {chat_id}")
+                                    else:
+                                        logger.warning(f"No groups available for auto-assign, user {chat_id}")
+                                elif plan.get("group_id"):
+                                    # Manual group ID specified - create invite link
+                                    try:
+                                        async with httpx.AsyncClient() as http_client:
+                                            url = f"https://api.telegram.org/bot{bot_token}/createChatInviteLink"
+                                            response = await http_client.post(url, json={
+                                                "chat_id": plan["group_id"],
+                                                "member_limit": 1,
+                                                "expire_date": int((datetime.now(timezone.utc) + timedelta(hours=24)).timestamp())
+                                            })
+                                            if response.status_code == 200:
+                                                invite_link = response.json().get("result", {}).get("invite_link", "")
+                                                if invite_link:
+                                                    success_msg += f"👥 <b>Group Access:</b>\n{invite_link}\n\n"
+                                    except Exception as e:
+                                        logger.error(f"Error creating group invite: {e}")
+                                
                                 success_msg += "🎉 <b>Your subscription is now active!</b>"
                                 
                                 await send_telegram_message(chat_id, success_msg, bot_token)
