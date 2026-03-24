@@ -187,6 +187,11 @@ class BotSettings(BaseModel):
     welcome_message: str = "👋 Welcome to our subscription bot! Use /plans to see available plans."
     payment_instructions: str = "📱 Scan the QR code above and send payment screenshot here."
     success_message: str = "🎉 Payment verified! Your subscription is now active."
+    # Video Call Settings
+    video_call_enabled: bool = True
+    video_call_price: float = 500  # Price per video call
+    video_call_duration: int = 30  # Default duration in minutes
+    video_call_instructions: str = "📹 Book a 1-on-1 video call with us! Choose a date and time."
 
 class MessageTemplate(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -273,6 +278,25 @@ class BlockedUser(BaseModel):
     blocked_by: str
     blocked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+# ============== VIDEO CALL BOOKING MODEL ==============
+class VideoCallBooking(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    telegram_user_id: str
+    telegram_username: str = ""
+    user_name: str = ""
+    plan_id: str = ""
+    plan_name: str = ""
+    call_type: str = "video"  # video, audio
+    scheduled_date: str = ""  # YYYY-MM-DD
+    scheduled_time: str = ""  # HH:MM
+    duration_minutes: int = 30
+    price: float = 0
+    status: str = "pending"  # pending, confirmed, completed, cancelled
+    meeting_link: str = ""
+    notes: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 # Support Ticket model (Chat-style with multiple messages)
 class SupportTicket(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -316,6 +340,33 @@ class ActiveChatSession(BaseModel):
     status: str = "active"  # active, expired, renewed
     renewal_message_sent: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+# ============== PAID POST MODEL ==============
+class PaidPost(BaseModel):
+    """Model for paid/locked posts in channel"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    channel_id: str  # Channel where post was made
+    original_message_id: int  # Original message ID in channel
+    blurred_message_id: int = 0  # Blurred message ID (replaces original)
+    content_type: str = "photo"  # photo, video, document
+    original_file_id: str = ""  # Original file ID for delivery
+    blurred_file_id: str = ""  # Blurred/preview file ID
+    caption: str = ""  # Caption for the content
+    price: float = 0  # Price for unlocking (0 = use default plan price)
+    unlock_count: int = 0  # How many users unlocked
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class PaidPostUnlock(BaseModel):
+    """Track which users unlocked which paid posts"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    post_id: str  # PaidPost ID
+    telegram_user_id: str
+    telegram_username: str = ""
+    payment_id: str = ""  # Payment record ID
+    unlocked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 
@@ -467,7 +518,7 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
         try:
             text1 = pytesseract.image_to_string(gray, lang='eng', config='--psm 6 --oem 1')
             extracted_text += " " + text1
-        except:
+        except Exception:
             pass
         
         # Version 2: Inverted grayscale (for dark mode)
@@ -475,7 +526,7 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
             inv_gray = ImageOps.invert(gray)
             text2 = pytesseract.image_to_string(inv_gray, lang='eng', config='--psm 6 --oem 1')
             extracted_text += " " + text2
-        except:
+        except Exception:
             pass
         
         text_lower = extracted_text.lower()
@@ -497,6 +548,145 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
     except Exception as e:
         logger.error(f"OCR error: {e}")
         return {"is_valid": False, "error": str(e), "found_keywords": []}
+
+
+# ============== IMAGE BLUR FOR PAID POSTS ==============
+
+def create_blurred_image(image_bytes: bytes, blur_radius: int = 30) -> bytes:
+    """
+    Create a heavily blurred version of an image for paid post preview.
+    Also adds a lock overlay text.
+    """
+    from PIL import ImageFilter, ImageDraw, ImageFont
+    
+    try:
+        image = Image.open(BytesIO(image_bytes))
+        if image.mode in ('RGBA', 'P'):
+            image = image.convert('RGB')
+        
+        # Apply heavy blur
+        blurred = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+        
+        # Add semi-transparent overlay
+        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 100))
+        blurred = blurred.convert('RGBA')
+        blurred = Image.alpha_composite(blurred, overlay)
+        blurred = blurred.convert('RGB')
+        
+        # Add lock emoji/text in center
+        draw = ImageDraw.Draw(blurred)
+        text = "🔒 UNLOCK TO VIEW"
+        
+        # Get image dimensions
+        width, height = blurred.size
+        
+        # Try to use a font, fallback to default
+        try:
+            font_size = max(width // 15, 20)
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+        except Exception:
+            font = ImageFont.load_default()
+        
+        # Get text bounding box
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        
+        # Center the text
+        x = (width - text_width) // 2
+        y = (height - text_height) // 2
+        
+        # Draw text with shadow for visibility
+        draw.text((x+2, y+2), text, font=font, fill=(0, 0, 0))
+        draw.text((x, y), text, font=font, fill=(255, 255, 255))
+        
+        # Convert back to bytes
+        output = BytesIO()
+        blurred.save(output, format='JPEG', quality=85)
+        return output.getvalue()
+        
+    except Exception as e:
+        logger.error(f"Error creating blurred image: {e}")
+        return None
+
+
+async def send_telegram_photo(chat_id: str, photo_url_or_bytes: str, caption: str, bot_token: str, reply_markup: dict = None) -> dict:
+    """Send photo to Telegram chat"""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as http_client:
+            url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+            
+            data = {
+                "chat_id": chat_id,
+                "caption": caption,
+                "parse_mode": "HTML"
+            }
+            
+            if reply_markup:
+                import json
+                data["reply_markup"] = json.dumps(reply_markup)
+            
+            # Check if it's a URL or file_id
+            if isinstance(photo_url_or_bytes, str):
+                data["photo"] = photo_url_or_bytes
+                response = await http_client.post(url, data=data)
+            else:
+                # It's bytes - send as file
+                files = {"photo": ("image.jpg", photo_url_or_bytes, "image/jpeg")}
+                response = await http_client.post(url, data=data, files=files)
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"Failed to send photo: {response.text}")
+                return None
+    except Exception as e:
+        logger.error(f"Error sending photo: {e}")
+        return None
+
+
+async def send_telegram_video(chat_id: str, video_file_id: str, caption: str, bot_token: str, reply_markup: dict = None) -> dict:
+    """Send video to Telegram chat"""
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as http_client:
+            url = f"https://api.telegram.org/bot{bot_token}/sendVideo"
+            
+            data = {
+                "chat_id": chat_id,
+                "video": video_file_id,
+                "caption": caption,
+                "parse_mode": "HTML"
+            }
+            
+            if reply_markup:
+                import json
+                data["reply_markup"] = json.dumps(reply_markup)
+            
+            response = await http_client.post(url, json=data)
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"Failed to send video: {response.text}")
+                return None
+    except Exception as e:
+        logger.error(f"Error sending video: {e}")
+        return None
+
+
+async def delete_telegram_message(chat_id: str, message_id: int, bot_token: str) -> bool:
+    """Delete a message from Telegram"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http_client:
+            url = f"https://api.telegram.org/bot{bot_token}/deleteMessage"
+            response = await http_client.post(url, json={
+                "chat_id": chat_id,
+                "message_id": message_id
+            })
+            return response.status_code == 200
+    except Exception as e:
+        logger.error(f"Error deleting message: {e}")
+        return False
 
 
 # ============== AI PAYMENT ANALYSIS (GPT-4o Vision) ==============
@@ -3267,6 +3457,58 @@ async def delete_faq(faq_id: str, user = Depends(get_current_user)):
     return {"message": "FAQ deleted"}
 
 
+# ============== VIDEO CALL BOOKINGS APIs ==============
+
+@api_router.get("/video-calls")
+async def get_video_call_bookings(user = Depends(get_current_user)):
+    """Get all video call bookings"""
+    bookings = await db.video_call_bookings.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return bookings
+
+@api_router.put("/video-calls/{booking_id}")
+async def update_video_call_booking(booking_id: str, data: dict, user = Depends(get_current_user)):
+    """Update a video call booking (confirm, add meeting link, etc.)"""
+    update_data = {}
+    
+    if "status" in data:
+        update_data["status"] = data["status"]
+    if "meeting_link" in data:
+        update_data["meeting_link"] = data["meeting_link"]
+    if "notes" in data:
+        update_data["notes"] = data["notes"]
+    
+    if update_data:
+        await db.video_call_bookings.update_one(
+            {"id": booking_id},
+            {"$set": update_data}
+        )
+        
+        # If confirmed, send notification to user
+        if data.get("status") == "confirmed":
+            booking = await db.video_call_bookings.find_one({"id": booking_id}, {"_id": 0})
+            if booking:
+                settings = await get_bot_settings()
+                bot_token = settings.get("telegram_bot_token", "")
+                
+                msg = "✅ <b>Video Call Confirmed!</b>\n\n"
+                msg += f"📅 Date: <b>{booking.get('scheduled_date')}</b>\n"
+                msg += f"🕐 Time: <b>{booking.get('scheduled_time')}</b>\n"
+                msg += f"⏱ Duration: <b>{booking.get('duration_minutes', 30)} minutes</b>\n"
+                
+                if data.get("meeting_link"):
+                    msg += f"\n🔗 Meeting Link:\n{data['meeting_link']}"
+                
+                await send_telegram_message(booking.get("telegram_user_id"), msg, bot_token)
+    
+    return {"message": "Booking updated"}
+
+@api_router.delete("/video-calls/{booking_id}")
+async def delete_video_call_booking(booking_id: str, user = Depends(get_current_user)):
+    """Delete a video call booking"""
+    await db.video_call_bookings.delete_one({"id": booking_id})
+    return {"message": "Booking deleted"}
+
+
 # ============== ANALYTICS / EXPORT APIs ==============
 
 @api_router.get("/analytics/revenue")
@@ -3407,6 +3649,122 @@ async def send_telegram_message_with_buttons(chat_id: str, message: str, buttons
                 await asyncio.sleep(0.5)
     return False
 
+# ============== PAID POSTS ADMIN APIs ==============
+
+@api_router.get("/paid-posts")
+async def get_paid_posts(user = Depends(get_current_user)):
+    """Get all paid posts for admin dashboard"""
+    posts = await db.paid_posts.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return posts
+
+@api_router.get("/paid-posts/{post_id}")
+async def get_paid_post(post_id: str, user = Depends(get_current_user)):
+    """Get single paid post details"""
+    post = await db.paid_posts.find_one({"id": post_id}, {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    # Get unlock history
+    unlocks = await db.paid_post_unlocks.find({"post_id": post_id}, {"_id": 0}).to_list(100)
+    post["unlocks"] = unlocks
+    
+    return post
+
+@api_router.put("/paid-posts/{post_id}")
+async def update_paid_post(post_id: str, data: dict, user = Depends(get_current_user)):
+    """Update paid post (price, active status)"""
+    await db.paid_posts.update_one(
+        {"id": post_id},
+        {"$set": {
+            "price": data.get("price", 0),
+            "is_active": data.get("is_active", True),
+            "caption": data.get("caption", "")
+        }}
+    )
+    return {"message": "Post updated"}
+
+@api_router.delete("/paid-posts/{post_id}")
+async def delete_paid_post(post_id: str, user = Depends(get_current_user)):
+    """Delete/deactivate a paid post"""
+    await db.paid_posts.update_one({"id": post_id}, {"$set": {"is_active": False}})
+    return {"message": "Post deactivated"}
+
+@api_router.get("/unlock-requests")
+async def get_unlock_requests(user = Depends(get_current_user)):
+    """Get pending unlock requests for admin approval"""
+    requests = await db.unlock_requests.find({"status": "pending_admin"}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return requests
+
+@api_router.post("/unlock-requests/{request_id}/approve")
+async def approve_unlock_request(request_id: str, user = Depends(get_current_user)):
+    """Approve unlock request and send content to user"""
+    request = await db.unlock_requests.find_one({"id": request_id}, {"_id": 0})
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    post_id = request.get("post_id")
+    paid_post = await db.paid_posts.find_one({"id": post_id}, {"_id": 0})
+    
+    if not paid_post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    chat_id = request.get("telegram_user_id")
+    username = request.get("telegram_username", "")
+    
+    # Save unlock record
+    unlock_record = {
+        "id": str(uuid.uuid4()),
+        "post_id": post_id,
+        "telegram_user_id": chat_id,
+        "telegram_username": username,
+        "payment_id": "admin_approved",
+        "unlocked_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.paid_post_unlocks.insert_one(unlock_record)
+    
+    # Update unlock count
+    await db.paid_posts.update_one({"id": post_id}, {"$inc": {"unlock_count": 1}})
+    
+    # Update request status
+    await db.unlock_requests.update_one({"id": request_id}, {"$set": {"status": "approved"}})
+    
+    # Send content to user
+    if bot_token and chat_id:
+        success_msg = "✅ <b>Payment Approved!</b>\n\n🔓 Here's your unlocked content:"
+        await send_telegram_message(chat_id, success_msg, bot_token)
+        
+        if paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
+            caption = f"🔓 <b>Unlocked!</b>\n\n{paid_post.get('caption', '')}"
+            await send_telegram_photo(chat_id, paid_post["original_file_id"], caption, bot_token)
+        elif paid_post.get("content_type") == "video" and paid_post.get("original_file_id"):
+            caption = f"🔓 <b>Unlocked Video!</b>\n\n{paid_post.get('caption', '')}"
+            await send_telegram_video(chat_id, paid_post["original_file_id"], caption, bot_token)
+    
+    return {"message": "Unlock approved and content sent"}
+
+@api_router.post("/unlock-requests/{request_id}/reject")
+async def reject_unlock_request(request_id: str, user = Depends(get_current_user)):
+    """Reject unlock request"""
+    request = await db.unlock_requests.find_one({"id": request_id}, {"_id": 0})
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    await db.unlock_requests.update_one({"id": request_id}, {"$set": {"status": "rejected"}})
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    chat_id = request.get("telegram_user_id")
+    
+    if bot_token and chat_id:
+        reject_msg = "❌ <b>Payment Not Verified</b>\n\n"
+        reject_msg += "Your screenshot could not be verified.\n"
+        reject_msg += "Please try again with a valid payment screenshot."
+        await send_telegram_message(chat_id, reject_msg, bot_token)
+    
+    return {"message": "Unlock request rejected"}
+
 @api_router.post("/telegram/webhook")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
@@ -3417,18 +3775,127 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
         promo_channel_id = settings.get("promo_channel_id", "")  # Public promo channel
+        telegram_channel_id = settings.get("telegram_channel_id", "")  # Default channel
         
-        # Handle channel posts - Add Subscribe button ONLY on promo channel
+        # Use promo channel if set, otherwise use telegram channel
+        target_channel_id = promo_channel_id if promo_channel_id else telegram_channel_id
+        
+        # Handle channel posts - Add Subscribe button on channel posts OR process paid posts
         channel_post = data.get("channel_post")
-        if channel_post and bot_token and promo_channel_id:
+        if channel_post and bot_token:
             post_chat_id = str(channel_post.get("chat", {}).get("id", ""))
             message_id = channel_post.get("message_id")
+            caption = channel_post.get("caption", "") or channel_post.get("text", "") or ""
             
-            # Only process posts from PROMO channel (not subscriber channel)
             # Skip forwarded messages (they can't be edited)
             is_forwarded = channel_post.get("forward_from_chat") or channel_post.get("forward_origin")
             
-            if post_chat_id == promo_channel_id and message_id and not is_forwarded:
+            # Check if this is a PAID POST (has /paid command in caption)
+            is_paid_post = caption.lower().startswith("/paid") or " /paid" in caption.lower()
+            
+            if is_paid_post and message_id and not is_forwarded:
+                # Process as a PAID POST
+                logger.info(f"Processing PAID POST in channel {post_chat_id}")
+                
+                try:
+                    # Get content type and file_id
+                    photo = channel_post.get("photo")
+                    video = channel_post.get("video")
+                    content_type = "photo" if photo else ("video" if video else "text")
+                    original_file_id = ""
+                    
+                    if photo:
+                        # Get largest photo
+                        original_file_id = photo[-1].get("file_id", "")
+                    elif video:
+                        original_file_id = video.get("file_id", "")
+                    
+                    # Clean caption (remove /paid command)
+                    clean_caption = caption.replace("/paid", "").replace("/Paid", "").replace("/PAID", "").strip()
+                    
+                    # Extract price if mentioned (e.g., /paid 99 or /paid ₹99)
+                    price_match = re.search(r'₹?(\d+)', clean_caption[:50])
+                    post_price = float(price_match.group(1)) if price_match else 0
+                    
+                    # Create paid post record
+                    paid_post_id = str(uuid.uuid4())
+                    paid_post = {
+                        "id": paid_post_id,
+                        "channel_id": post_chat_id,
+                        "original_message_id": message_id,
+                        "content_type": content_type,
+                        "original_file_id": original_file_id,
+                        "caption": clean_caption,
+                        "price": post_price,
+                        "unlock_count": 0,
+                        "is_active": True,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    await db.paid_posts.insert_one(paid_post)
+                    logger.info(f"Created paid post record: {paid_post_id}")
+                    
+                    # If it's a photo, create blurred version
+                    blurred_message_id = 0
+                    if photo and original_file_id:
+                        # Download original photo
+                        image_bytes = await download_telegram_photo(original_file_id, bot_token)
+                        if image_bytes:
+                            # Create blurred version
+                            blurred_bytes = create_blurred_image(image_bytes)
+                            if blurred_bytes:
+                                # Delete original message
+                                await delete_telegram_message(post_chat_id, message_id, bot_token)
+                                
+                                # Send blurred version with Unlock button
+                                bot_username = await get_bot_username(bot_token)
+                                unlock_button = {
+                                    "inline_keyboard": [[{
+                                        "text": "🔓 Unlock Post",
+                                        "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
+                                    }]]
+                                }
+                                
+                                price_text = f"₹{int(post_price)}" if post_price > 0 else "Premium"
+                                blur_caption = f"🔒 <b>Paid Content</b>\n\n"
+                                blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                                blur_caption += "👆 Tap 'Unlock Post' to view full content!"
+                                
+                                result = await send_telegram_photo(post_chat_id, blurred_bytes, blur_caption, bot_token, unlock_button)
+                                if result and result.get("result"):
+                                    blurred_message_id = result["result"].get("message_id", 0)
+                                    # Update paid post with blurred message ID
+                                    await db.paid_posts.update_one(
+                                        {"id": paid_post_id},
+                                        {"$set": {"blurred_message_id": blurred_message_id}}
+                                    )
+                                    logger.info(f"Sent blurred photo with unlock button, message_id: {blurred_message_id}")
+                    
+                    elif video:
+                        # For videos, we can't blur easily - just replace with preview message
+                        await delete_telegram_message(post_chat_id, message_id, bot_token)
+                        
+                        bot_username = await get_bot_username(bot_token)
+                        unlock_button = {
+                            "inline_keyboard": [[{
+                                "text": "🔓 Unlock Video",
+                                "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
+                            }]]
+                        }
+                        
+                        price_text = f"₹{int(post_price)}" if post_price > 0 else "Premium"
+                        video_msg = f"🎬 <b>Paid Video Content</b>\n\n"
+                        video_msg += f"💰 Price: <b>{price_text}</b>\n\n"
+                        video_msg += "👆 Tap 'Unlock Video' to view!"
+                        
+                        await send_telegram_message_with_buttons(post_chat_id, video_msg, unlock_button["inline_keyboard"], bot_token)
+                    
+                    return {"ok": True, "paid_post": True}
+                    
+                except Exception as e:
+                    logger.error(f"Failed to process paid post: {e}")
+            
+            # Regular channel post - Add Subscribe button
+            elif message_id and not is_forwarded:
                 # Add Subscribe button by editing the message (no delay)
                 try:
                     bot_username = await get_bot_username(bot_token)
@@ -4050,6 +4517,138 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         buttons.append([{"text": f"📦 {p['name']} - ₹{p['price']}", "callback_data": f"buy_{p['id']}"}])
                     await send_telegram_message_with_buttons(chat_id, "🎯 <b>Available Plans:</b>", buttons, bot_token)
             
+            # ============ VIDEO CALL BOOKING HANDLERS ============
+            elif callback_data == "book_videocall":
+                # Show date selection for video call
+                today = datetime.now(timezone.utc).date()
+                
+                msg = "📅 <b>Select Date for Video Call</b>\n\n"
+                msg += "Choose a date from below:"
+                
+                buttons = []
+                for i in range(7):  # Next 7 days
+                    date = today + timedelta(days=i)
+                    date_str = date.strftime("%Y-%m-%d")
+                    day_name = date.strftime("%A")
+                    display = date.strftime("%d %b") + f" ({day_name})"
+                    buttons.append([{"text": f"📆 {display}", "callback_data": f"vc_date_{date_str}"}])
+                
+                buttons.append([{"text": "❌ Cancel", "callback_data": "cancel_action"}])
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            elif callback_data.startswith("vc_date_"):
+                # Date selected, show time slots
+                selected_date = callback_data.replace("vc_date_", "")
+                
+                msg = f"🕐 <b>Select Time Slot</b>\n\n"
+                msg += f"📅 Date: <b>{selected_date}</b>\n\n"
+                msg += "Choose a time:"
+                
+                time_slots = ["10:00", "11:00", "12:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"]
+                buttons = []
+                row = []
+                for i, time in enumerate(time_slots):
+                    row.append({"text": f"🕐 {time}", "callback_data": f"vc_time_{selected_date}_{time}"})
+                    if len(row) == 2:
+                        buttons.append(row)
+                        row = []
+                if row:
+                    buttons.append(row)
+                
+                buttons.append([{"text": "◀️ Back to Dates", "callback_data": "book_videocall"}])
+                buttons.append([{"text": "❌ Cancel", "callback_data": "cancel_action"}])
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            elif callback_data.startswith("vc_time_"):
+                # Time selected, confirm booking
+                parts = callback_data.replace("vc_time_", "").split("_")
+                selected_date = parts[0]
+                selected_time = parts[1]
+                
+                settings = await get_bot_settings()
+                price = settings.get("video_call_price", 500)
+                duration = settings.get("video_call_duration", 30)
+                
+                msg = f"✅ <b>Confirm Video Call Booking</b>\n\n"
+                msg += f"📅 Date: <b>{selected_date}</b>\n"
+                msg += f"🕐 Time: <b>{selected_time}</b>\n"
+                msg += f"⏱ Duration: <b>{duration} minutes</b>\n"
+                msg += f"💰 Price: <b>₹{price}</b>\n\n"
+                msg += "Click confirm to proceed with payment:"
+                
+                buttons = [
+                    [{"text": "✅ Confirm & Pay", "callback_data": f"vc_confirm_{selected_date}_{selected_time}"}],
+                    [{"text": "◀️ Change Time", "callback_data": f"vc_date_{selected_date}"}],
+                    [{"text": "❌ Cancel", "callback_data": "cancel_action"}]
+                ]
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            elif callback_data.startswith("vc_confirm_"):
+                # Create booking and show payment
+                parts = callback_data.replace("vc_confirm_", "").split("_")
+                selected_date = parts[0]
+                selected_time = parts[1]
+                
+                settings = await get_bot_settings()
+                price = settings.get("video_call_price", 500)
+                duration = settings.get("video_call_duration", 30)
+                qr_code_url = settings.get("qr_code_url", "")
+                
+                # Create booking record
+                booking = {
+                    "id": str(uuid.uuid4()),
+                    "telegram_user_id": chat_id,
+                    "telegram_username": username,
+                    "scheduled_date": selected_date,
+                    "scheduled_time": selected_time,
+                    "duration_minutes": duration,
+                    "price": price,
+                    "status": "pending_payment",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                await db.video_call_bookings.insert_one(booking)
+                
+                msg = f"📹 <b>Video Call Booking Created!</b>\n\n"
+                msg += f"🆔 Booking ID: <code>{booking['id'][:8]}</code>\n"
+                msg += f"📅 Date: <b>{selected_date}</b>\n"
+                msg += f"🕐 Time: <b>{selected_time}</b>\n"
+                msg += f"💰 Amount: <b>₹{price}</b>\n\n"
+                msg += "━━━━━━━━━━━━━━━\n"
+                msg += "<b>💳 Payment Instructions:</b>\n\n"
+                msg += "1️⃣ Pay ₹{} via UPI\n".format(price)
+                msg += "2️⃣ Send payment screenshot here\n"
+                msg += "3️⃣ Your booking will be confirmed!\n\n"
+                msg += f"📱 <b>Your ID:</b> <code>{chat_id}</code>"
+                
+                buttons = []
+                if qr_code_url:
+                    buttons.append([{"text": "📱 Show QR Code", "callback_data": f"vc_qr_{booking['id']}"}])
+                buttons.append([{"text": "❌ Cancel Booking", "callback_data": f"vc_cancel_{booking['id']}"}])
+                
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            elif callback_data.startswith("vc_qr_"):
+                # Show QR code for video call payment
+                booking_id = callback_data.replace("vc_qr_", "")
+                qr_code_url = settings.get("qr_code_url", "")
+                
+                if qr_code_url:
+                    await send_telegram_photo(chat_id, qr_code_url, "📱 Scan this QR code to pay\n\nAfter payment, send screenshot here.", bot_token)
+                else:
+                    await send_telegram_message(chat_id, "QR Code not configured. Please contact admin.", bot_token)
+            
+            elif callback_data.startswith("vc_cancel_"):
+                # Cancel video call booking
+                booking_id = callback_data.replace("vc_cancel_", "")
+                await db.video_call_bookings.update_one(
+                    {"id": booking_id},
+                    {"$set": {"status": "cancelled"}}
+                )
+                await send_telegram_message(chat_id, "❌ Video call booking cancelled.\n\nUse /videocall to book again.", bot_token)
+            
+            elif callback_data == "cancel_action":
+                await send_telegram_message(chat_id, "❌ Action cancelled.\n\nUse /start to see plans or /help for commands.", bot_token)
+            
             elif callback_data == "check_status":
                 subscriber = await db.subscribers.find_one({"telegram_user_id": chat_id}, {"_id": 0})
                 if subscriber:
@@ -4068,6 +4667,58 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 buttons = [[{"text": "◀️ Back to Plans", "callback_data": "back_plans"}]]
                 await send_telegram_message_with_buttons(chat_id, status_msg, buttons, bot_token)
             
+            # ========== PAID POST UNLOCK CALLBACKS ==========
+            
+            elif callback_data.startswith("unlock_qr_"):
+                # Show QR code for paid post unlock
+                post_id = callback_data.replace("unlock_qr_", "")
+                paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True}, {"_id": 0})
+                
+                if paid_post:
+                    settings = await get_bot_settings()
+                    qr_code_url = settings.get("qr_code_url", "")
+                    post_price = paid_post.get("price", 99)
+                    
+                    if qr_code_url:
+                        qr_msg = f"📱 <b>Scan & Pay ₹{int(post_price)}</b>\n\n"
+                        qr_msg += "After payment, send screenshot here to unlock content! 📸"
+                        await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token)
+                    else:
+                        await send_telegram_message(chat_id, "❌ QR Code not configured. Contact admin.", bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Post not found or expired.", bot_token)
+            
+            elif callback_data.startswith("unlock_paid_"):
+                # User claims to have paid for unlock
+                post_id = callback_data.replace("unlock_paid_", "")
+                paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True}, {"_id": 0})
+                
+                if paid_post:
+                    post_price = paid_post.get("price", 99)
+                    
+                    # Save pending unlock payment
+                    await db.pending_screenshots.update_one(
+                        {"telegram_user_id": chat_id},
+                        {"$set": {
+                            "telegram_user_id": chat_id,
+                            "telegram_username": username,
+                            "unlock_post_id": post_id,
+                            "expected_amount": post_price,
+                            "status": "waiting_unlock",
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }},
+                        upsert=True
+                    )
+                    
+                    verify_msg = "📸 <b>Send Payment Screenshot!</b>\n\n"
+                    verify_msg += f"💰 Amount: ₹{int(post_price)}\n\n"
+                    verify_msg += "Send your payment screenshot now and I'll verify it automatically! ✅"
+                    
+                    buttons = [[{"text": "❌ Cancel", "callback_data": "cancel_action"}]]
+                    await send_telegram_message_with_buttons(chat_id, verify_msg, buttons, bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Post not found or expired.", bot_token)
+            
             # Answer callback to remove loading state
             try:
                 async with httpx.AsyncClient() as http_client:
@@ -4075,7 +4726,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
                         json={"callback_query_id": callback_query.get("id")}
                     )
-            except:
+            except Exception:
                 pass
             
             return {"ok": True}
@@ -4096,10 +4747,126 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         
         # Handle screenshot/photo for payment verification with OCR
         if photo and bot_token:
-            # Check if we're waiting for screenshot from this user
-            pending = await db.pending_screenshots.find_one({"telegram_user_id": chat_id, "status": "waiting"}, {"_id": 0})
+            # Check if we're waiting for screenshot from this user (for subscription OR unlock)
+            pending = await db.pending_screenshots.find_one({
+                "telegram_user_id": chat_id, 
+                "status": {"$in": ["waiting", "waiting_unlock"]}
+            }, {"_id": 0})
             
-            if pending:
+            # Handle PAID POST UNLOCK screenshot
+            if pending and pending.get("status") == "waiting_unlock":
+                post_id = pending.get("unlock_post_id")
+                paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True}, {"_id": 0})
+                
+                if paid_post:
+                    logger.info(f"Processing unlock screenshot for post {post_id} from user {chat_id}")
+                    
+                    photo_file_id = photo[-1]["file_id"] if photo else None
+                    image_bytes = await download_telegram_photo(photo_file_id, bot_token)
+                    
+                    if image_bytes:
+                        # Run OCR + AI analysis
+                        ocr_result = detect_payment_screenshot(image_bytes)
+                        settings = await get_bot_settings()
+                        expected_upi = settings.get("payment_upi_id", "")
+                        ai_threshold = settings.get("ai_auto_approve_threshold", 85)
+                        
+                        ai_result = await analyze_payment_screenshot_with_ai(
+                            image_bytes,
+                            expected_amount=pending.get("expected_amount", 0),
+                            expected_upi_id=expected_upi if expected_upi else None
+                        )
+                        
+                        # Decision logic
+                        is_valid = False
+                        auto_approve = False
+                        
+                        if ai_result.get("ai_enabled") and ai_result.get("confidence_score", 0) >= 70:
+                            is_valid = ai_result.get("is_valid_payment", False)
+                            auto_approve = ai_result.get("auto_approve_recommended", False) and ai_result.get("confidence_score", 0) >= ai_threshold
+                        else:
+                            is_valid = ocr_result.get("is_valid", False)
+                        
+                        if is_valid and auto_approve:
+                            # AUTO UNLOCK - Valid payment!
+                            logger.info(f"Auto-unlocking post {post_id} for user {chat_id}")
+                            
+                            # Save unlock record
+                            unlock_record = {
+                                "id": str(uuid.uuid4()),
+                                "post_id": post_id,
+                                "telegram_user_id": chat_id,
+                                "telegram_username": username,
+                                "payment_id": "auto_verified",
+                                "screenshot_file_id": photo_file_id,
+                                "ai_result": ai_result,
+                                "unlocked_at": datetime.now(timezone.utc).isoformat()
+                            }
+                            await db.paid_post_unlocks.insert_one(unlock_record)
+                            
+                            # Update unlock count
+                            await db.paid_posts.update_one({"id": post_id}, {"$inc": {"unlock_count": 1}})
+                            
+                            # Remove pending status
+                            await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                            
+                            # Send unlocked content
+                            success_msg = "✅ <b>Payment Verified!</b>\n\n🔓 Unlocking your content..."
+                            await send_telegram_message(chat_id, success_msg, bot_token)
+                            
+                            if paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
+                                caption = f"🔓 <b>Unlocked!</b>\n\n{paid_post.get('caption', '')}"
+                                await send_telegram_photo(chat_id, paid_post["original_file_id"], caption, bot_token)
+                            elif paid_post.get("content_type") == "video" and paid_post.get("original_file_id"):
+                                caption = f"🔓 <b>Unlocked Video!</b>\n\n{paid_post.get('caption', '')}"
+                                await send_telegram_video(chat_id, paid_post["original_file_id"], caption, bot_token)
+                            
+                            return {"ok": True}
+                        
+                        elif is_valid:
+                            # Valid but needs admin review
+                            pending_msg = "📸 <b>Screenshot Received!</b>\n\n"
+                            pending_msg += "⏳ Admin verification pending...\n"
+                            pending_msg += "You'll receive the content once verified! ✅"
+                            
+                            # Save for admin review
+                            unlock_request = {
+                                "id": str(uuid.uuid4()),
+                                "post_id": post_id,
+                                "telegram_user_id": chat_id,
+                                "telegram_username": username,
+                                "screenshot_file_id": photo_file_id,
+                                "expected_amount": pending.get("expected_amount", 0),
+                                "status": "pending_admin",
+                                "ocr_result": ocr_result,
+                                "ai_result": ai_result if ai_result.get("ai_enabled") else None,
+                                "created_at": datetime.now(timezone.utc).isoformat()
+                            }
+                            await db.unlock_requests.insert_one(unlock_request)
+                            await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                            
+                            await send_telegram_message(chat_id, pending_msg, bot_token)
+                            return {"ok": True}
+                        
+                        else:
+                            # Invalid screenshot
+                            invalid_msg = "❌ <b>Invalid Screenshot!</b>\n\n"
+                            invalid_msg += "Please send a valid payment screenshot showing:\n"
+                            invalid_msg += "✅ Payment Success/Completed status\n"
+                            invalid_msg += "✅ Amount paid\n\n"
+                            invalid_msg += "Try again or contact admin for help."
+                            
+                            await send_telegram_message(chat_id, invalid_msg, bot_token)
+                            return {"ok": True}
+                    
+                    return {"ok": True}
+                else:
+                    await send_telegram_message(chat_id, "❌ Post not found or expired.", bot_token)
+                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                    return {"ok": True}
+            
+            # Handle REGULAR SUBSCRIPTION screenshot
+            if pending and pending.get("status") == "waiting":
                 plan_id = pending.get("plan_id")
                 plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
                 
@@ -4420,6 +5187,121 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 await send_telegram_message(chat_id, msg, bot_token)
                 return {"ok": True}
         
+        # Handle /start unlock_{post_id} - Unlock paid post
+        if text and text.startswith("/start unlock_"):
+            post_id = text.replace("/start unlock_", "").strip()
+            logger.info(f"User {chat_id} trying to unlock paid post: {post_id}")
+            
+            # Find the paid post
+            paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True}, {"_id": 0})
+            
+            if not paid_post:
+                await send_telegram_message(chat_id, "❌ <b>Post not found!</b>\n\nThis paid content may have been removed or expired.", bot_token)
+                return {"ok": True}
+            
+            # Check if user already unlocked this post
+            existing_unlock = await db.paid_post_unlocks.find_one({
+                "post_id": post_id,
+                "telegram_user_id": chat_id
+            }, {"_id": 0})
+            
+            if existing_unlock:
+                # User already unlocked - send content again
+                logger.info(f"User {chat_id} already unlocked post {post_id}, resending content")
+                
+                if paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
+                    caption = f"🔓 <b>Unlocked Content</b>\n\n{paid_post.get('caption', '')}"
+                    await send_telegram_photo(chat_id, paid_post["original_file_id"], caption, bot_token)
+                elif paid_post.get("content_type") == "video" and paid_post.get("original_file_id"):
+                    caption = f"🔓 <b>Unlocked Video</b>\n\n{paid_post.get('caption', '')}"
+                    await send_telegram_video(chat_id, paid_post["original_file_id"], caption, bot_token)
+                else:
+                    await send_telegram_message(chat_id, f"🔓 <b>Unlocked Content</b>\n\n{paid_post.get('caption', 'Content already unlocked!')}", bot_token)
+                
+                return {"ok": True}
+            
+            # Check if user is an active subscriber (can unlock for free)
+            subscriber = await db.subscribers.find_one({
+                "telegram_user_id": chat_id,
+                "status": {"$in": ["active", "grace"]}
+            }, {"_id": 0})
+            
+            if subscriber:
+                # Active subscriber - unlock for free!
+                logger.info(f"Active subscriber {chat_id} unlocking post {post_id} for free")
+                
+                # Save unlock record
+                unlock_record = {
+                    "id": str(uuid.uuid4()),
+                    "post_id": post_id,
+                    "telegram_user_id": chat_id,
+                    "telegram_username": username,
+                    "payment_id": "free_subscriber",
+                    "unlocked_at": datetime.now(timezone.utc).isoformat()
+                }
+                await db.paid_post_unlocks.insert_one(unlock_record)
+                
+                # Update unlock count
+                await db.paid_posts.update_one({"id": post_id}, {"$inc": {"unlock_count": 1}})
+                
+                # Send unlocked content
+                if paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
+                    caption = f"🔓 <b>Unlocked for Subscribers!</b>\n\n{paid_post.get('caption', '')}"
+                    await send_telegram_photo(chat_id, paid_post["original_file_id"], caption, bot_token)
+                elif paid_post.get("content_type") == "video" and paid_post.get("original_file_id"):
+                    caption = f"🔓 <b>Unlocked Video for Subscribers!</b>\n\n{paid_post.get('caption', '')}"
+                    await send_telegram_video(chat_id, paid_post["original_file_id"], caption, bot_token)
+                else:
+                    await send_telegram_message(chat_id, f"🔓 <b>Unlocked!</b>\n\n{paid_post.get('caption', 'Content unlocked!')}", bot_token)
+                
+                return {"ok": True}
+            
+            # Not a subscriber - show payment options
+            post_price = paid_post.get("price", 0)
+            settings = await get_bot_settings()
+            qr_code_url = settings.get("qr_code_url", "")
+            
+            # If no specific price, use default from plans
+            if post_price <= 0:
+                plans = await db.plans.find({"is_active": True}, {"_id": 0}).sort("price", 1).to_list(1)
+                if plans:
+                    post_price = plans[0].get("price", 99)
+                else:
+                    post_price = 99
+            
+            unlock_msg = f"🔒 <b>Paid Content</b>\n\n"
+            unlock_msg += f"💰 Price: <b>₹{int(post_price)}</b>\n\n"
+            unlock_msg += "━━━━━━━━━━━━━━━\n"
+            unlock_msg += "<b>💳 Payment Options:</b>\n\n"
+            unlock_msg += "1️⃣ Pay via UPI/QR Code\n"
+            unlock_msg += "2️⃣ Send payment screenshot here\n"
+            unlock_msg += "3️⃣ Get content instantly!\n\n"
+            unlock_msg += "OR subscribe for unlimited access! 👇"
+            
+            buttons = []
+            if qr_code_url:
+                buttons.append([{"text": "📱 Show QR Code", "callback_data": f"unlock_qr_{post_id}"}])
+            buttons.append([{"text": "✅ I've Paid - Verify", "callback_data": f"unlock_paid_{post_id}"}])
+            buttons.append([{"text": "📦 Get Full Subscription", "callback_data": "back_plans"}])
+            
+            await send_telegram_message_with_buttons(chat_id, unlock_msg, buttons, bot_token)
+            
+            # Save pending unlock request
+            await db.pending_screenshots.update_one(
+                {"telegram_user_id": chat_id},
+                {"$set": {
+                    "telegram_user_id": chat_id,
+                    "telegram_username": username,
+                    "unlock_post_id": post_id,
+                    "expected_amount": post_price,
+                    "status": "waiting_unlock",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+            
+            return {"ok": True}
+        
         if text == "/start" or text == "/start subscribe" or text == "/plans":
             # Show plans directly
             plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
@@ -4471,8 +5353,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             help_msg = "🤖 <b>Bot Commands</b>\n\n"
             help_msg += "/start - View subscription plans\n"
             help_msg += "/status - Check your subscription\n"
+            help_msg += "/videocall - Book a video call\n"
             help_msg += "/share - Get shareable message\n"
-            help_msg += "/help - Show this help message"
+            help_msg += "/help - Show this help message\n\n"
+            help_msg += "💬 You can also ask me any questions!"
             await send_telegram_message(chat_id, help_msg)
         
         elif text == "/share":
@@ -4486,7 +5370,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     me_response = await http_client.get(f"https://api.telegram.org/bot{bot_token}/getMe")
                     if me_response.status_code == 200:
                         bot_username = me_response.json().get("result", {}).get("username", "")
-            except:
+            except Exception:
                 pass
             
             plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
@@ -4516,6 +5400,31 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             
             # Also send instruction
             await send_telegram_message(chat_id, "👆 Forward this message to your groups!\n\nThe buttons will work for everyone.", bot_token)
+        
+        # Handle /videocall command
+        elif text == "/videocall":
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            if not settings.get("video_call_enabled", True):
+                await send_telegram_message(chat_id, "❌ Video calls are currently not available.", bot_token)
+            else:
+                price = settings.get("video_call_price", 500)
+                duration = settings.get("video_call_duration", 30)
+                instructions = settings.get("video_call_instructions", "📹 Book a 1-on-1 video call with us!")
+                
+                msg = f"📹 <b>Video Call Booking</b>\n\n"
+                msg += f"{instructions}\n\n"
+                msg += f"💰 <b>Price:</b> ₹{price}\n"
+                msg += f"⏱ <b>Duration:</b> {duration} minutes\n\n"
+                msg += "👇 Click below to book your video call:"
+                
+                buttons = [
+                    [{"text": "📅 Book Video Call", "callback_data": "book_videocall"}],
+                    [{"text": "❌ Cancel", "callback_data": "cancel_action"}]
+                ]
+                
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
         
         # Handle photo/screenshot uploads
         photo = message.get("photo")
@@ -4566,6 +5475,85 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                     await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
                 except Exception as e:
                     logger.error(f"Error processing screenshot: {e}")
+        
+        # ============ AI CHAT - Handle unknown text messages ============
+        # If message is text but not a command, try to answer using FAQ or AI
+        if text and not text.startswith("/") and not photo:
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            # First check FAQs for matching answer
+            faqs = await db.faqs.find({"is_active": True}, {"_id": 0}).to_list(100)
+            
+            faq_answer = None
+            text_lower = text.lower()
+            
+            for faq in faqs:
+                keywords = faq.get("keywords", [])
+                question = faq.get("question", "").lower()
+                
+                # Check if any keyword matches
+                if any(kw.lower() in text_lower for kw in keywords):
+                    faq_answer = faq.get("answer")
+                    break
+                # Check if question is similar
+                elif any(word in text_lower for word in question.split() if len(word) > 3):
+                    faq_answer = faq.get("answer")
+                    break
+            
+            if faq_answer:
+                # Found FAQ match
+                await send_telegram_message(chat_id, faq_answer, bot_token)
+            else:
+                # No FAQ match - use AI to respond
+                try:
+                    from emergentintegrations.llm.chat import chat, LlmMessage
+                    
+                    # Get context about the bot/business
+                    plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+                    plan_info = "\n".join([f"- {p['name']}: ₹{p['price']} for {p['duration_days']} days" for p in plans])
+                    
+                    system_prompt = f"""You are a helpful customer support assistant for a subscription-based Telegram service.
+
+Available Plans:
+{plan_info}
+
+Commands users can use:
+- /start - View subscription plans
+- /status - Check subscription status
+- /videocall - Book a video call
+- /help - Get help
+
+Keep responses short, friendly, and helpful. If user asks about pricing or plans, tell them to use /start command. 
+If they have technical issues, ask them to describe the problem.
+Always be polite and use emojis sparingly."""
+
+                    response = await chat(
+                        api_key=os.environ.get("EMERGENT_LLM_KEY", ""),
+                        messages=[
+                            LlmMessage(role="system", content=system_prompt),
+                            LlmMessage(role="user", content=text)
+                        ],
+                        model="gpt-4o-mini"
+                    )
+                    
+                    if response and response.message:
+                        await send_telegram_message(chat_id, response.message, bot_token)
+                    else:
+                        # Fallback response
+                        fallback_msg = "🤔 I'm not sure about that.\n\n"
+                        fallback_msg += "Try these commands:\n"
+                        fallback_msg += "/start - View plans\n"
+                        fallback_msg += "/status - Check subscription\n"
+                        fallback_msg += "/help - Get help"
+                        await send_telegram_message(chat_id, fallback_msg, bot_token)
+                        
+                except Exception as ai_error:
+                    logger.error(f"AI Chat error: {ai_error}")
+                    # Fallback response
+                    fallback_msg = "🤔 I'm here to help!\n\n"
+                    fallback_msg += "Use /start to see our plans or /help for commands."
+                    await send_telegram_message(chat_id, fallback_msg, bot_token)
         
         return {"ok": True}
     except Exception as e:

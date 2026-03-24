@@ -21,6 +21,8 @@ import Coupons from "./pages/Coupons";
 import Referrals from "./pages/Referrals";
 import FAQs from "./pages/FAQs";
 import Analytics from "./pages/Analytics";
+import VideoCalls from "./pages/VideoCalls";
+import PaidPosts from "./pages/PaidPosts";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -136,6 +138,8 @@ function AppRouter() {
         <Route path="referrals" element={<Referrals />} />
         <Route path="faqs" element={<FAQs />} />
         <Route path="analytics" element={<Analytics />} />
+        <Route path="video-calls" element={<VideoCalls />} />
+        <Route path="paid-posts" element={<PaidPosts />} />
       </Route>
     </Routes>
   );

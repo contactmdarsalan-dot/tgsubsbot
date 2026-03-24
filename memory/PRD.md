@@ -37,7 +37,19 @@ User requested a Telegram Subscription Bot with:
 
 ## What's Been Implemented
 
-### Mar 23-24, 2026 - Session (Current)
+### Mar 24, 2026 - Paid Posts Feature (Current Session)
+- [x] **Paid Posts Feature Complete** 🎉
+  - Admin posts photo/video with `/paid` in caption → Bot blurs content automatically
+  - "Unlock Post" button appears below blurred content
+  - Users click unlock → Pay via QR → Send screenshot → Get original content in DM
+  - Active subscribers can unlock for FREE
+  - Custom pricing: `/paid 99` sets ₹99 unlock price
+  - Backend: PaidPost & PaidPostUnlock models, full CRUD APIs
+  - Frontend: New "Paid Posts" page with stats, posts list, unlock requests management
+  - Admin can approve/reject unlock requests manually
+  - AI-powered payment verification for unlock screenshots
+
+### Mar 23-24, 2026 - Previous Session
 - [x] **Branding Update** - Changed all "SubsBot" references to "Tgsubsbot"
   - Browser title updated
   - Login page header and footer updated
@@ -142,6 +154,12 @@ User requested a Telegram Subscription Bot with:
 - `PUT /api/admin/remove-admin/{id}` - Remove admin
 - `PUT /api/admin/change-subscription/{id}` - Change plan
 - `PUT /api/payments/{id}/reject` - Reject payment
+- `GET /api/paid-posts` - Get all paid posts
+- `PUT /api/paid-posts/{id}` - Update paid post (price, status)
+- `DELETE /api/paid-posts/{id}` - Deactivate paid post
+- `GET /api/unlock-requests` - Get pending unlock requests
+- `POST /api/unlock-requests/{id}/approve` - Approve unlock & send content
+- `POST /api/unlock-requests/{id}/reject` - Reject unlock request
 
 ## Prioritized Backlog
 
@@ -159,6 +177,7 @@ User requested a Telegram Subscription Bot with:
 - FAQs & Auto-Reply complete
 - Analytics & Reports with CSV Export complete
 - User Notes, Tags, Block APIs complete
+- **Paid Posts Feature complete** ✅
 
 ### P1 (Important) - Pending
 - [ ] Full E2E Testing on VPS deployment (subscription flow, AI verification, payments)
@@ -190,4 +209,5 @@ User requested a Telegram Subscription Bot with:
 ## Key Files
 - `/app/docker-compose.yml` - VPS deployment configuration
 - `/app/frontend/public/telegram-bot-deploy.zip` - Deployment archive
-- `/app/backend/server.py` - Main backend (needs refactoring)
+- `/app/backend/server.py` - Main backend (needs refactoring, now ~5800 lines)
+- `/app/frontend/src/pages/PaidPosts.jsx` - NEW: Paid Posts management page

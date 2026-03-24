@@ -20,6 +20,8 @@ import {
   Share2,
   HelpCircle,
   BarChart3,
+  Video,
+  Lock,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -28,11 +30,13 @@ const navItems = [
   { path: "/plans", label: "Plans", icon: Package },
   { path: "/subscribers", label: "Subscribers", icon: Users },
   { path: "/payments", label: "Payments", icon: CreditCard },
+  { path: "/paid-posts", label: "Paid Posts", icon: Lock },
   { path: "/chat-groups", label: "Groups", icon: MessagesSquare },
   { path: "/broadcast", label: "Broadcast", icon: Radio },
   { path: "/coupons", label: "Coupons", icon: Ticket },
   { path: "/referrals", label: "Referrals", icon: Share2 },
   { path: "/faqs", label: "FAQs", icon: HelpCircle },
+  { path: "/video-calls", label: "Video Calls", icon: Video },
   { path: "/analytics", label: "Analytics", icon: BarChart3 },
   { path: "/automation", label: "Automation", icon: Bell },
   { path: "/settings", label: "Settings", icon: Settings },

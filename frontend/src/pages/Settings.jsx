@@ -42,6 +42,10 @@ export default function Settings() {
     welcome_message: "",
     payment_instructions: "",
     success_message: "",
+    video_call_enabled: true,
+    video_call_price: 500,
+    video_call_duration: 30,
+    video_call_instructions: "",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -476,6 +480,74 @@ export default function Settings() {
               />
               <p className="text-xs text-muted-foreground">
                 Shown after payment is verified successfully.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Video Call Settings Card */}
+        <Card className="border" data-testid="video-call-settings-card">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              📹 Video Call Settings
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="video_call_enabled">Enable Video Calls</Label>
+              <input
+                type="checkbox"
+                id="video_call_enabled"
+                checked={settings.video_call_enabled}
+                onChange={(e) => setSettings({ ...settings, video_call_enabled: e.target.checked })}
+                className="w-5 h-5 rounded border-gray-300"
+                data-testid="video-call-enabled-checkbox"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="video_call_price">Video Call Price (₹)</Label>
+              <Input
+                id="video_call_price"
+                type="number"
+                value={settings.video_call_price}
+                onChange={(e) => setSettings({ ...settings, video_call_price: parseInt(e.target.value) || 0 })}
+                placeholder="500"
+                data-testid="video-call-price-input"
+                className="bg-muted/50 border-transparent focus:border-primary"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="video_call_duration">Default Duration (minutes)</Label>
+              <Input
+                id="video_call_duration"
+                type="number"
+                value={settings.video_call_duration}
+                onChange={(e) => setSettings({ ...settings, video_call_duration: parseInt(e.target.value) || 30 })}
+                placeholder="30"
+                data-testid="video-call-duration-input"
+                className="bg-muted/50 border-transparent focus:border-primary"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="video_call_instructions">Video Call Instructions</Label>
+              <Textarea
+                id="video_call_instructions"
+                value={settings.video_call_instructions}
+                onChange={(e) => setSettings({ ...settings, video_call_instructions: e.target.value })}
+                placeholder="📹 Book a 1-on-1 video call with us! Choose a date and time."
+                rows={2}
+                data-testid="video-call-instructions-input"
+                className="bg-muted/50 border-transparent focus:border-primary"
+              />
+            </div>
+
+            <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
+              <h4 className="text-sm font-medium text-purple-800 mb-1">📹 Video Call Feature</h4>
+              <p className="text-xs text-purple-700">
+                Users can book video calls using /videocall command. You'll see bookings in the Video Calls dashboard.
               </p>
             </div>
           </CardContent>
