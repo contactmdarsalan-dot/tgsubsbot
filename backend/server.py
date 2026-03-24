@@ -407,9 +407,18 @@ TELEGRAM_MIN_INTERVAL = 0.05  # 50ms between messages per chat
 _bot_username_cache = {}
 
 async def get_bot_settings():
-    """Get bot settings from database"""
+    """Get bot settings from database, with environment variable fallback"""
     settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0})
-    return settings or {}
+    settings = settings or {}
+    
+    # Fallback to environment variable if not in database
+    if not settings.get("telegram_bot_token"):
+        env_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        if env_token:
+            settings["telegram_bot_token"] = env_token
+            logger.info("Using TELEGRAM_BOT_TOKEN from environment variable")
+    
+    return settings
 
 async def get_bot_username(bot_token: str) -> str:
     """Get bot username from Telegram API (cached)"""
@@ -3774,6 +3783,13 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
+        
+        # Log bot token status for debugging
+        if not bot_token:
+            logger.error("BOT TOKEN NOT FOUND! Check database settings or TELEGRAM_BOT_TOKEN env var")
+        else:
+            logger.info(f"Bot token loaded: {bot_token[:10]}...")
+        
         promo_channel_id = settings.get("promo_channel_id", "")  # Public promo channel
         telegram_channel_id = settings.get("telegram_channel_id", "")  # Default channel
         
