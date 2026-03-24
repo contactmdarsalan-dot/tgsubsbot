@@ -3974,9 +3974,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     
                     buttons = []
                     for plan in plans:
-                        inflated_price = plan['price'] + 500
-                        welcome_msg += f"📦 <b>{plan['name']}</b> - ₹{inflated_price}\n"
-                        buttons.append([{"text": f"📦 {plan['name']} - ₹{inflated_price}", "callback_data": f"buy_{plan['id']}"}])
+                        plan_price = int(plan['price'])
+                        welcome_msg += f"📦 <b>{plan['name']}</b> - ₹{plan_price}\n"
+                        buttons.append([{"text": f"📦 {plan['name']} - ₹{plan_price}", "callback_data": f"buy_{plan['id']}"}])
                     
                     buttons.append([{"text": "🌐 Visit Website", "url": website_link}])
                     buttons.append([{"text": "🎁 Special Discount!", "callback_data": "special_discount"}])
@@ -4210,9 +4210,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 welcome_msg = "🎯 <b>Choose Your Plan</b>\n\n"
                 buttons = []
                 for plan in plans:
+                    plan_price = int(plan['price'])
                     welcome_msg += f"📦 <b>{plan['name']}</b>\n"
-                    welcome_msg += f"   💰 ₹{plan['price']} • ⏱ {plan['duration_days']} days\n\n"
-                    buttons.append([{"text": f"📦 {plan['name']} - ₹{plan['price']}", "callback_data": f"buy_{plan['id']}"}])
+                    welcome_msg += f"   💰 ₹{plan_price} • ⏱ {plan['duration_days']} days\n\n"
+                    buttons.append([{"text": f"📦 {plan['name']} - ₹{plan_price}", "callback_data": f"buy_{plan['id']}"}])
                 
                 buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
                 await send_telegram_message_with_buttons(chat_id, welcome_msg, buttons, bot_token)
@@ -4237,11 +4238,11 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 
                 buttons = []
                 for plan in plans:
-                    inflated_price = plan['price'] + 500
-                    actual_price = plan['price']
+                    plan_price = int(plan['price'])
+                    discounted_price = int(plan_price * 0.8)  # 20% discount
                     msg += f"📦 <b>{plan['name']}</b>\n"
-                    msg += f"   <s>₹{inflated_price}</s> → 💰 <b>₹{actual_price}</b> 🔥\n\n"
-                    buttons.append([{"text": f"🔥 {plan['name']} - ₹{actual_price}", "callback_data": f"buy_{plan['id']}"}])
+                    msg += f"   <s>₹{plan_price}</s> → 💰 <b>₹{discounted_price}</b> 🔥\n\n"
+                    buttons.append([{"text": f"🔥 {plan['name']} - ₹{discounted_price}", "callback_data": f"buy_{plan['id']}"}])
                 
                 msg += "⚡ <i>Limited time offer!</i>"
                 
@@ -5668,8 +5669,8 @@ async def send_daily_reminders():
     
     buttons = []
     for plan in plans:
-        inflated_price = plan['price'] + 500
-        buttons.append([{"text": f"📦 {plan['name']} - ₹{inflated_price}", "callback_data": f"buy_{plan['id']}"}])
+        plan_price = int(plan['price'])
+        buttons.append([{"text": f"📦 {plan['name']} - ₹{plan_price}", "callback_data": f"buy_{plan['id']}"}])
     buttons.append([{"text": "🌐 Visit Website", "url": website_link}])
     buttons.append([{"text": "🎁 Special Discount!", "callback_data": "special_discount"}])
     
