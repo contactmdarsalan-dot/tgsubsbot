@@ -1,197 +1,158 @@
 <analysis>**original_problem_statement:**
-The user wants to build a full-featured Telegram subscription management bot with an accompanying web-based admin dashboard.
+The user wants to build a full-featured Telegram subscription management bot with an accompanying web-based admin dashboard. The application was previously migrated to the user's own Hostinger VPS, managed with a Coolify panel.
+
+In this session, the user requested a massive feature expansion, including:
+- A branding update from Sub Manager to Tgsubsbot.
+- AI-powered (GPT-4o Vision) analysis of payment screenshots for auto-approval.
+- Removal of an insecure manual approval button in the bot.
+- A host of new dashboard features: Coupon management, a referral system, FAQ/auto-reply management, and an analytics page with charts and CSV export.
+- Enhancements to the Plans creation to allow assigning specific groups or auto-assigning from a pool.
+- Connecting the entire project (frontend and backend) to a single GitHub repository for streamlined deployment via Coolify.
 
 **PRODUCT REQUIREMENTS:**
--   **Telegram Bot:**
-    -   Show subscription plans, handle payments (manual QR code with screenshot verification), and automatically manage subscribers in private channels.
-    -   Implement OCR to auto-detect payment screenshots.
-    -   Implement time-limited paid chat plans (e.g., 5 min, 30 min) using a pool of pre-created private groups.
-    -   Send renewal and marketing reminders.
-    -   Provide a  command for promotional messages.
-    -   Automatically add a Subscribe button to posts in a designated promo channel.
--   **Admin Dashboard (Web UI):**
-    -   A full dashboard to manage the bot: CRUD for plans, view subscribers, manage payments.
-    -   Broadcast messages to all bot users.
-    -   Manage a pool of chat groups for timed chat plans.
-    -   View payment screenshots and manually verify/unverify payments.
--   **Deployment:** The user is moving the application from the Emergent-managed preview/production environment to their own VPS to solve stability issues.
+Refer to  for a complete and updated list of all implemented and pending features.
 
 **User's preferred language**: Hinglish (Hindi written in Roman script). The next agent MUST respond in Hinglish.
 
 **what currently exists?**
-A full-stack application (React, FastAPI, MongoDB) with a functional Telegram bot and web admin dashboard. The core features like OCR-based payment verification, time-limited chat plans, and broadcasting have been implemented in the preview environment's code.
-
-Due to constant stability issues and user confusion between the preview and production environments, the focus has shifted to migrating the entire application to the user's own VPS (a Hostinger VPS with Coolify panel). The agent created a  file that successfully deployed the backend, frontend, and a MongoDB database on the user's VPS. However, the bot is not functional on the new VPS.
+A full-stack application (React, FastAPI, MongoDB) is deployed on the user's Coolify-managed VPS. The project is now connected to a GitHub repository for deployments. In the local workspace, the agent has successfully implemented all the requested features, including AI payment analysis, coupons, referrals, analytics, and enhanced settings. Dockerfiles for both frontend and backend have been created to facilitate Git-based deployment. However, the user's production deployment is currently failing, preventing any of the new features from going live.
 
 **Last working item**:
--   **Last item agent was working:** The agent guided the user to deploy the application on their new Coolify-managed VPS using a  file. The backend and frontend services are running, but the Telegram bot is not working because the webhook URL () is HTTP, and Telegram requires an HTTPS webhook. The agent explained this limitation and proposed three solutions: use a custom domain with SSL, use a Cloudflare tunnel for a free HTTPS URL, or temporarily revert the webhook to the (unstable) preview environment.
+-   **Last item agent was working:** Diagnosing and fixing the user's failing production deployment on Coolify. The frontend deployment is failing due to ESLint warnings being treated as errors in the CI environment. The backend deployment was failing due to a missing Dockerfile, which has since been pushed to a new branch in Git. The user is trying to get the new code live on their VPS.
 -   **Status:** BLOCKED
--   **Agent Testing Done:** N
--   **Which testing method agent to use?** Manual guidance. The agent needs to help the user set up HTTPS on their VPS.
--   **User Testing Done:** Y (User confirmed the bot is not working on the new VPS).
+-   **Agent Testing Done:** N (Local testing was done, but the production deployment issue prevents verification on the user's server).
+-   **Which testing method agent to use?** Manual guidance. The agent needs to instruct the user on how to correctly configure their Coolify deployment settings.
+-   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1 (P0):** Finalize VPS Deployment by setting up HTTPS.
--   **Issue 2 (P1):** Production Stability. (This is being addressed by the VPS migration).
+-   **Issue 1 (P0):** Fix failing Coolify frontend deployment.
+-   **Issue 2 (P1):** Ensure backend deployment from Git is successful.
 -   **Issue 3 (P2):** Complete the backend code refactoring.
 
 **Issues Detail:**
--   **Issue 1: Finalize VPS Deployment by setting up HTTPS**
-    -   **Attempted fixes:** The agent identified that the user's VPS has an HTTP endpoint, which Telegram rejects for webhooks. The agent has proposed three solutions. The webhook is currently pointed to the preview environment as a temporary workaround.
+-   **Issue 1: Fix failing Coolify frontend deployment**
+    -   **Attempted fixes:** The agent guided the user to set up Git-based deployment. The initial failures were due to missing Dockerfiles. The current failure is a build error.
     -   **Next debug checklist:**
-        1.  Re-engage the user on the three proposed solutions for getting an HTTPS URL:
-            a.  **Domain + SSL (Recommended):** Guide the user to point a domain to their VPS IP and use Coolify's built-in SSL feature.
-            b.  **Cloudflare Tunnel (Free alternative):** Guide the user to run the  command in the Coolify terminal to generate a free, persistent HTTPS URL.
-            c.  **Revert to Preview (Temporary):** Keep the bot running on the preview environment while a permanent fix is worked on.
-        2.  Once an HTTPS URL is obtained, update the Telegram webhook to point to it.
-        3.  Guide the user to test the bot thoroughly on their new VPS.
-    -   **Why fix this issue and what will be achieved with the fix?** This is the final step to make the user's self-hosted application fully functional, stable, and independent of the Emergent platform's lifecycle.
+        1.  The error log  indicates the core problem. The Coolify build environment is treating standard ESLint warnings as fatal errors.
+        2.  Guide the user to navigate to their **Frontend service** in the Coolify UI.
+        3.  Go to the **Environment Variables** tab.
+        4.  Add a new variable:
+            -   **Key:** 
+            -   **Value:** 
+        5.  Save the new variable and trigger a Redeploy for the frontend service. This will prevent the build from failing due to linting warnings.
+    -   **Why fix this issue and what will be achieved with the fix?** This is the primary blocker preventing all new frontend features (new pages, settings, UI changes) from going live on the user's production server.
     -   **Status:** IN PROGRESS
-    -   **Is recurring issue?** N
-    -   **Should Test frontend/backend/both after fix?** Both
-    -   **Blocked on other issue:** None
+    -   **Is recurring issue?** Y (Deployment has been a recurring theme of issues).
+    -   **Should Test frontend/backend/both after fix?** Frontend (by checking the live URL).
+    -   **Blocked on other issue:** None. This is the main blocker.
 
--   **Issue 2: Production Stability**
-    -   **Attempted fixes:** The entire migration to a user-owned VPS is the fix for this. The process is almost complete.
-    -   **Why fix this issue and what will be achieved with the fix?** To give the user a stable, 24/7 running bot and dashboard, eliminating the confusing preview/production environment issues.
-    -   **Status:** IN PROGRESS
+-   **Issue 2: Ensure backend deployment from Git is successful**
+    -   **Attempted fixes:** The agent created a  and guided the user to create a new service in Coolify from their Git repository, pointing to the  directory.
+    -   **Next debug checklist:**
+        1.  Confirm with the user that they have set the **correct branch** in the Coolify backend service settings (the user mentioned they pushed to a new branch, not ).
+        2.  Verify that **all required environment variables** (as listed in a previous message) have been added to the backend service in Coolify.
+        3.  Once the frontend deployment is fixed, trigger a Redeploy for the backend service.
+    -   **Why fix this issue and what will be achieved with the fix?** To get the AI payment analysis and all other new backend logic live on production.
+    -   **Status:** NOT STARTED
     -   **Is recurring issue?** Y
-    -   **Should Test frontend/backend/both after fix?** Both
-    -   **Blocked on other issue:** Issue 1: Finalize VPS Deployment by setting up HTTPS
+    -   **Should Test frontend/backend/both after fix?** Backend
+    -   **Blocked on other issue:** Issue 1 (It's best to fix the frontend first, then focus on the backend).
 
 -   **Issue 3: Complete the backend code refactoring**
-    -   **Attempted fixes:** None in this session. The  file has grown even larger.
+    -   **Attempted fixes:** None. This is a carry-over task.
     -   **Next debug checklist:**
-        1.  Move Pydantic models from  to .
-        2.  Break down API endpoints into  files in .
-        3.  Create a new  and delete .
-    -   **Why fix this issue and what will be achieved with the fix?** To improve code maintainability. The  file is now over 4000 lines long.
+        1.  Break down the monolithic  into a modular structure with  and  directories.
+    -   **Why fix this issue and what will be achieved with the fix?** To improve code maintainability and scalability. The  file is now almost 5000 lines long.
     -   **Status:** NOT STARTED
-    -   **Is recurring issue?** N
-    -   **Should Test frontend/backend/both after fix?** Both
-    -   **Blocked on other issue:** None
+    -   **Is recurring issue?** Y
+    -   **Should Test frontend/backend/both after fix?** Backend
+    -   **Blocked on other issue:** None.
 
 **In progress Task List**:
--   **Task 1: Complete VPS Migration**
-    -   **Where to resume:** Guide the user to choose and implement one of the HTTPS solutions for their new VPS.
-    -   **What will be achieved with this?** A fully independent, stable, and functional application hosted on the user's own infrastructure.
-    -   **Status:** BLOCKED
-    -   **Should Test frontend/backend/both after fix?** Both
-    -   **Blocked on something:** User decision on how to enable HTTPS.
+-   **Task 1: Complete Git-Based Deployment Setup**
+    -   **Where to resume:** Guide the user to set  for the frontend service in Coolify. Then, verify the backend service settings (branch, environment variables) and redeploy both.
+    -   **What will be achieved with this?** A fully functional CI/CD pipeline from GitHub to the user's VPS for both frontend and backend, enabling easy future updates.
+    -   **Status:** IN PROGRESS
+    -   **Blocked on something:** User action is required to change settings in their Coolify panel.
 
 **Upcoming and Future Tasks**
--   **Upcoming Tasks:**
-    -   **(P1) Full testing of all features on the new VPS deployment** once the HTTPS issue is resolved. This includes the Time-Limited Chat flow, OCR, and broadcast features.
-    -   **(P2) Guide user to add Chat Groups** on their new production dashboard for the Time-Limited Chat feature.
--   **Future Tasks:**
-    -   **(P2)** Implement CSV export functionality for subscribers and payments.
-    -   **(P2)** Integrate  for email notifications.
+-   **Upcoming Tasks (Post-Deployment):**
+    -   (P1) Integrate the new backend features into the Telegram bot's command and message handlers (e.g., allow users to apply coupon codes, use referral codes, ask FAQs).
+    -   (P2) Implement the UI for the Scheduled Broadcasts feature.
+-   **Future Tasks (Batch 8 & Refactoring):**
+    -   (P2) Implement Multi-language Bot support.
+    -   (P2) Implement Subscription Pause/Resume.
+    -   (P3) Implement Affiliate Program.
+    -   (P3) Integrate with WhatsApp.
+    -   (P3) Complete the backend code refactoring.
 
 **Completed work in this session**
--   **Full-Stack Deployment on User's VPS:**
-    -   Guided the user to purchase a VPS (Hostinger) and install a control panel (Coolify).
-    -   Provided a complete  file to deploy the frontend, backend, and MongoDB database.
-    -   Created a downloadable  archive of the entire codebase for the user.
--   **Time-Limited Paid Chat Feature:**
-    -   Implemented backend logic (models, APIs, scheduler) for managing a pool of temporary chat groups.
-    -   Added a Renew Chat and Exit Chat option for expired sessions.
-    -   Created a new frontend page  for managing the group pool.
--   **OCR Payment Verification Enhancement:**
-    -   Implemented an initial OCR flow using .
-    -   Diagnosed and fixed failures on dark-mode screenshots by adding image preprocessing (inverting colors, grayscale).
-    -   **Optimized OCR speed** by reducing the number of preprocessing steps from 7 to 2.
-    -   Added a **fallback to manual confirmation** if OCR fails to read the image, preventing the bot from getting stuck.
--   **New Features & UI Improvements:**
-    -   **Broadcast Page:** Created a backend API and frontend page () for sending messages to all bot users.
-    -   **Channel Welcome Message:** The bot now sends a welcome message with plans when a new user joins the promo channel.
-    -   **Payment Management:** Added View Screenshot, Verify, and Unverify buttons to the Payments page on the dashboard.
-    -   **Website Link Integration:** Added the user's website link () to all major bot communications.
--   **Bot Stability and Performance Fixes:**
-    -   Fixed the Subscribe button deep link () to work on the first click.
-    -   Fixed the bot's Cancel button by removing the 30-second time limit on callbacks.
-    -   Optimized bot speed by removing the Analyzing screenshot... message and other minor delays.
-    -   Made the Subscribe button in the promo channel more robust by sending a reply if editing the original message fails.
--   **Production Data Sync:** Manually populated the user's production database (first on Emergent, then attempted on VPS) with settings and plans using API calls to avoid manual entry by the user.
+-   **AI Payment Analysis:** Integrated GPT-4o Vision to analyze payment screenshots, with settings for UPI ID and auto-approval threshold.
+-   **Security Hardening:** Removed the insecure Haan/Nahi manual approval buttons from the bot flow. Screenshots that aren't auto-approved now go directly to an admin queue.
+-   **Massive Feature Expansion (Batches 1-7):**
+    -   Created new dashboard pages for **Coupons, Referrals, FAQs, and Analytics** (with charts and CSV export).
+    -   Added numerous new fields to the **Settings** page (AI threshold, custom bot messages, support username).
+    -   Enhanced the **Plans** creation form to support manual Group ID or automatic assignment from the group pool.
+-   **Git-Based Deployment Setup:** Created s for both frontend and backend and a  to support a monorepo deployment structure from GitHub to Coolify.
+-   **UI/Branding:**
+    -   Changed all instances of SubsBot to Tgsubsbot.
+    -   Removed the Made with Emergent badge and script from .
 
 **Earlier issues found/mentioned but not fixed**
--   The critical technical debt of the monolithic  file remains and has worsened.
-
-**Known issue recurrence from previous fork**
--   The user's frustration with the preview vs. production deployment instability was the main driver for the migration to a user-owned VPS. This issue is now being permanently resolved.
+-   The critical technical debt of the monolithic  file remains and has grown significantly.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
--   **Backend:** FastAPI, MongoDB (motor), ,  (OCR)
--   **Frontend:** React, Tailwind CSS, Shadcn/UI
--   **Deployment:** Docker Compose, Coolify, VPS Hosting
-
-**key DB schema**
--   **chat_groups:** { ,  } (New)
--   **chat_sessions:** { , , , , ,  } (New)
--   **payments:** Added  to be returned in the API response.
+-   **CI/CD Pipeline:** The core of the recent work revolves around setting up a CI/CD pipeline from GitHub to Coolify.
+-   **Dockerfile:** The agent created s for both the React frontend and FastAPI backend to enable containerized builds within Coolify.
+-   **Environment Variables:** Differentiating between build-time and run-time environment variables is critical. The  variable is a key example of a build-time flag needed to solve the current blocker.
 
 **All files of reference**
--   : Heavily modified with all new features.
--   : New page for managing timed-chat groups.
--   : New page for sending mass messages.
--   : Updated with View Screenshot, Verify, and Unverify functionality.
--   : Updated to add routing for new pages.
--   : Updated to add navigation links for new pages.
-
-**Areas that need refactoring**:
--    is critically in need of being broken down into a modular structure. Its size and complexity are a major risk for future development.
-
-**key api endpoints**
--   : CRUD endpoints for the timed chat group pool.
--   : Endpoint to send a message to all users.
--   : New endpoint to revert a verified payment.
--   : Updated to allow verifying a  payment.
--   : Updated to include .
+-   : Newly created for backend deployment.
+-   : Newly created for frontend deployment.
+-   : Newly created to orchestrate services for Git deployment.
+-   : Heavily modified with APIs for all new features.
+-   : Contains new files like , , , .
+-   : Heavily modified with new form fields.
+-   : Contains a detailed list of all features.
 
 **Critical Info for New Agent**
--   The user is highly frustrated with deployment instability. Your top priority is to help them get their new VPS deployment working.
--   The main blocker is that the user's new server provides an **HTTP** endpoint, but Telegram webhooks **require HTTPS**.
--   You need to guide the user through one of the proposed solutions:
-    1.  **Use a Domain (Best):** Help them point a domain to their VPS IP () and use Coolify to automatically enable SSL.
-    2.  **Use Cloudflare Tunnel (Free):** Provide the command to run in the Coolify terminal to generate a free HTTPS tunnel URL.
--   The bot is **temporarily** pointed to the preview environment webhook to keep it running. Once the VPS has HTTPS, the webhook must be switched back to the user's VPS URL.
--   The user has the full application code as a  file, and the deployment is managed by a  file within Coolify. Future code updates will need to be pushed to the VPS (e.g., via git or SFTP) and the Docker containers restarted ( is not used in this setup, Coolify handles restarts).
+-   The user's production deployment is **BROKEN**. Your absolute first priority is to fix the frontend build failure on Coolify. The solution is to add the  environment variable to the frontend service in Coolify.
+-   The user pushed the latest code to a **new Git branch**, not . You must confirm with the user which branch to use and ensure both frontend and backend services in Coolify are configured to pull from that correct branch.
+-   The agent has already written and provided all the necessary code, including Dockerfiles. The problem is purely in the Coolify configuration on the user's side. Do not try to rewrite code; focus on guiding the user to fix their deployment settings.
 
 **documents and test reports created in this job**
--   : Test report for the initial OCR feature. Many changes have occurred since.
--   A  file of the codebase was created and served at  for the user to download.
+-   
+-   
+-   
+-    (updated)
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Asks how to deploy on their own RDP. **Status: ADDRESSED**.
-2.  **User:** Doesn't see a Download Code option. **Status: RESOLVED** (Agent created a zip).
-3.  **User:** Asks if Pro plan will fix issues. **Status: ADDRESSED** (Agent used support_agent to explain it won't).
-4.  **User:** Asks if RDP or VPS is better. **Status: ADDRESSED** (Agent recommended VPS).
-5.  **User:** Asks for OS/Panel recommendation for Hostinger VPS. **Status: ADDRESSED** (Agent recommended Ubuntu + Coolify).
-6.  **User:** Confirms Coolify is installed and provides IP/URL. **Status: IN PROGRESS**.
-7.  **User:** Confirms Docker Compose setup is done. **Status: IN PROGRESS**.
-8.  **User:** Shows frontend not working on port 3000. **Status: ADDRESSED** (Agent diagnosed firewall/HTTPS issue).
-9.  **User:** Shows Telegram webhook returning an error due to HTTP. **Status: ADDRESSED** (Agent explained HTTPS is required).
-10. **User:** Asks how to update the code on the VPS in the future. **Status: ADDRESSED** (Agent explained Git and SFTP methods).
+1.  **User:** Asks for a list of all features added yesterday.
+2.  **Agent:** Provides a comprehensive list of all implemented features.
+3.  **User:** Asks the agent to audit the code to find why data isn't being stored and to make it dynamic.
+4.  **Agent:** Performs an audit, fixes a hardcoded AI threshold, and concludes the main issue is that the new code isn't deployed on the user's VPS.
+5.  **User:** Shares a screenshot of their Coolify terminal inside the backend container and states they are connected via Git.
+6.  **Agent:** Guides the user on how to use  and  inside the container to update the code.
+7.  **User:** Reports that  and  are not found and suggests using Git to push the code.
+8.  **Agent:** Agrees and explains the Save to GitHub process.
+9.  **User:** Shows a screenshot of a successful **frontend** deployment from Git.
+10. **User:** States the backend is not connected and they want to connect the entire project for easy deployment. The last messages show the user attempting to deploy the services from Git, but they are failing.
 
 **Project Health Check:**
--   **Broken:** The primary production deployment on the user's new VPS is non-functional due to the lack of HTTPS for the webhook.
--   **Mocked:** The application is temporarily running on the unstable preview environment as a fallback.
+-   **Broken:** The production deployment pipeline on Coolify is non-functional, blocking all updates.
+-   **Mocked:** None.
 
 **3rd Party Integrations**
--   **Telegram Bot API:** via 
--   **Tesseract OCR:** via 
--   **Twilio:** For SMS OTP login
--   **Google Auth:** For social login
--   **Coolify:** Used as a deployment panel on the user's VPS.
--   **Docker:** The application is now containerized via a  file.
+-   **OpenAI GPT-4o Vision:** Integrated via  for payment screenshot analysis. Uses the .
 
 **Testing status**
--   **Testing agent used after significant changes:** YES (only for the initial OCR feature).
+-   **Testing agent used after significant changes:** NO
 -   **Troubleshoot agent used after agent stuck in loop:** NO
 -   **Test files created:** None
--   **Known regressions:** The user-hosted production environment is not working.
+-   **Known regressions:** The production deployment is broken.
 
 **Credentials to test flow:**
 -   **Super Admin:**  | Password: 
@@ -200,5 +161,4 @@ Due to constant stability issues and user confusion between the preview and prod
 -   **Coolify URL:** 
 
 **What agent forgot to execute**
--   The agent did not initially anticipate that a fresh VPS would not have HTTPS configured, leading to the final blocker. While not a forgotten task, it was an unforeseen dependency.
--   The frontend  and  pages were created, but their functionality and integration were not fully verified.</analysis>
+-   The agent did not anticipate that the Coolify CI environment would treat ESLint warnings as errors by default (). This should have been addressed by proactively adding  to the environment variables or by fixing the lint warnings.</analysis>
