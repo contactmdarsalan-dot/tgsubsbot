@@ -4352,52 +4352,62 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 }}
                             )
                             
-                            # Show manual confirmation with AI info if available
-                            confirm_msg = "📸 <b>Screenshot Received!</b>\n\n"
+                            # NO MANUAL CONFIRMATION BUTTONS - Direct admin review
+                            # Security: User can't self-approve anymore
+                            pending_msg = "📸 <b>Screenshot Received!</b>\n\n"
+                            pending_msg += "⏳ <b>Admin verification pending...</b>\n\n"
                             
                             if ai_result.get("ai_enabled") and ai_result.get("confidence_score"):
-                                confirm_msg += f"🤖 AI Confidence: <b>{ai_result.get('confidence_score')}%</b>\n"
+                                pending_msg += f"🤖 AI Confidence: <b>{ai_result.get('confidence_score')}%</b>\n"
                                 if ai_result.get("fake_indicators"):
-                                    confirm_msg += f"⚠️ Concerns: {', '.join(ai_result.get('fake_indicators', [])[:2])}\n"
-                                confirm_msg += "\n"
+                                    pending_msg += f"⚠️ Concerns: {', '.join(ai_result.get('fake_indicators', [])[:2])}\n"
                             
-                            confirm_msg += "🔍 Auto-approval threshold not met.\n\n"
-                            confirm_msg += "⚠️ <b>Kya yeh payment screenshot hai?</b>\n"
-                            confirm_msg += "(GPay / PhonePe / Paytm / UPI)\n\n"
-                            confirm_msg += "✅ <b>Haan</b> - Agar payment screenshot hai\n"
-                            confirm_msg += "❌ <b>Nahi</b> - Agar kuch aur bheja hai"
+                            pending_msg += "\n📋 Your payment screenshot has been submitted for review.\n"
+                            pending_msg += "✅ You'll be notified once verified!\n\n"
+                            pending_msg += "⏱ Usually takes a few minutes."
                             
-                            buttons = [
-                                [
-                                    {"text": "✅ Haan, Payment SS hai", "callback_data": f"confirm_ss_{plan_id}"},
-                                    {"text": "❌ Nahi", "callback_data": "wrong_ss"}
-                                ]
-                            ]
-                            await send_telegram_message_with_buttons(chat_id, confirm_msg, buttons, bot_token)
+                            # Save for admin dashboard review
+                            payment_pending = {
+                                "id": str(uuid.uuid4()),
+                                "telegram_user_id": chat_id,
+                                "telegram_username": username,
+                                "amount": plan.get('price'),
+                                "plan_id": plan_id,
+                                "plan_name": plan['name'],
+                                "payment_method": "qr_screenshot",
+                                "screenshot_file_id": photo_file_id,
+                                "status": "pending",
+                                "ocr_result": ocr_result,
+                                "ai_result": ai_result if ai_result.get("ai_enabled") else None,
+                                "created_at": datetime.now(timezone.utc).isoformat()
+                            }
+                            await db.payments.insert_one(payment_pending)
+                            
+                            await send_telegram_message(chat_id, pending_msg, bot_token)
                     else:
-                        # Could not download image - fallback to manual confirmation
+                        # Could not download image - save for admin review
                         logger.error(f"Could not download image for user {chat_id}")
                         
-                        await db.pending_screenshots.update_one(
-                            {"telegram_user_id": chat_id},
-                            {"$set": {
-                                "status": "confirming",
-                                "photo_file_id": photo_file_id
-                            }}
-                        )
+                        payment_pending = {
+                            "id": str(uuid.uuid4()),
+                            "telegram_user_id": chat_id,
+                            "telegram_username": username,
+                            "amount": plan.get('price'),
+                            "plan_id": plan_id,
+                            "plan_name": plan['name'],
+                            "payment_method": "qr_screenshot",
+                            "screenshot_file_id": photo_file_id,
+                            "status": "pending",
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        await db.payments.insert_one(payment_pending)
                         
-                        fallback_msg = "📸 <b>Image Received!</b>\n\n"
-                        fallback_msg += "⚠️ Auto-verification fail hua. Manual confirm karo:\n\n"
-                        fallback_msg += "✅ <b>Yes</b> - Agar payment screenshot hai\n"
-                        fallback_msg += "❌ <b>No</b> - Agar kuch aur bheja hai"
+                        fallback_msg = "📸 <b>Screenshot Received!</b>\n\n"
+                        fallback_msg += "⏳ <b>Admin verification pending...</b>\n\n"
+                        fallback_msg += "📋 Your payment screenshot has been submitted for review.\n"
+                        fallback_msg += "✅ You'll be notified once verified!"
                         
-                        buttons = [
-                            [
-                                {"text": "✅ Yes, Payment SS", "callback_data": f"confirm_ss_{plan_id}"},
-                                {"text": "❌ No", "callback_data": "wrong_ss"}
-                            ]
-                        ]
-                        await send_telegram_message_with_buttons(chat_id, fallback_msg, buttons, bot_token)
+                        await send_telegram_message(chat_id, fallback_msg, bot_token)
                     
                     return {"ok": True}
             else:
