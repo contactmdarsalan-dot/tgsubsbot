@@ -4118,6 +4118,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         # Get expected UPI ID from settings
                         settings = await get_bot_settings()
                         expected_upi = settings.get("payment_upi_id", "")
+                        ai_threshold = settings.get("ai_auto_approve_threshold", 85)
                         
                         # Run AI analysis for better accuracy and fake detection
                         ai_result = await analyze_payment_screenshot_with_ai(
@@ -4135,15 +4136,16 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         if ai_result.get("ai_enabled") and ai_result.get("confidence_score", 0) >= 70:
                             # AI is confident - use AI decision
                             is_valid = ai_result.get("is_valid_payment", False)
-                            auto_approve = ai_result.get("auto_approve_recommended", False) and ai_result.get("confidence_score", 0) >= 85
+                            # Use threshold from settings (dynamic)
+                            auto_approve = ai_result.get("auto_approve_recommended", False) and ai_result.get("confidence_score", 0) >= ai_threshold
                             verification_method = "ai_gpt4o"
-                            logger.info(f"Using AI decision: valid={is_valid}, auto_approve={auto_approve}, confidence={ai_result.get('confidence_score')}")
+                            logger.info(f"Using AI decision: valid={is_valid}, auto_approve={auto_approve}, confidence={ai_result.get('confidence_score')}, threshold={ai_threshold}")
                         else:
                             # Fall back to OCR
                             is_valid = ocr_result.get("is_valid", False)
-                            auto_approve = is_valid  # OCR based auto-approve (existing behavior)
+                            auto_approve = False  # OCR alone should NOT auto-approve - send to admin
                             verification_method = "ocr"
-                            logger.info(f"Using OCR decision: valid={is_valid}")
+                            logger.info(f"Using OCR decision: valid={is_valid}, auto_approve=False (OCR requires admin review)")
                         
                         if is_valid and auto_approve:
                             # Valid payment screenshot detected - AUTO VERIFY
