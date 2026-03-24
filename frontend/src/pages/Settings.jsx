@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
+import { Slider } from "../components/ui/slider";
 import { toast } from "sonner";
 import {
   Settings as SettingsIcon,
@@ -16,6 +18,9 @@ import {
   CheckCircle,
   Upload,
   Loader2,
+  MessageSquare,
+  Brain,
+  AtSign,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -32,6 +37,11 @@ export default function Settings() {
     website_link: "",
     qr_code_url: "",
     payment_upi_id: "",
+    ai_auto_approve_threshold: 85,
+    support_username: "",
+    welcome_message: "",
+    payment_instructions: "",
+    success_message: "",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -357,11 +367,48 @@ export default function Settings() {
               </p>
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="ai_threshold" className="flex items-center gap-2">
+                <Brain className="w-4 h-4" />
+                AI Auto-Approve Threshold: {settings.ai_auto_approve_threshold || 85}%
+              </Label>
+              <Slider
+                id="ai_threshold"
+                value={[settings.ai_auto_approve_threshold || 85]}
+                onValueChange={(val) => setSettings({ ...settings, ai_auto_approve_threshold: val[0] })}
+                min={50}
+                max={100}
+                step={5}
+                className="py-2"
+                data-testid="ai-threshold-slider"
+              />
+              <p className="text-xs text-muted-foreground">
+                Payments with confidence score above this threshold will be auto-approved.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="support_username" className="flex items-center gap-2">
+                <AtSign className="w-4 h-4" />
+                Support Username
+              </Label>
+              <Input
+                id="support_username"
+                value={settings.support_username}
+                onChange={(e) => setSettings({ ...settings, support_username: e.target.value })}
+                placeholder="@yourusername"
+                data-testid="support-username-input"
+                className="bg-muted/50 border-transparent focus:border-primary"
+              />
+              <p className="text-xs text-muted-foreground">
+                Your Telegram username for user support contact.
+              </p>
+            </div>
+
             <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
               <h4 className="text-sm font-medium text-green-800 mb-1">🤖 AI Payment Verification</h4>
               <p className="text-xs text-green-700">
                 GPT-4o Vision analyzes payment screenshots to extract amount, UPI ID, and detect fake screenshots. 
-                Payments with 85%+ confidence are auto-approved!
               </p>
             </div>
 
@@ -370,6 +417,65 @@ export default function Settings() {
               <p className="text-xs text-yellow-700">
                 To enable Razorpay payments, add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to
                 your backend environment variables.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Bot Messages Card */}
+        <Card className="border" data-testid="bot-messages-card">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <MessageSquare className="w-5 h-5" />
+              Bot Messages
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="welcome_message">Welcome Message</Label>
+              <Textarea
+                id="welcome_message"
+                value={settings.welcome_message}
+                onChange={(e) => setSettings({ ...settings, welcome_message: e.target.value })}
+                placeholder="👋 Welcome to our subscription bot! Use /plans to see available plans."
+                rows={3}
+                data-testid="welcome-message-input"
+                className="bg-muted/50 border-transparent focus:border-primary"
+              />
+              <p className="text-xs text-muted-foreground">
+                First message when user starts the bot. Use HTML tags like &lt;b&gt;bold&lt;/b&gt;.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="payment_instructions">Payment Instructions</Label>
+              <Textarea
+                id="payment_instructions"
+                value={settings.payment_instructions}
+                onChange={(e) => setSettings({ ...settings, payment_instructions: e.target.value })}
+                placeholder="📱 Scan the QR code above and send payment screenshot here."
+                rows={3}
+                data-testid="payment-instructions-input"
+                className="bg-muted/50 border-transparent focus:border-primary"
+              />
+              <p className="text-xs text-muted-foreground">
+                Shown to user after they select a plan, along with QR code.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="success_message">Success Message</Label>
+              <Textarea
+                id="success_message"
+                value={settings.success_message}
+                onChange={(e) => setSettings({ ...settings, success_message: e.target.value })}
+                placeholder="🎉 Payment verified! Your subscription is now active."
+                rows={3}
+                data-testid="success-message-input"
+                className="bg-muted/50 border-transparent focus:border-primary"
+              />
+              <p className="text-xs text-muted-foreground">
+                Shown after payment is verified successfully.
               </p>
             </div>
           </CardContent>

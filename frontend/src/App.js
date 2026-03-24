@@ -17,6 +17,10 @@ import BotCheckout from "./pages/BotCheckout";
 import ChatGroups from "./pages/ChatGroups";
 import Broadcast from "./pages/Broadcast";
 import Layout from "./components/Layout";
+import Coupons from "./pages/Coupons";
+import Referrals from "./pages/Referrals";
+import FAQs from "./pages/FAQs";
+import Analytics from "./pages/Analytics";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -128,6 +132,10 @@ function AppRouter() {
         <Route path="admin-subs" element={<AdminSubscriptions />} />
         <Route path="super-admin" element={<SuperAdminDashboard />} />
         <Route path="support" element={<SupportPage />} />
+        <Route path="coupons" element={<Coupons />} />
+        <Route path="referrals" element={<Referrals />} />
+        <Route path="faqs" element={<FAQs />} />
+        <Route path="analytics" element={<Analytics />} />
       </Route>
     </Routes>
   );

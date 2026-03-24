@@ -37,7 +37,7 @@ User requested a Telegram Subscription Bot with:
 
 ## What's Been Implemented
 
-### Mar 23, 2026 - Session (Current)
+### Mar 23-24, 2026 - Session (Current)
 - [x] **Branding Update** - Changed all "SubsBot" references to "Tgsubsbot"
   - Browser title updated
   - Login page header and footer updated
@@ -60,6 +60,50 @@ User requested a Telegram Subscription Bot with:
     - Any assigned chat groups
   - User receives notification about rejection
   - Subscription removed from database
+
+- [x] **Settings Page Enhancements (Batch 1)**
+  - AI Auto-Approve Threshold slider (50-100%)
+  - Support Username field
+  - Welcome Message customization
+  - Payment Instructions customization
+  - Success Message customization
+  - Payment UPI ID for AI matching
+
+- [x] **Plans Page Enhancements**
+  - Group ID (Manual) field
+  - Auto Groups toggle - auto-assign from pool
+  - Sidebar renamed "Chat Groups" → "Groups"
+
+- [x] **Coupons & Discounts (Batch 2)**
+  - Create/Edit/Delete coupons
+  - Percentage or Flat discount types
+  - Min purchase amount
+  - Max usage limit
+  - Expiry date
+  - Coupon validation API for bot
+
+- [x] **Referral Program (Batch 6)**
+  - Referral settings (enable/disable)
+  - Referrer & Referee reward configuration
+  - Reward types: Discount, Cash, Free Days
+  - Referral tracking dashboard
+  - Referral validation API for bot
+
+- [x] **FAQs & Auto-Reply (Batch 7)**
+  - Create/Edit/Delete FAQs
+  - Keyword-based auto-responses
+  - Usage tracking
+
+- [x] **Analytics & Reports (Batch 3)**
+  - Revenue chart (last 14 days)
+  - User growth chart (last 14 days)
+  - Export Subscribers to CSV
+  - Export Payments to CSV
+
+- [x] **User Management APIs (Batch 4)**
+  - User Notes API
+  - User Tags API
+  - Block/Unblock Users API
 
 ### VPS Deployment (Previous Session - Completed)
 - [x] Full VPS migration from Emergent preview to user's Hostinger VPS
@@ -110,17 +154,33 @@ User requested a Telegram Subscription Bot with:
 - Branding update complete (Tgsubsbot)
 - AI Payment Analysis (GPT-4o Vision) complete
 - Admin Unverify → Kick from Channel complete
+- Coupons & Discounts system complete
+- Referral Program complete
+- FAQs & Auto-Reply complete
+- Analytics & Reports with CSV Export complete
+- User Notes, Tags, Block APIs complete
 
 ### P1 (Important) - Pending
 - [ ] Full E2E Testing on VPS deployment (subscription flow, AI verification, payments)
 - [ ] Add Chat Groups in production for Time-Limited Chat feature
 - [ ] Razorpay Gateway for Bot Subscriptions (Needs user API keys)
+- [ ] Integrate coupon system in Telegram bot
+- [ ] Integrate referral system in Telegram bot
+- [ ] Integrate FAQ auto-reply in Telegram bot
 
 ### P2 (Nice to have)
+- [ ] Scheduled Broadcasts (date/time picker)
+- [ ] User Notes & Tags UI in Subscribers page
+- [ ] Block/Unblock Users UI
 - [ ] Email notifications (Resend integration)
-- [ ] Export to CSV
-- [ ] Backend code refactoring (server.py is 4000+ lines)
+- [ ] Backend code refactoring (server.py is 5000+ lines now)
 - [ ] Show AI analysis details in admin dashboard payment cards
+
+### Batch 8 (Future - Not Started)
+- [ ] Multi-language Bot (Hindi/English)
+- [ ] WhatsApp Integration
+- [ ] Affiliate Program
+- [ ] Subscription Pause/Resume
 
 ## Test Credentials
 - **Super Admin**: gamerxboys8958@gmail.com / Sumit@8958

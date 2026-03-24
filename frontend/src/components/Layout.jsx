@@ -16,6 +16,10 @@ import {
   UserCog,
   MessagesSquare,
   Radio,
+  Ticket,
+  Share2,
+  HelpCircle,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -26,6 +30,10 @@ const navItems = [
   { path: "/payments", label: "Payments", icon: CreditCard },
   { path: "/chat-groups", label: "Groups", icon: MessagesSquare },
   { path: "/broadcast", label: "Broadcast", icon: Radio },
+  { path: "/coupons", label: "Coupons", icon: Ticket },
+  { path: "/referrals", label: "Referrals", icon: Share2 },
+  { path: "/faqs", label: "FAQs", icon: HelpCircle },
+  { path: "/analytics", label: "Analytics", icon: BarChart3 },
   { path: "/automation", label: "Automation", icon: Bell },
   { path: "/settings", label: "Settings", icon: Settings },
   { path: "/support", label: "Support", icon: MessageSquare },

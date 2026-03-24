@@ -181,6 +181,12 @@ class BotSettings(BaseModel):
     grace_period_days: int = 2
     followup_enabled: bool = True
     followup_message: str = "Check out our premium services!"
+    # New Settings - Batch 1
+    ai_auto_approve_threshold: int = 85  # AI confidence % for auto-approve (50-100)
+    support_username: str = ""  # @username for support contact
+    welcome_message: str = "👋 Welcome to our subscription bot! Use /plans to see available plans."
+    payment_instructions: str = "📱 Scan the QR code above and send payment screenshot here."
+    success_message: str = "🎉 Payment verified! Your subscription is now active."
 
 class MessageTemplate(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -188,6 +194,84 @@ class MessageTemplate(BaseModel):
     type: str  # welcome, reminder, followup, expiry
     message: str
     is_active: bool = True
+
+# ============== COUPON/DISCOUNT MODEL ==============
+class Coupon(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    code: str  # e.g., SAVE20, WELCOME50
+    discount_type: str = "percentage"  # percentage, flat
+    discount_value: float  # 20 for 20% or 50 for ₹50 off
+    min_purchase: float = 0  # Minimum purchase amount
+    max_uses: int = 0  # 0 = unlimited
+    used_count: int = 0
+    valid_from: Optional[str] = None
+    valid_until: Optional[str] = None  # ISO date string
+    applicable_plans: List[str] = []  # Empty = all plans
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+# ============== USER NOTES & TAGS MODEL ==============
+class UserNote(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str  # telegram_user_id
+    note: str
+    added_by: str  # admin email
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class UserTag(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str  # VIP, New, Trusted, etc.
+    color: str = "blue"  # For UI display
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+# ============== REFERRAL MODEL ==============
+class Referral(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    referrer_id: str  # telegram_user_id of referrer
+    referrer_username: str
+    referral_code: str  # Unique code like REF_abc123
+    referred_users: List[str] = []  # List of telegram_user_ids who used this code
+    reward_type: str = "discount"  # discount, cash, free_days
+    reward_value: float = 10  # 10% discount or ₹10 or 10 days
+    total_earnings: float = 0
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+# ============== SCHEDULED BROADCAST MODEL ==============
+class ScheduledBroadcast(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    message: str
+    target_segment: str = "all"  # all, active, expired, new
+    scheduled_at: str  # ISO datetime string
+    status: str = "pending"  # pending, sent, cancelled
+    sent_count: int = 0
+    created_by: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+# ============== FAQ / AUTO-REPLY MODEL ==============
+class FAQ(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    keywords: List[str]  # ["price", "cost", "kitna"]
+    response: str
+    is_active: bool = True
+    usage_count: int = 0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+# ============== BLOCKED USERS MODEL ==============
+class BlockedUser(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    telegram_user_id: str
+    telegram_username: str = ""
+    reason: str = ""
+    blocked_by: str
+    blocked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 # Support Ticket model (Chat-style with multiple messages)
 class SupportTicket(BaseModel):
@@ -2818,6 +2902,463 @@ async def get_broadcast(broadcast_id: str, user = Depends(get_current_user)):
     if not broadcast:
         raise HTTPException(status_code=404, detail="Broadcast not found")
     return broadcast
+
+
+# ============== COUPON/DISCOUNT APIs ==============
+
+@api_router.get("/coupons")
+async def get_coupons(user = Depends(get_current_user)):
+    """Get all coupons"""
+    coupons = await db.coupons.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return coupons
+
+@api_router.post("/coupons")
+async def create_coupon(coupon: dict, user = Depends(get_current_user)):
+    """Create a new coupon"""
+    coupon_data = {
+        "id": str(uuid.uuid4()),
+        "code": coupon.get("code", "").upper().strip(),
+        "discount_type": coupon.get("discount_type", "percentage"),
+        "discount_value": float(coupon.get("discount_value", 0)),
+        "min_purchase": float(coupon.get("min_purchase", 0)),
+        "max_uses": int(coupon.get("max_uses", 0)),
+        "used_count": 0,
+        "valid_from": coupon.get("valid_from"),
+        "valid_until": coupon.get("valid_until"),
+        "applicable_plans": coupon.get("applicable_plans", []),
+        "is_active": coupon.get("is_active", True),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Check if code already exists
+    existing = await db.coupons.find_one({"code": coupon_data["code"]})
+    if existing:
+        raise HTTPException(status_code=400, detail="Coupon code already exists")
+    
+    await db.coupons.insert_one(coupon_data)
+    return {"message": "Coupon created", "coupon": coupon_data}
+
+@api_router.put("/coupons/{coupon_id}")
+async def update_coupon(coupon_id: str, coupon: dict, user = Depends(get_current_user)):
+    """Update a coupon"""
+    await db.coupons.update_one(
+        {"id": coupon_id},
+        {"$set": {
+            "code": coupon.get("code", "").upper().strip(),
+            "discount_type": coupon.get("discount_type"),
+            "discount_value": float(coupon.get("discount_value", 0)),
+            "min_purchase": float(coupon.get("min_purchase", 0)),
+            "max_uses": int(coupon.get("max_uses", 0)),
+            "valid_from": coupon.get("valid_from"),
+            "valid_until": coupon.get("valid_until"),
+            "applicable_plans": coupon.get("applicable_plans", []),
+            "is_active": coupon.get("is_active", True)
+        }}
+    )
+    return {"message": "Coupon updated"}
+
+@api_router.delete("/coupons/{coupon_id}")
+async def delete_coupon(coupon_id: str, user = Depends(get_current_user)):
+    """Delete a coupon"""
+    await db.coupons.delete_one({"id": coupon_id})
+    return {"message": "Coupon deleted"}
+
+@api_router.post("/coupons/validate")
+async def validate_coupon(data: dict):
+    """Validate a coupon code (public endpoint for bot)"""
+    code = data.get("code", "").upper().strip()
+    plan_id = data.get("plan_id")
+    amount = float(data.get("amount", 0))
+    
+    coupon = await db.coupons.find_one({"code": code, "is_active": True}, {"_id": 0})
+    if not coupon:
+        return {"valid": False, "error": "Invalid coupon code"}
+    
+    # Check expiry
+    if coupon.get("valid_until"):
+        expiry = datetime.fromisoformat(coupon["valid_until"].replace("Z", "+00:00"))
+        if datetime.now(timezone.utc) > expiry:
+            return {"valid": False, "error": "Coupon expired"}
+    
+    # Check usage limit
+    if coupon.get("max_uses", 0) > 0 and coupon.get("used_count", 0) >= coupon["max_uses"]:
+        return {"valid": False, "error": "Coupon usage limit reached"}
+    
+    # Check minimum purchase
+    if amount < coupon.get("min_purchase", 0):
+        return {"valid": False, "error": f"Minimum purchase ₹{coupon['min_purchase']} required"}
+    
+    # Check applicable plans
+    if coupon.get("applicable_plans") and plan_id not in coupon["applicable_plans"]:
+        return {"valid": False, "error": "Coupon not valid for this plan"}
+    
+    # Calculate discount
+    if coupon["discount_type"] == "percentage":
+        discount = (amount * coupon["discount_value"]) / 100
+    else:
+        discount = coupon["discount_value"]
+    
+    final_amount = max(0, amount - discount)
+    
+    return {
+        "valid": True,
+        "discount": discount,
+        "final_amount": final_amount,
+        "coupon": coupon
+    }
+
+
+# ============== USER NOTES APIs ==============
+
+@api_router.get("/users/{user_id}/notes")
+async def get_user_notes(user_id: str, user = Depends(get_current_user)):
+    """Get notes for a user"""
+    notes = await db.user_notes.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return notes
+
+@api_router.post("/users/{user_id}/notes")
+async def add_user_note(user_id: str, data: dict, user = Depends(get_current_user)):
+    """Add a note to user"""
+    note_data = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "note": data.get("note", ""),
+        "added_by": user.get("email", "admin"),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.user_notes.insert_one(note_data)
+    return {"message": "Note added", "note": note_data}
+
+@api_router.delete("/users/{user_id}/notes/{note_id}")
+async def delete_user_note(user_id: str, note_id: str, user = Depends(get_current_user)):
+    """Delete a user note"""
+    await db.user_notes.delete_one({"id": note_id, "user_id": user_id})
+    return {"message": "Note deleted"}
+
+
+# ============== USER TAGS APIs ==============
+
+@api_router.get("/tags")
+async def get_tags(user = Depends(get_current_user)):
+    """Get all tags"""
+    tags = await db.user_tags.find({}, {"_id": 0}).to_list(100)
+    return tags
+
+@api_router.post("/tags")
+async def create_tag(data: dict, user = Depends(get_current_user)):
+    """Create a new tag"""
+    tag_data = {
+        "id": str(uuid.uuid4()),
+        "name": data.get("name", ""),
+        "color": data.get("color", "blue"),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.user_tags.insert_one(tag_data)
+    return {"message": "Tag created", "tag": tag_data}
+
+@api_router.delete("/tags/{tag_id}")
+async def delete_tag(tag_id: str, user = Depends(get_current_user)):
+    """Delete a tag"""
+    await db.user_tags.delete_one({"id": tag_id})
+    # Remove tag from all users
+    await db.bot_users.update_many({}, {"$pull": {"tags": tag_id}})
+    return {"message": "Tag deleted"}
+
+@api_router.post("/users/{user_id}/tags")
+async def add_tag_to_user(user_id: str, data: dict, user = Depends(get_current_user)):
+    """Add tag to user"""
+    tag_id = data.get("tag_id")
+    await db.bot_users.update_one(
+        {"telegram_user_id": user_id},
+        {"$addToSet": {"tags": tag_id}}
+    )
+    return {"message": "Tag added to user"}
+
+@api_router.delete("/users/{user_id}/tags/{tag_id}")
+async def remove_tag_from_user(user_id: str, tag_id: str, user = Depends(get_current_user)):
+    """Remove tag from user"""
+    await db.bot_users.update_one(
+        {"telegram_user_id": user_id},
+        {"$pull": {"tags": tag_id}}
+    )
+    return {"message": "Tag removed from user"}
+
+
+# ============== BLOCKED USERS APIs ==============
+
+@api_router.get("/blocked-users")
+async def get_blocked_users(user = Depends(get_current_user)):
+    """Get all blocked users"""
+    blocked = await db.blocked_users.find({}, {"_id": 0}).sort("blocked_at", -1).to_list(1000)
+    return blocked
+
+@api_router.post("/users/{user_id}/block")
+async def block_user(user_id: str, data: dict, user = Depends(get_current_user)):
+    """Block a user"""
+    # Check if already blocked
+    existing = await db.blocked_users.find_one({"telegram_user_id": user_id})
+    if existing:
+        raise HTTPException(status_code=400, detail="User already blocked")
+    
+    # Get user info
+    bot_user = await db.bot_users.find_one({"telegram_user_id": user_id}, {"_id": 0})
+    
+    blocked_data = {
+        "id": str(uuid.uuid4()),
+        "telegram_user_id": user_id,
+        "telegram_username": bot_user.get("username", "") if bot_user else "",
+        "reason": data.get("reason", ""),
+        "blocked_by": user.get("email", "admin"),
+        "blocked_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.blocked_users.insert_one(blocked_data)
+    return {"message": "User blocked", "blocked": blocked_data}
+
+@api_router.delete("/users/{user_id}/block")
+async def unblock_user(user_id: str, user = Depends(get_current_user)):
+    """Unblock a user"""
+    await db.blocked_users.delete_one({"telegram_user_id": user_id})
+    return {"message": "User unblocked"}
+
+
+# ============== REFERRAL APIs ==============
+
+@api_router.get("/referrals")
+async def get_referrals(user = Depends(get_current_user)):
+    """Get all referrals"""
+    referrals = await db.referrals.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return referrals
+
+@api_router.get("/referrals/settings")
+async def get_referral_settings(user = Depends(get_current_user)):
+    """Get referral program settings"""
+    settings = await db.referral_settings.find_one({"id": "referral_settings"}, {"_id": 0})
+    if not settings:
+        settings = {
+            "id": "referral_settings",
+            "enabled": True,
+            "referrer_reward_type": "discount",
+            "referrer_reward_value": 10,
+            "referee_reward_type": "discount",
+            "referee_reward_value": 10
+        }
+        await db.referral_settings.insert_one(settings)
+    return settings
+
+@api_router.put("/referrals/settings")
+async def update_referral_settings(data: dict, user = Depends(get_current_user)):
+    """Update referral program settings"""
+    await db.referral_settings.update_one(
+        {"id": "referral_settings"},
+        {"$set": {
+            "enabled": data.get("enabled", True),
+            "referrer_reward_type": data.get("referrer_reward_type", "discount"),
+            "referrer_reward_value": float(data.get("referrer_reward_value", 10)),
+            "referee_reward_type": data.get("referee_reward_type", "discount"),
+            "referee_reward_value": float(data.get("referee_reward_value", 10))
+        }},
+        upsert=True
+    )
+    return {"message": "Referral settings updated"}
+
+@api_router.post("/referrals/validate")
+async def validate_referral(data: dict):
+    """Validate a referral code (public endpoint for bot)"""
+    code = data.get("code", "").upper().strip()
+    user_id = data.get("user_id")
+    
+    referral = await db.referrals.find_one({"referral_code": code, "is_active": True}, {"_id": 0})
+    if not referral:
+        return {"valid": False, "error": "Invalid referral code"}
+    
+    # Can't use own referral code
+    if referral["referrer_id"] == user_id:
+        return {"valid": False, "error": "Can't use your own referral code"}
+    
+    # Check if user already used a referral
+    if user_id in referral.get("referred_users", []):
+        return {"valid": False, "error": "You've already used a referral code"}
+    
+    settings = await db.referral_settings.find_one({"id": "referral_settings"}, {"_id": 0})
+    
+    return {
+        "valid": True,
+        "referral": referral,
+        "referee_reward": {
+            "type": settings.get("referee_reward_type", "discount") if settings else "discount",
+            "value": settings.get("referee_reward_value", 10) if settings else 10
+        }
+    }
+
+
+# ============== SCHEDULED BROADCAST APIs ==============
+
+@api_router.get("/scheduled-broadcasts")
+async def get_scheduled_broadcasts(user = Depends(get_current_user)):
+    """Get all scheduled broadcasts"""
+    broadcasts = await db.scheduled_broadcasts.find({}, {"_id": 0}).sort("scheduled_at", 1).to_list(1000)
+    return broadcasts
+
+@api_router.post("/scheduled-broadcasts")
+async def create_scheduled_broadcast(data: dict, user = Depends(get_current_user)):
+    """Create a scheduled broadcast"""
+    broadcast_data = {
+        "id": str(uuid.uuid4()),
+        "message": data.get("message", ""),
+        "target_segment": data.get("target_segment", "all"),
+        "scheduled_at": data.get("scheduled_at"),
+        "status": "pending",
+        "sent_count": 0,
+        "created_by": user.get("email", "admin"),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.scheduled_broadcasts.insert_one(broadcast_data)
+    return {"message": "Broadcast scheduled", "broadcast": broadcast_data}
+
+@api_router.delete("/scheduled-broadcasts/{broadcast_id}")
+async def cancel_scheduled_broadcast(broadcast_id: str, user = Depends(get_current_user)):
+    """Cancel a scheduled broadcast"""
+    await db.scheduled_broadcasts.update_one(
+        {"id": broadcast_id},
+        {"$set": {"status": "cancelled"}}
+    )
+    return {"message": "Broadcast cancelled"}
+
+
+# ============== FAQ / AUTO-REPLY APIs ==============
+
+@api_router.get("/faqs")
+async def get_faqs(user = Depends(get_current_user)):
+    """Get all FAQs"""
+    faqs = await db.faqs.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return faqs
+
+@api_router.post("/faqs")
+async def create_faq(data: dict, user = Depends(get_current_user)):
+    """Create a new FAQ"""
+    faq_data = {
+        "id": str(uuid.uuid4()),
+        "keywords": [k.strip().lower() for k in data.get("keywords", "").split(",") if k.strip()],
+        "response": data.get("response", ""),
+        "is_active": data.get("is_active", True),
+        "usage_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.faqs.insert_one(faq_data)
+    return {"message": "FAQ created", "faq": faq_data}
+
+@api_router.put("/faqs/{faq_id}")
+async def update_faq(faq_id: str, data: dict, user = Depends(get_current_user)):
+    """Update a FAQ"""
+    await db.faqs.update_one(
+        {"id": faq_id},
+        {"$set": {
+            "keywords": [k.strip().lower() for k in data.get("keywords", "").split(",") if k.strip()],
+            "response": data.get("response", ""),
+            "is_active": data.get("is_active", True)
+        }}
+    )
+    return {"message": "FAQ updated"}
+
+@api_router.delete("/faqs/{faq_id}")
+async def delete_faq(faq_id: str, user = Depends(get_current_user)):
+    """Delete a FAQ"""
+    await db.faqs.delete_one({"id": faq_id})
+    return {"message": "FAQ deleted"}
+
+
+# ============== ANALYTICS / EXPORT APIs ==============
+
+@api_router.get("/analytics/revenue")
+async def get_revenue_analytics(user = Depends(get_current_user)):
+    """Get revenue analytics"""
+    # Get payments from last 30 days
+    thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    
+    payments = await db.payments.find(
+        {"status": "verified"},
+        {"_id": 0, "amount": 1, "created_at": 1}
+    ).to_list(10000)
+    
+    # Calculate totals
+    total_revenue = sum(p.get("amount", 0) for p in payments)
+    
+    # Group by date for chart
+    daily_revenue = {}
+    for p in payments:
+        date = p.get("created_at", "")[:10]  # Get YYYY-MM-DD
+        if date:
+            daily_revenue[date] = daily_revenue.get(date, 0) + p.get("amount", 0)
+    
+    # Last 30 days data
+    chart_data = []
+    for i in range(30):
+        date = (datetime.now(timezone.utc) - timedelta(days=29-i)).strftime("%Y-%m-%d")
+        chart_data.append({
+            "date": date,
+            "revenue": daily_revenue.get(date, 0)
+        })
+    
+    return {
+        "total_revenue": total_revenue,
+        "total_payments": len(payments),
+        "chart_data": chart_data
+    }
+
+@api_router.get("/analytics/users")
+async def get_user_analytics(user = Depends(get_current_user)):
+    """Get user growth analytics"""
+    users = await db.bot_users.find({}, {"_id": 0, "created_at": 1}).to_list(100000)
+    
+    # Group by date
+    daily_users = {}
+    for u in users:
+        date = str(u.get("created_at", ""))[:10]
+        if date:
+            daily_users[date] = daily_users.get(date, 0) + 1
+    
+    # Last 30 days data
+    chart_data = []
+    cumulative = 0
+    for i in range(30):
+        date = (datetime.now(timezone.utc) - timedelta(days=29-i)).strftime("%Y-%m-%d")
+        new_users = daily_users.get(date, 0)
+        cumulative += new_users
+        chart_data.append({
+            "date": date,
+            "new_users": new_users,
+            "total_users": cumulative
+        })
+    
+    return {
+        "total_users": len(users),
+        "chart_data": chart_data
+    }
+
+@api_router.get("/export/subscribers")
+async def export_subscribers(user = Depends(get_current_user)):
+    """Export subscribers as CSV data"""
+    subscribers = await db.subscribers.find({}, {"_id": 0}).to_list(100000)
+    
+    # Convert to CSV format
+    csv_data = "telegram_user_id,username,plan_name,start_date,end_date,status\n"
+    for s in subscribers:
+        csv_data += f"{s.get('telegram_user_id','')},{s.get('username','')},{s.get('plan_name','')},{s.get('start_date','')},{s.get('end_date','')},{s.get('status','')}\n"
+    
+    return {"csv_data": csv_data, "count": len(subscribers)}
+
+@api_router.get("/export/payments")
+async def export_payments(user = Depends(get_current_user)):
+    """Export payments as CSV data"""
+    payments = await db.payments.find({}, {"_id": 0}).to_list(100000)
+    
+    # Convert to CSV format
+    csv_data = "id,telegram_user_id,username,amount,plan_name,status,payment_method,created_at,verified_at\n"
+    for p in payments:
+        csv_data += f"{p.get('id','')},{p.get('telegram_user_id','')},{p.get('telegram_username','')},{p.get('amount','')},{p.get('plan_name','')},{p.get('status','')},{p.get('payment_method','')},{p.get('created_at','')},{p.get('verified_at','')}\n"
+    
+    return {"csv_data": csv_data, "count": len(payments)}
+
 
 # ============== TELEGRAM WEBHOOK ==============
 
