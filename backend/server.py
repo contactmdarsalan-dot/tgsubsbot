@@ -5308,7 +5308,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             return {"ok": True}
         
         if text == "/start" or text == "/start subscribe" or text == "/plans":
-            # Show plans directly
+            # Show plans directly - fetch from database dynamically
             plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
             settings = await get_bot_settings()
             website_link = settings.get("website_link", "https://miraclecouplee.syke.club")
@@ -5321,10 +5321,11 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             
             buttons = []
             for plan in plans:
-                inflated_price = plan['price'] + 500  # Show +500 price
+                # Show actual price from database (no inflation)
+                plan_price = plan['price']
                 welcome_msg += f"📦 <b>{plan['name']}</b>\n"
-                welcome_msg += f"   💰 ₹{inflated_price} • ⏱ {plan['duration_days']} days\n\n"
-                buttons.append([{"text": f"📦 {plan['name']} - ₹{inflated_price}", "callback_data": f"buy_{plan['id']}"}])
+                welcome_msg += f"   💰 ₹{int(plan_price)} • ⏱ {plan['duration_days']} days\n\n"
+                buttons.append([{"text": f"📦 {plan['name']} - ₹{int(plan_price)}", "callback_data": f"buy_{plan['id']}"}])
             
             if not plans:
                 welcome_msg += "No plans available at the moment.\n"
