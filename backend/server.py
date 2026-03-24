@@ -667,9 +667,9 @@ async def send_screenshot_reminders(chat_id: str, username: str, bot_token: str)
         msg = reminder_messages[i] if i < len(reminder_messages) else reminder_messages[i % len(reminder_messages)]
         full_msg = f"👆 @{username if username else 'User'}\n\n{msg}"
         
-        # Buttons - Cancel always, Discount after 15 reminders
+        # Buttons - Cancel always, Discount after 8 reminders
         buttons = []
-        if i >= 14:  # After 15 reminders (0-indexed, so 14)
+        if i >= 7:  # After 8 reminders (0-indexed, so 7)
             buttons.append([{"text": "🎁 Get Discount!", "callback_data": f"discount_{pending.get('plan_id', '')}"}])
         buttons.append([{"text": "❌ Cancel", "callback_data": "cancel_payment"}])
         
