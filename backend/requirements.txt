@@ -91,6 +91,7 @@ python-dotenv==1.2.1
 python-jose==3.5.0
 python-multipart==0.0.21
 python-telegram-bot==22.6
+pytesseract==0.3.13
 pytokens==0.3.0
 pytz==2025.2
 PyYAML==6.0.3
