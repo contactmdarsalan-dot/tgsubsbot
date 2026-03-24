@@ -3899,6 +3899,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 # Add Subscribe button by editing the message (no delay)
                 try:
                     bot_username = await get_bot_username(bot_token)
+                    if not bot_username:
+                        logger.warning("Could not get bot username for subscribe button")
+                    
                     subscribe_button = [[{
                         "text": "🔔 Subscribe Now",
                         "url": f"https://t.me/{bot_username}?start=subscribe"
@@ -3913,20 +3916,22 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             "reply_markup": {"inline_keyboard": subscribe_button}
                         })
                         
+                        logger.info(f"Subscribe button edit response: {response.status_code} for channel {post_chat_id}")
+                        
                         if response.status_code == 200:
-                            logger.info(f"Added subscribe button to promo channel post: SUCCESS")
+                            logger.info(f"Added subscribe button to channel post: SUCCESS")
                         else:
                             # If edit fails, send a reply message with button
-                            logger.info(f"Edit failed ({response.status_code}), sending reply with button")
+                            logger.info(f"Edit failed ({response.status_code}: {response.text}), sending reply with button")
                             reply_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-                            await http_client.post(reply_url, json={
+                            reply_response = await http_client.post(reply_url, json={
                                 "chat_id": post_chat_id,
                                 "text": "👆 <b>Interested?</b>\n\n🔔 Click below to subscribe!",
                                 "parse_mode": "HTML",
                                 "reply_to_message_id": message_id,
                                 "reply_markup": {"inline_keyboard": subscribe_button}
                             })
-                            logger.info("Sent reply message with subscribe button")
+                            logger.info(f"Reply message response: {reply_response.status_code}")
                             
                 except Exception as e:
                     logger.error(f"Failed to add subscribe button: {e}")
