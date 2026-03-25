@@ -1193,12 +1193,16 @@ async def login(user: UserLogin):
     # Check subscription status
     sub_status = existing.get("dashboard_subscription_status", "inactive")
     sub_end = existing.get("dashboard_subscription_end")
+    user_role = existing.get("role", "user")
     
     if sub_end and isinstance(sub_end, str):
         sub_end = datetime.fromisoformat(sub_end)
     
-    # Check if subscription expired
-    if sub_status == "active" and sub_end and datetime.now(timezone.utc) > sub_end:
+    # Super admin bypasses subscription check
+    if user_role == "super_admin":
+        sub_status = "active"  # Always active for super admin
+    elif sub_status == "active" and sub_end and datetime.now(timezone.utc) > sub_end:
+        # Check if subscription expired
         sub_status = "expired"
         await db.users.update_one({"id": existing["id"]}, {"$set": {"dashboard_subscription_status": "expired"}})
     
@@ -1208,11 +1212,12 @@ async def login(user: UserLogin):
         "user": {
             "id": existing["id"], 
             "email": existing["email"], 
-            "name": existing["name"],
+            "name": existing.get("name", ""),
+            "role": user_role,
             "dashboard_subscription_status": sub_status,
             "dashboard_plan": existing.get("dashboard_plan", ""),
             "dashboard_subscription_end": sub_end.isoformat() if sub_end else None,
-            "is_admin": existing.get("is_admin", False)
+            "is_admin": existing.get("is_admin", False) or user_role in ["admin", "super_admin"]
         }
     }
 
@@ -1308,16 +1313,24 @@ async def get_me(user = Depends(get_current_user)):
     if sub_end and isinstance(sub_end, str):
         sub_end = datetime.fromisoformat(sub_end)
     
+    user_role = user.get("role", "user")
+    sub_status = user.get("dashboard_subscription_status", "inactive")
+    
+    # Super admin always has active status
+    if user_role == "super_admin":
+        sub_status = "active"
+    
     return {
         "id": user["id"], 
         "email": user["email"], 
-        "name": user["name"],
+        "name": user.get("name", ""),
         "phone": user.get("phone", ""),
         "picture": user.get("picture", ""),
-        "dashboard_subscription_status": user.get("dashboard_subscription_status", "inactive"),
+        "role": user_role,
+        "dashboard_subscription_status": sub_status,
         "dashboard_plan": user.get("dashboard_plan", ""),
         "dashboard_subscription_end": sub_end.isoformat() if sub_end else None,
-        "is_admin": user.get("is_admin", False)
+        "is_admin": user.get("is_admin", False) or user_role in ["admin", "super_admin"]
     }
 
 # ============== TWILIO OTP ROUTES ==============
