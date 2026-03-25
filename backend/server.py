@@ -4801,6 +4801,11 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 if paid_post:
                     logger.info(f"Processing unlock screenshot for post {post_id} from user {chat_id}")
                     
+                    # Send "Analyzing" loading message
+                    analyzing_msg = "🔍 <b>Analyzing your screenshot...</b>\n\n"
+                    analyzing_msg += "⏳ Please wait, verifying your payment..."
+                    await send_telegram_message(chat_id, analyzing_msg, bot_token)
+                    
                     photo_file_id = photo[-1]["file_id"] if photo else None
                     image_bytes = await download_telegram_photo(photo_file_id, bot_token)
                     
@@ -4889,12 +4894,51 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             return {"ok": True}
                         
                         else:
-                            # Invalid screenshot
-                            invalid_msg = "❌ <b>Invalid Screenshot!</b>\n\n"
-                            invalid_msg += "Please send a valid payment screenshot showing:\n"
-                            invalid_msg += "✅ Payment Success/Completed status\n"
-                            invalid_msg += "✅ Amount paid\n\n"
-                            invalid_msg += "Try again or contact admin for help."
+                            # Invalid screenshot - check AI result for specific reason
+                            ai_analysis = ai_result.get("ai_analysis", {}) if ai_result.get("ai_enabled") else {}
+                            is_payment_screenshot = ai_analysis.get("is_payment_screenshot", True)
+                            amount_matches = ai_analysis.get("amount_matches", True)
+                            upi_matches = ai_analysis.get("upi_id_matches", True)
+                            detected_amount = ai_analysis.get("detected_amount", 0)
+                            detected_upi = ai_analysis.get("detected_upi_id", "")
+                            
+                            if not is_payment_screenshot:
+                                # Not a payment screenshot - funny message
+                                funny_titles = [
+                                    "😅 Ye kya bhej diya bhai?",
+                                    "🤔 Bhai ye payment screenshot hai?",
+                                    "😂 Galat photo bhej di!",
+                                    "🙈 Ye toh payment nahi hai!",
+                                    "😜 Nice try, but nope!"
+                                ]
+                                import random
+                                title = random.choice(funny_titles)
+                                invalid_msg = f"{title}\n\n"
+                                invalid_msg += "Payment screenshot chahiye, selfie nahi! 🤳\n\n"
+                                invalid_msg += "✅ Valid payment screenshot bhejo jisme dikhe:\n"
+                                invalid_msg += "• Payment SUCCESS status\n"
+                                invalid_msg += "• Amount\n"
+                                invalid_msg += "• UPI Transaction ID"
+                            elif not amount_matches and detected_amount > 0:
+                                # Amount mismatch
+                                expected = pending.get("expected_amount", 0)
+                                invalid_msg = f"💰 <b>Amount Mismatch!</b>\n\n"
+                                invalid_msg += f"Expected: ₹{int(expected)}\n"
+                                invalid_msg += f"Detected: ₹{int(detected_amount)}\n\n"
+                                invalid_msg += "Please pay the correct amount and send screenshot again."
+                            elif not upi_matches and detected_upi:
+                                # UPI ID mismatch
+                                invalid_msg = f"📱 <b>Wrong UPI ID!</b>\n\n"
+                                invalid_msg += f"Payment made to: {detected_upi}\n"
+                                invalid_msg += f"Should be paid to: {expected_upi}\n\n"
+                                invalid_msg += "Please pay to correct UPI ID and send screenshot again."
+                            else:
+                                # Generic invalid
+                                invalid_msg = "❌ <b>Invalid Screenshot!</b>\n\n"
+                                invalid_msg += "Please send a valid payment screenshot showing:\n"
+                                invalid_msg += "✅ Payment Success/Completed status\n"
+                                invalid_msg += "✅ Amount paid\n\n"
+                                invalid_msg += "Try again or contact admin for help."
                             
                             await send_telegram_message(chat_id, invalid_msg, bot_token)
                             return {"ok": True}
