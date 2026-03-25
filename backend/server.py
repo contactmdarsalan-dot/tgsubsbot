@@ -4699,8 +4699,26 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     post_price = paid_post.get("price", 99)
                     
                     if qr_code_url:
+                        # Save pending unlock request so bot knows to expect screenshot
+                        await db.pending_screenshots.update_one(
+                            {"telegram_user_id": chat_id},
+                            {"$set": {
+                                "telegram_user_id": chat_id,
+                                "telegram_username": username,
+                                "unlock_post_id": post_id,
+                                "expected_amount": post_price,
+                                "status": "waiting_unlock",
+                                "created_at": datetime.now(timezone.utc).isoformat()
+                            }},
+                            upsert=True
+                        )
+                        
                         qr_msg = f"📱 <b>Scan & Pay ₹{int(post_price)}</b>\n\n"
-                        qr_msg += "After payment, send screenshot here to unlock content! 📸"
+                        qr_msg += "━━━━━━━━━━━━━━━\n"
+                        qr_msg += "📸 <b>Payment ke baad:</b>\n"
+                        qr_msg += "👉 Payment screenshot yahan bhejo\n"
+                        qr_msg += "👉 Auto-verify hoke content unlock ho jayega!\n"
+                        qr_msg += "━━━━━━━━━━━━━━━"
                         await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token)
                     else:
                         await send_telegram_message(chat_id, "❌ QR Code not configured. Contact admin.", bot_token)
@@ -4965,10 +4983,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         expected_upi = settings.get("payment_upi_id", "")
                         ai_threshold = settings.get("ai_auto_approve_threshold", 85)
                         
+                        # Use discounted price if available, otherwise original price
+                        expected_amount = pending.get("discounted_price") or plan.get('price')
+                        logger.info(f"Expected amount for AI: {expected_amount} (discounted: {pending.get('discounted_price')}, original: {plan.get('price')})")
+                        
                         # Run AI analysis for better accuracy and fake detection
                         ai_result = await analyze_payment_screenshot_with_ai(
                             image_bytes,
-                            expected_amount=plan.get('price'),
+                            expected_amount=expected_amount,
                             expected_upi_id=expected_upi if expected_upi else None
                         )
                         logger.info(f"AI Result for user {chat_id}: {ai_result}")
@@ -5194,7 +5216,8 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 
                                 extracted_amount = ai_extracted.get("amount", "")
                                 extracted_upi = ai_extracted.get("upi_id", "")
-                                expected_amount = plan.get('price', 0)
+                                # Use discounted price if available
+                                expected_amount = pending.get("discounted_price") or plan.get('price', 0)
                                 
                                 # Determine rejection reason and give funny message
                                 if not amount_matches and not upi_matches:
