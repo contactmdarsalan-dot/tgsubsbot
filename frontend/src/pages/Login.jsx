@@ -59,8 +59,9 @@ export default function Login() {
         
         toast.success(isLogin ? "Welcome back!" : "Account created successfully!");
         
-        // Use window.location for full page reload to ensure state is fresh
-        if (isAdmin || user.dashboard_subscription_status === "active") {
+        // Super admin and admin go directly to dashboard
+        const isSuperAdmin = user.role === "super_admin";
+        if (isAdmin || isSuperAdmin || user.dashboard_subscription_status === "active") {
           window.location.href = "/";
         } else {
           window.location.href = "/pricing";
@@ -71,7 +72,9 @@ export default function Login() {
         localStorage.setItem("isFirstUser", "false");
         toast.success(isLogin ? "Welcome back!" : "Account created successfully!");
         
-        if (user.dashboard_subscription_status === "active") {
+        // Super admin still goes to dashboard
+        const isSuperAdmin = user.role === "super_admin";
+        if (isSuperAdmin || user.dashboard_subscription_status === "active") {
           window.location.href = "/";
         } else {
           window.location.href = "/pricing";

@@ -62,12 +62,20 @@ export default function Layout() {
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-  const SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com";
+  const SUPER_ADMIN_EMAILS = ["gamerxboys8958@gmail.com", "contactmdarsalan@gmail.com"];
 
   useEffect(() => {
-    setIsAdmin(localStorage.getItem("isFirstUser") === "true");
-    setIsSuperAdmin(user.email === SUPER_ADMIN_EMAIL);
-  }, [user.email]);
+    // Check if admin
+    const adminStatus = localStorage.getItem("isFirstUser") === "true" || 
+                        user.is_admin === true || 
+                        user.role === "admin" || 
+                        user.role === "super_admin";
+    setIsAdmin(adminStatus);
+    
+    // Check if super admin - by role OR by email
+    const superAdminStatus = user.role === "super_admin" || SUPER_ADMIN_EMAILS.includes(user.email);
+    setIsSuperAdmin(superAdminStatus);
+  }, [user.email, user.role, user.is_admin]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
