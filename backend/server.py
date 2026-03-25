@@ -4896,13 +4896,39 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     # Get the photo file_id (largest size)
                     photo_file_id = photo[-1]["file_id"] if photo else None
                     
-                    # Download and analyze photo with OCR (skip "analyzing" message for speed)
+                    # Send "Analyzing" loading message
+                    analyzing_msg = "🔍 <b>Analyzing your screenshot...</b>\n\n"
+                    analyzing_msg += "⏳ Please wait, AI is verifying your payment..."
+                    await send_telegram_message(chat_id, analyzing_msg, bot_token)
+                    
+                    # Download and analyze photo with OCR
                     image_bytes = await download_telegram_photo(photo_file_id, bot_token)
                     
                     if image_bytes:
                         # Run OCR detection first (fast)
                         ocr_result = detect_payment_screenshot(image_bytes)
                         logger.info(f"OCR Result for user {chat_id}: {ocr_result}")
+                        
+                        # Check if this is NOT a payment screenshot (selfie, car, random photo)
+                        ocr_keywords = ocr_result.get("found_keywords", [])
+                        if len(ocr_keywords) < 2:
+                            # Very few payment keywords - likely not a payment screenshot
+                            funny_messages = [
+                                "😏 <b>Bhai dekhna hai to dena to hoga!</b>\n\nYe payment screenshot nahi lag raha...",
+                                "🤨 <b>Ye kya bhej diya bhai?</b>\n\nPayment screenshot chahiye, selfie nahi! 📸",
+                                "😅 <b>Are bhai, payment ka screenshot bhejo!</b>\n\nYe to kuch aur hi hai...",
+                                "🙄 <b>Nice try!</b>\n\nBut humein payment proof chahiye, ye nahi! 💸",
+                                "😂 <b>Seedha payment karo na bhai!</b>\n\nYe photo se kaam nahi chalega..."
+                            ]
+                            import random
+                            funny_msg = random.choice(funny_messages)
+                            funny_msg += "\n\n✅ Valid payment screenshot bhejo jisme dikhe:\n"
+                            funny_msg += "• Payment SUCCESS status\n"
+                            funny_msg += "• Amount\n"
+                            funny_msg += "• UPI Transaction ID"
+                            
+                            await send_telegram_message(chat_id, funny_msg, bot_token)
+                            return {"ok": True}
                         
                         # Get expected UPI ID from settings
                         settings = await get_bot_settings()
