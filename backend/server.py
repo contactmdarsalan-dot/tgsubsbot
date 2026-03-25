@@ -3814,6 +3814,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 logger.info(f"Processing PAID POST in channel {post_chat_id}")
                 
                 try:
+                    # IMMEDIATELY delete original message to prevent viewing unblurred content
+                    await delete_telegram_message(post_chat_id, message_id, bot_token)
+                    logger.info(f"Deleted original message {message_id} immediately")
+                    
                     # Get content type and file_id
                     photo = channel_post.get("photo")
                     video = channel_post.get("video")
@@ -3833,6 +3837,17 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     price_match = re.search(r'₹?(\d+)', clean_caption[:50])
                     post_price = float(price_match.group(1)) if price_match else 0
                     
+                    # If no price specified, get default from settings or plans
+                    if post_price <= 0:
+                        settings = await get_bot_settings()
+                        post_price = settings.get("default_paid_post_price", 0)
+                        if post_price <= 0:
+                            plans = await db.plans.find({"is_active": True}, {"_id": 0}).sort("price", 1).to_list(1)
+                            if plans:
+                                post_price = plans[0].get("price", 99)
+                            else:
+                                post_price = 99
+                    
                     # Create paid post record
                     paid_post_id = str(uuid.uuid4())
                     paid_post = {
@@ -3848,7 +3863,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
                     await db.paid_posts.insert_one(paid_post)
-                    logger.info(f"Created paid post record: {paid_post_id}")
+                    logger.info(f"Created paid post record: {paid_post_id} with price {post_price}")
                     
                     # If it's a photo, create blurred version
                     blurred_message_id = 0
@@ -3859,8 +3874,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             # Create blurred version
                             blurred_bytes = create_blurred_image(image_bytes)
                             if blurred_bytes:
-                                # Delete original message
-                                await delete_telegram_message(post_chat_id, message_id, bot_token)
+                                # Original already deleted above
                                 
                                 # Send blurred version with Unlock button
                                 bot_username = await get_bot_username(bot_token)
@@ -3888,7 +3902,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     
                     elif video:
                         # For videos, we can't blur easily - just replace with preview message
-                        await delete_telegram_message(post_chat_id, message_id, bot_token)
+                        # Original already deleted above
                         
                         bot_username = await get_bot_username(bot_token)
                         unlock_button = {
