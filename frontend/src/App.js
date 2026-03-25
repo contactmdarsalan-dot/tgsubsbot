@@ -23,6 +23,7 @@ import FAQs from "./pages/FAQs";
 import Analytics from "./pages/Analytics";
 import VideoCalls from "./pages/VideoCalls";
 import PaidPosts from "./pages/PaidPosts";
+import UserManagement from "./pages/UserManagement";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -140,6 +141,7 @@ function AppRouter() {
         <Route path="analytics" element={<Analytics />} />
         <Route path="video-calls" element={<VideoCalls />} />
         <Route path="paid-posts" element={<PaidPosts />} />
+        <Route path="user-management" element={<UserManagement />} />
       </Route>
     </Routes>
   );

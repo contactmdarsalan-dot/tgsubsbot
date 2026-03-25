@@ -50,6 +50,7 @@ const adminNavItems = [
 // Super admin gets this special item
 const superAdminNavItems = [
   { path: "/super-admin", label: "Admin Support", icon: Shield, superAdminOnly: true },
+  { path: "/user-management", label: "User Management", icon: Users, superAdminOnly: true },
 ];
 
 export default function Layout() {

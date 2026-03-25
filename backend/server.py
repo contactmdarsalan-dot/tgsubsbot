@@ -1842,6 +1842,99 @@ async def get_all_users(user = Depends(get_current_user)):
     users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
     return users
 
+@api_router.get("/admin/users")
+async def get_admin_users(user = Depends(get_current_user)):
+    """Get all admin/super_admin users for user management"""
+    await verify_super_admin(user)
+    
+    # Get users who are admins or super admins
+    users = await db.users.find(
+        {"role": {"$in": ["admin", "super_admin"]}},
+        {"_id": 0, "password_hash": 0}
+    ).to_list(100)
+    return users
+
+@api_router.post("/admin/users")
+async def create_admin_user(data: dict, user = Depends(get_current_user)):
+    """Create a new admin/super_admin user (super admin only)"""
+    await verify_super_admin(user)
+    
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
+    name = data.get("name", "").strip()
+    role = data.get("role", "admin")
+    
+    if not email or not password or not name:
+        raise HTTPException(status_code=400, detail="Email, password and name are required")
+    
+    if role not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=400, detail="Invalid role")
+    
+    # Check if user already exists
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+    
+    # Hash password
+    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    new_user = {
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "password_hash": password_hash,
+        "name": name,
+        "role": role,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.users.insert_one(new_user)
+    logger.info(f"Created new {role} user: {email}")
+    
+    return {"message": "User created successfully", "id": new_user["id"]}
+
+@api_router.put("/admin/users/{user_id}/role")
+async def update_user_role(user_id: str, data: dict, user = Depends(get_current_user)):
+    """Update user role (super admin only)"""
+    await verify_super_admin(user)
+    
+    new_role = data.get("role", "")
+    if new_role not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=400, detail="Invalid role")
+    
+    # Find user
+    target_user = await db.users.find_one({"id": user_id})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Update role
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"role": new_role}}
+    )
+    
+    logger.info(f"Updated user {target_user.get('email')} role to {new_role}")
+    return {"message": "Role updated successfully"}
+
+@api_router.delete("/admin/users/{user_id}")
+async def delete_admin_user(user_id: str, user = Depends(get_current_user)):
+    """Delete a user (super admin only)"""
+    await verify_super_admin(user)
+    
+    # Find user
+    target_user = await db.users.find_one({"id": user_id})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Prevent self-deletion
+    if target_user.get("email") == user.get("email"):
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    
+    # Delete user
+    await db.users.delete_one({"id": user_id})
+    
+    logger.info(f"Deleted user: {target_user.get('email')}")
+    return {"message": "User deleted successfully"}
+
 @api_router.get("/admin/stats")
 async def get_admin_stats(user = Depends(get_current_user)):
     """Get dashboard stats for super admin"""
