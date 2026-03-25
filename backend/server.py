@@ -3833,9 +3833,13 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     # Clean caption (remove /paid command)
                     clean_caption = caption.replace("/paid", "").replace("/Paid", "").replace("/PAID", "").strip()
                     
-                    # Extract price if mentioned (e.g., /paid 99 or /paid ₹99)
-                    price_match = re.search(r'₹?(\d+)', clean_caption[:50])
+                    # Extract price if mentioned (e.g., /paid 99 or /paid ₹99 or /paid -99)
+                    price_match = re.search(r'^[₹\-]?(\d+)\s*', clean_caption)
                     post_price = float(price_match.group(1)) if price_match else 0
+                    
+                    # Remove price from caption if found at the beginning
+                    if price_match:
+                        clean_caption = clean_caption[price_match.end():].strip()
                     
                     # If no price specified, get default from settings or plans
                     if post_price <= 0:
@@ -5354,43 +5358,8 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 
                 return {"ok": True}
             
-            # Check if user is an active subscriber (can unlock for free)
-            subscriber = await db.subscribers.find_one({
-                "telegram_user_id": chat_id,
-                "status": {"$in": ["active", "grace"]}
-            }, {"_id": 0})
-            
-            if subscriber:
-                # Active subscriber - unlock for free!
-                logger.info(f"Active subscriber {chat_id} unlocking post {post_id} for free")
-                
-                # Save unlock record
-                unlock_record = {
-                    "id": str(uuid.uuid4()),
-                    "post_id": post_id,
-                    "telegram_user_id": chat_id,
-                    "telegram_username": username,
-                    "payment_id": "free_subscriber",
-                    "unlocked_at": datetime.now(timezone.utc).isoformat()
-                }
-                await db.paid_post_unlocks.insert_one(unlock_record)
-                
-                # Update unlock count
-                await db.paid_posts.update_one({"id": post_id}, {"$inc": {"unlock_count": 1}})
-                
-                # Send unlocked content
-                if paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
-                    caption = f"🔓 <b>Unlocked for Subscribers!</b>\n\n{paid_post.get('caption', '')}"
-                    await send_telegram_photo(chat_id, paid_post["original_file_id"], caption, bot_token)
-                elif paid_post.get("content_type") == "video" and paid_post.get("original_file_id"):
-                    caption = f"🔓 <b>Unlocked Video for Subscribers!</b>\n\n{paid_post.get('caption', '')}"
-                    await send_telegram_video(chat_id, paid_post["original_file_id"], caption, bot_token)
-                else:
-                    await send_telegram_message(chat_id, f"🔓 <b>Unlocked!</b>\n\n{paid_post.get('caption', 'Content unlocked!')}", bot_token)
-                
-                return {"ok": True}
-            
-            # Not a subscriber - show payment options
+            # Everyone must pay for paid posts - no free unlock for subscribers
+            # Show payment options
             post_price = paid_post.get("price", 0)
             settings = await get_bot_settings()
             qr_code_url = settings.get("qr_code_url", "")
