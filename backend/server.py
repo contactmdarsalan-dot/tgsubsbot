@@ -111,6 +111,7 @@ class SubscriptionPlanCreate(BaseModel):
     channel_id: str = ""  # Each plan can have its own channel
     group_id: str = ""    # Manual group ID for this plan
     auto_assign_group: bool = False  # Auto-assign from groups pool
+    discount_percentage: int = 0  # Plan-specific discount (0-100)
 
 class SubscriptionPlan(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -123,6 +124,7 @@ class SubscriptionPlan(BaseModel):
     channel_id: str = ""  # Each plan can have its own channel
     group_id: str = ""    # Manual group ID for this plan
     auto_assign_group: bool = False  # Auto-assign from groups pool
+    discount_percentage: int = 0  # Plan-specific discount (0-100)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class SubscriberCreate(BaseModel):
@@ -4161,11 +4163,22 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
                 
                 if plan:
+                    # Check if plan has discount
+                    original_price = int(plan['price'])
+                    discount_pct = plan.get('discount_percentage', 0)
+                    if discount_pct > 0:
+                        discounted_price = int(original_price * (100 - discount_pct) / 100)
+                        price_display = f"<s>₹{original_price}</s> → <b>₹{discounted_price}</b> 🔥"
+                        final_price = discounted_price
+                    else:
+                        price_display = f"<b>₹{original_price}</b>"
+                        final_price = original_price
+                    
                     # Show payment options
                     qr_code_url = settings.get("qr_code_url", "")
                     
                     payment_msg = f"<b>📦 {plan['name']}</b>\n\n"
-                    payment_msg += f"💰 Price: <b>₹{plan['price']}</b>\n"
+                    payment_msg += f"💰 Price: {price_display}\n"
                     payment_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
                     
                     if plan.get('features'):
@@ -4196,6 +4209,16 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
                 qr_url = settings.get("qr_code_url", "")
                 
+                # Calculate discounted price if applicable
+                original_price = plan["price"] if plan else 0
+                discount_pct = plan.get('discount_percentage', 0) if plan else 0
+                if discount_pct > 0:
+                    final_price = int(original_price * (100 - discount_pct) / 100)
+                    price_display = f"<s>₹{int(original_price)}</s> → ₹{final_price}"
+                else:
+                    final_price = int(original_price)
+                    price_display = f"₹{final_price}"
+                
                 # Save that we're waiting for screenshot from this user
                 await db.pending_screenshots.update_one(
                     {"telegram_user_id": chat_id},
@@ -4204,7 +4227,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "telegram_username": username,
                         "plan_id": plan_id,
                         "plan_name": plan["name"] if plan else "",
-                        "amount": plan["price"] if plan else 0,
+                        "amount": original_price,
+                        "discounted_price": final_price,
+                        "discount_percentage": discount_pct,
                         "status": "waiting",
                         "reminder_count": 0,
                         "created_at": datetime.now(timezone.utc).isoformat()
@@ -4219,7 +4244,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             await http_client.post(url, json={
                                 "chat_id": chat_id,
                                 "photo": qr_url,
-                                "caption": f"📱 <b>Scan & Pay ₹{plan['price'] if plan else ''}</b>\n\n"
+                                "caption": f"📱 <b>Scan & Pay {price_display}</b>\n\n"
                                           f"📦 Plan: <b>{plan['name'] if plan else ''}</b>\n\n"
                                           f"⚠️ <b>Payment ke baad turant screenshot bhejo!</b>\n\n"
                                           f"⏳ Waiting for your screenshot...",
@@ -4376,21 +4401,34 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
             
             elif callback_data == "special_discount":
-                # Show actual prices (500 less than displayed)
+                # Show plan-specific discounted prices
                 plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
                 
                 msg = "🎁 <b>Special Discount Unlocked!</b>\n\n"
                 msg += "🔥 <b>Sirf aapke liye special prices:</b>\n\n"
                 
                 buttons = []
+                has_discount = False
                 for plan in plans:
                     plan_price = int(plan['price'])
-                    discounted_price = int(plan_price * 0.8)  # 20% discount
-                    msg += f"📦 <b>{plan['name']}</b>\n"
-                    msg += f"   <s>₹{plan_price}</s> → 💰 <b>₹{discounted_price}</b> 🔥\n\n"
-                    buttons.append([{"text": f"🔥 {plan['name']} - ₹{discounted_price}", "callback_data": f"buy_{plan['id']}"}])
+                    discount_pct = plan.get('discount_percentage', 0)
+                    
+                    if discount_pct > 0:
+                        has_discount = True
+                        discounted_price = int(plan_price * (100 - discount_pct) / 100)
+                        msg += f"📦 <b>{plan['name']}</b>\n"
+                        msg += f"   <s>₹{plan_price}</s> → 💰 <b>₹{discounted_price}</b> 🔥\n\n"
+                        buttons.append([{"text": f"🔥 {plan['name']} - ₹{discounted_price}", "callback_data": f"buy_{plan['id']}"}])
+                    else:
+                        # No discount for this plan - show normal price
+                        msg += f"📦 <b>{plan['name']}</b>\n"
+                        msg += f"   ₹{plan_price}\n\n"
+                        buttons.append([{"text": f"📦 {plan['name']} - ₹{plan_price}", "callback_data": f"buy_{plan['id']}"}])
                 
-                msg += "⚡ <i>Limited time offer!</i>"
+                if has_discount:
+                    msg += "⚡ <i>Limited time offer!</i>"
+                else:
+                    msg = "📦 <b>Available Plans:</b>\n\n" + msg.split("special prices:</b>\n\n")[1]
                 
                 buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
                 await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)

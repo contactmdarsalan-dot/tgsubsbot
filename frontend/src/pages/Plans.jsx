@@ -35,6 +35,7 @@ export default function Plans() {
     group_id: "",
     auto_assign_group: false,
     is_active: true,
+    discount_percentage: "0",
   });
 
   useEffect(() => {
@@ -64,6 +65,7 @@ export default function Plans() {
         group_id: form.group_id,
         auto_assign_group: form.auto_assign_group,
         is_active: form.is_active,
+        discount_percentage: parseInt(form.discount_percentage) || 0,
       };
 
       if (editingPlan) {
@@ -93,6 +95,7 @@ export default function Plans() {
       group_id: plan.group_id || "",
       auto_assign_group: plan.auto_assign_group || false,
       is_active: plan.is_active,
+      discount_percentage: (plan.discount_percentage || 0).toString(),
     });
     setDialogOpen(true);
   };
@@ -124,6 +127,7 @@ export default function Plans() {
       group_id: "",
       auto_assign_group: false,
       is_active: true,
+      discount_percentage: "0",
     });
   };
 
@@ -196,6 +200,29 @@ export default function Plans() {
                   className="bg-muted/50 border-transparent focus:border-primary"
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="discount">Discount %</Label>
+                <Input
+                  id="discount"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={form.discount_percentage}
+                  onChange={(e) => setForm({ ...form, discount_percentage: e.target.value })}
+                  placeholder="0"
+                  data-testid="plan-discount-input"
+                  className="bg-muted/50 border-transparent focus:border-primary"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {form.discount_percentage > 0 && form.price > 0 
+                    ? `Final price: ₹${Math.round(form.price * (100 - form.discount_percentage) / 100)}`
+                    : "0 = No discount"
+                  }
+                </p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="duration">Duration (Days)</Label>
                 <Input
@@ -317,7 +344,18 @@ export default function Plans() {
                   <span className="font-heading text-4xl font-bold tracking-tight">
                     {plan.price.toLocaleString("en-IN")}
                   </span>
+                  {plan.discount_percentage > 0 && (
+                    <Badge className="ml-2 bg-red-100 text-red-700">
+                      {plan.discount_percentage}% OFF
+                    </Badge>
+                  )}
                 </div>
+                
+                {plan.discount_percentage > 0 && (
+                  <div className="text-sm text-green-600 font-medium">
+                    Discounted: ₹{Math.round(plan.price * (100 - plan.discount_percentage) / 100).toLocaleString("en-IN")}
+                  </div>
+                )}
 
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Clock className="w-4 h-4" />
