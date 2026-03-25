@@ -4898,7 +4898,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     
                     # Send "Analyzing" loading message
                     analyzing_msg = "🔍 <b>Analyzing your screenshot...</b>\n\n"
-                    analyzing_msg += "⏳ Please wait, AI is verifying your payment..."
+                    analyzing_msg += "⏳ Please wait, verifying your payment..."
                     await send_telegram_message(chat_id, analyzing_msg, bot_token)
                     
                     # Download and analyze photo with OCR
@@ -4908,27 +4908,6 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         # Run OCR detection first (fast)
                         ocr_result = detect_payment_screenshot(image_bytes)
                         logger.info(f"OCR Result for user {chat_id}: {ocr_result}")
-                        
-                        # Check if this is NOT a payment screenshot (selfie, car, random photo)
-                        ocr_keywords = ocr_result.get("found_keywords", [])
-                        if len(ocr_keywords) < 2:
-                            # Very few payment keywords - likely not a payment screenshot
-                            funny_messages = [
-                                "😏 <b>Bhai dekhna hai to dena to hoga!</b>\n\nYe payment screenshot nahi lag raha...",
-                                "🤨 <b>Ye kya bhej diya bhai?</b>\n\nPayment screenshot chahiye, selfie nahi! 📸",
-                                "😅 <b>Are bhai, payment ka screenshot bhejo!</b>\n\nYe to kuch aur hi hai...",
-                                "🙄 <b>Nice try!</b>\n\nBut humein payment proof chahiye, ye nahi! 💸",
-                                "😂 <b>Seedha payment karo na bhai!</b>\n\nYe photo se kaam nahi chalega..."
-                            ]
-                            import random
-                            funny_msg = random.choice(funny_messages)
-                            funny_msg += "\n\n✅ Valid payment screenshot bhejo jisme dikhe:\n"
-                            funny_msg += "• Payment SUCCESS status\n"
-                            funny_msg += "• Amount\n"
-                            funny_msg += "• UPI Transaction ID"
-                            
-                            await send_telegram_message(chat_id, funny_msg, bot_token)
-                            return {"ok": True}
                         
                         # Get expected UPI ID from settings
                         settings = await get_bot_settings()
@@ -5154,29 +5133,92 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             ai_fake_indicators = ai_result.get("fake_indicators", [])
                             ai_is_valid = ai_result.get("is_valid_payment", True)
                             ai_reason = ai_result.get("reason", "")
+                            ai_extracted = ai_result.get("extracted_data", {})
+                            amount_matches = ai_result.get("amount_matches", True)
+                            upi_matches = ai_result.get("upi_matches", True)
                             
                             if ai_result.get("ai_enabled") and (not ai_is_valid or len(ai_fake_indicators) > 0):
-                                # AI REJECTED the payment - show rejection message
+                                # AI REJECTED the payment - show specific funny rejection message
                                 logger.info(f"AI REJECTED payment for user {chat_id}: {ai_reason}")
                                 
-                                reject_msg = "❌ <b>Payment Could Not Be Verified!</b>\n\n"
+                                extracted_amount = ai_extracted.get("amount", "")
+                                extracted_upi = ai_extracted.get("upi_id", "")
+                                expected_amount = plan.get('price', 0)
                                 
-                                if ai_reason:
-                                    reject_msg += f"📋 <b>Reason:</b> {ai_reason}\n\n"
+                                # Determine rejection reason and give funny message
+                                if not amount_matches and not upi_matches:
+                                    # Both wrong
+                                    reject_msg = "🤦 <b>Bhai ye kya kar diya!</b>\n\n"
+                                    reject_msg += f"❌ Amount galat: Tune {extracted_amount} bheja, plan ki price <b>₹{int(expected_amount)}</b> hai\n"
+                                    reject_msg += f"❌ UPI bhi galat: Tune <code>{extracted_upi}</code> pe bheja\n"
+                                    if expected_upi:
+                                        reject_msg += f"✅ Sahi UPI: <code>{expected_upi}</code>\n\n"
+                                    reject_msg += "😅 Dobara try kar bhai, is baar dhyan se!"
+                                    
+                                elif not amount_matches:
+                                    # Amount wrong
+                                    try:
+                                        paid_amount = int(''.join(filter(str.isdigit, str(extracted_amount))))
+                                    except:
+                                        paid_amount = 0
+                                    
+                                    if paid_amount > expected_amount:
+                                        reject_msg = f"😮 <b>Arre bhai, zyada bhej diya!</b>\n\n"
+                                        reject_msg += f"Plan price: <b>₹{int(expected_amount)}</b>\n"
+                                        reject_msg += f"Tune bheja: <b>{extracted_amount}</b>\n\n"
+                                        reject_msg += "🤑 Extra paisa wapas chahiye to admin se baat kar!"
+                                    else:
+                                        reject_msg = f"😬 <b>Bhai thoda kam pad gaya!</b>\n\n"
+                                        reject_msg += f"Plan price: <b>₹{int(expected_amount)}</b>\n"
+                                        reject_msg += f"Tune bheja: <b>{extracted_amount}</b>\n\n"
+                                        reject_msg += "💸 Poora amount bhejo phir milega access!"
                                 
-                                if ai_fake_indicators:
-                                    reject_msg += f"⚠️ <b>Issues detected:</b> {', '.join(ai_fake_indicators[:3])}\n\n"
+                                elif not upi_matches:
+                                    # UPI wrong
+                                    reject_msg = f"😱 <b>Galat account mein bhej diya bhai!</b>\n\n"
+                                    reject_msg += f"Tune bheja: <code>{extracted_upi}</code>\n"
+                                    if expected_upi:
+                                        reject_msg += f"✅ Sahi UPI: <code>{expected_upi}</code>\n\n"
+                                    reject_msg += "🙏 Admin se contact kar, shayad refund mil jaye!"
                                 
-                                reject_msg += "Please ensure:\n"
-                                reject_msg += "✅ Screenshot shows payment SUCCESS\n"
-                                reject_msg += "✅ Amount matches the plan price\n"
-                                reject_msg += "✅ UPI ID is correct\n\n"
-                                reject_msg += "Try again with a valid screenshot or contact admin."
+                                elif ai_fake_indicators:
+                                    # Fake screenshot detected
+                                    reject_msg = "🚨 <b>Bhai ye fake lag raha hai!</b>\n\n"
+                                    reject_msg += f"⚠️ Issues: {', '.join(ai_fake_indicators[:3])}\n\n"
+                                    reject_msg += "😏 Dekhna hai to dena to hoga bhai!\n"
+                                    reject_msg += "Asli payment screenshot bhejo! 💯"
+                                
+                                else:
+                                    # Generic rejection
+                                    reject_msg = "❌ <b>Payment verify nahi ho paya!</b>\n\n"
+                                    if ai_reason:
+                                        reject_msg += f"📋 Reason: {ai_reason}\n\n"
+                                    reject_msg += "😅 Valid payment screenshot bhejo bhai!"
                                 
                                 # Delete pending record
                                 await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
                                 
                                 await send_telegram_message(chat_id, reject_msg, bot_token)
+                            
+                            # Check if this is NOT a payment screenshot at all (selfie, car, random photo)
+                            elif not ai_result.get("ai_enabled") and len(ocr_result.get("found_keywords", [])) < 2:
+                                # OCR found almost nothing - likely not a payment screenshot
+                                import random
+                                funny_messages = [
+                                    "😏 <b>Bhai dekhna hai to dena to hoga!</b>\n\nYe payment screenshot nahi lag raha...",
+                                    "🤨 <b>Ye kya bhej diya bhai?</b>\n\nPayment screenshot chahiye, selfie nahi! 📸",
+                                    "😅 <b>Are bhai, payment ka screenshot bhejo!</b>\n\nYe to kuch aur hi hai...",
+                                    "🙄 <b>Nice try!</b>\n\nBut humein payment proof chahiye, ye nahi! 💸",
+                                    "😂 <b>Seedha payment karo na bhai!</b>\n\nYe photo se kaam nahi chalega..."
+                                ]
+                                funny_msg = random.choice(funny_messages)
+                                funny_msg += "\n\n✅ Valid payment screenshot bhejo jisme dikhe:\n"
+                                funny_msg += "• Payment SUCCESS status\n"
+                                funny_msg += "• Amount\n"
+                                funny_msg += "• UPI Transaction ID"
+                                
+                                await send_telegram_message(chat_id, funny_msg, bot_token)
+                            
                             else:
                                 # OCR-only or AI couldn't decide - send to admin review
                                 logger.info(f"Auto-verification couldn't confirm payment for user {chat_id}, showing manual confirmation")
