@@ -561,53 +561,28 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
 
 # ============== IMAGE BLUR FOR PAID POSTS ==============
 
-def create_blurred_image(image_bytes: bytes, blur_radius: int = 30) -> bytes:
+def create_blurred_image(image_bytes: bytes, blur_radius: int = 15) -> bytes:
     """
-    Create a heavily blurred version of an image for paid post preview.
-    Also adds a lock overlay text.
+    Create a lightly blurred version of an image for paid post preview.
+    Shows enough to tease but not enough to see clearly.
     """
-    from PIL import ImageFilter, ImageDraw, ImageFont
+    from PIL import ImageFilter
     
     try:
         image = Image.open(BytesIO(image_bytes))
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
         
-        # Apply heavy blur
+        # Apply light blur (15 instead of 30 for less blur)
         blurred = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
         
-        # Add semi-transparent overlay
-        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 100))
+        # Add very light semi-transparent overlay
+        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 50))
         blurred = blurred.convert('RGBA')
         blurred = Image.alpha_composite(blurred, overlay)
         blurred = blurred.convert('RGB')
         
-        # Add lock emoji/text in center
-        draw = ImageDraw.Draw(blurred)
-        text = "🔒 UNLOCK TO VIEW"
-        
-        # Get image dimensions
-        width, height = blurred.size
-        
-        # Try to use a font, fallback to default
-        try:
-            font_size = max(width // 15, 20)
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
-        except Exception:
-            font = ImageFont.load_default()
-        
-        # Get text bounding box
-        bbox = draw.textbbox((0, 0), text, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-        
-        # Center the text
-        x = (width - text_width) // 2
-        y = (height - text_height) // 2
-        
-        # Draw text with shadow for visibility
-        draw.text((x+2, y+2), text, font=font, fill=(0, 0, 0))
-        draw.text((x, y), text, font=font, fill=(255, 255, 255))
+        # No text overlay - cleaner look
         
         # Convert back to bytes
         output = BytesIO()
