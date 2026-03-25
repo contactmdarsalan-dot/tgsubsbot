@@ -3612,6 +3612,172 @@ async def delete_video_call_booking(booking_id: str, user = Depends(get_current_
     return {"message": "Booking deleted"}
 
 
+# ============== LIVE STREAM APIs ==============
+
+@api_router.get("/live/sessions")
+async def get_live_sessions(user = Depends(get_current_user)):
+    """Get all live sessions"""
+    sessions = await db.live_sessions.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return sessions
+
+@api_router.post("/live/sessions")
+async def create_live_session(data: dict, user = Depends(get_current_user)):
+    """Create a new live session"""
+    session = {
+        "id": str(uuid.uuid4()),
+        "title": data.get("title", ""),
+        "description": data.get("description", ""),
+        "scheduled_date": data.get("scheduled_date", ""),
+        "scheduled_time": data.get("scheduled_time", ""),
+        "price": float(data.get("price", 0)),
+        "max_viewers": int(data.get("max_viewers", 100)),
+        "stream_link": data.get("stream_link", ""),
+        "status": "scheduled",  # scheduled, live, ended
+        "tickets_sold": 0,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.live_sessions.insert_one(session)
+    logger.info(f"Created live session: {session['title']}")
+    return {"message": "Session created", "id": session["id"]}
+
+@api_router.put("/live/sessions/{session_id}")
+async def update_live_session(session_id: str, data: dict, user = Depends(get_current_user)):
+    """Update a live session"""
+    update_data = {}
+    for key in ["title", "description", "scheduled_date", "scheduled_time", "price", "max_viewers", "stream_link", "status"]:
+        if key in data:
+            update_data[key] = data[key]
+    
+    if update_data:
+        await db.live_sessions.update_one({"id": session_id}, {"$set": update_data})
+        
+        # If going live, notify all approved ticket holders
+        if data.get("status") == "live":
+            session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+            if session:
+                settings = await get_bot_settings()
+                bot_token = settings.get("telegram_bot_token", "")
+                
+                # Get all approved tickets for this session
+                approved_tickets = await db.live_tickets.find({
+                    "session_id": session_id,
+                    "status": "approved"
+                }, {"_id": 0}).to_list(1000)
+                
+                for ticket in approved_tickets:
+                    msg = "🔴 <b>LIVE NOW!</b>\n\n"
+                    msg += f"📺 <b>{session.get('title')}</b>\n\n"
+                    if session.get("stream_link"):
+                        msg += f"🔗 Join here:\n{session['stream_link']}"
+                    else:
+                        msg += "Stream link coming soon..."
+                    
+                    await send_telegram_message(ticket.get("telegram_user_id"), msg, bot_token)
+    
+    return {"message": "Session updated"}
+
+@api_router.delete("/live/sessions/{session_id}")
+async def delete_live_session(session_id: str, user = Depends(get_current_user)):
+    """Delete a live session"""
+    await db.live_sessions.delete_one({"id": session_id})
+    await db.live_tickets.delete_many({"session_id": session_id})
+    return {"message": "Session deleted"}
+
+@api_router.get("/live/tickets")
+async def get_live_tickets(user = Depends(get_current_user)):
+    """Get all live tickets"""
+    tickets = await db.live_tickets.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return tickets
+
+@api_router.post("/live/tickets/{ticket_id}/approve")
+async def approve_live_ticket(ticket_id: str, user = Depends(get_current_user)):
+    """Approve a live ticket and send stream link"""
+    ticket = await db.live_tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    await db.live_tickets.update_one({"id": ticket_id}, {"$set": {"status": "approved"}})
+    
+    # Increment tickets_sold
+    await db.live_sessions.update_one(
+        {"id": ticket.get("session_id")},
+        {"$inc": {"tickets_sold": 1}}
+    )
+    
+    # Send stream link to user
+    session = await db.live_sessions.find_one({"id": ticket.get("session_id")}, {"_id": 0})
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    msg = "✅ <b>Ticket Approved!</b>\n\n"
+    msg += f"📺 Session: <b>{session.get('title', '')}</b>\n"
+    msg += f"📅 Date: <b>{session.get('scheduled_date', '')}</b>\n"
+    msg += f"🕐 Time: <b>{session.get('scheduled_time', '')}</b>\n\n"
+    
+    if session and session.get("stream_link"):
+        msg += f"🔗 Stream Link:\n{session['stream_link']}\n\n"
+    else:
+        msg += "🔔 Stream link will be sent when we go live!\n\n"
+    
+    msg += "🎉 See you there!"
+    
+    await send_telegram_message(ticket.get("telegram_user_id"), msg, bot_token)
+    
+    return {"message": "Ticket approved"}
+
+@api_router.post("/live/tickets/{ticket_id}/reject")
+async def reject_live_ticket(ticket_id: str, user = Depends(get_current_user)):
+    """Reject a live ticket"""
+    ticket = await db.live_tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    await db.live_tickets.update_one({"id": ticket_id}, {"$set": {"status": "rejected"}})
+    
+    # Notify user
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    msg = "❌ <b>Ticket Request Rejected</b>\n\n"
+    msg += "Your payment could not be verified.\n"
+    msg += "Please contact admin for assistance."
+    
+    await send_telegram_message(ticket.get("telegram_user_id"), msg, bot_token)
+    
+    return {"message": "Ticket rejected"}
+
+@api_router.get("/live/superchats")
+async def get_superchats(user = Depends(get_current_user)):
+    """Get all super chats"""
+    chats = await db.live_superchats.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return chats
+
+@api_router.post("/live/superchats/{chat_id}/approve")
+async def approve_superchat(chat_id: str, user = Depends(get_current_user)):
+    """Approve a super chat"""
+    await db.live_superchats.update_one({"id": chat_id}, {"$set": {"status": "approved"}})
+    return {"message": "Super chat approved"}
+
+@api_router.post("/live/superchats/{chat_id}/reject")
+async def reject_superchat(chat_id: str, user = Depends(get_current_user)):
+    """Reject a super chat"""
+    chat = await db.live_superchats.find_one({"id": chat_id}, {"_id": 0})
+    await db.live_superchats.update_one({"id": chat_id}, {"$set": {"status": "rejected"}})
+    
+    # Notify user
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    msg = "❌ <b>Super Chat Not Verified</b>\n\n"
+    msg += "Your payment could not be verified.\n"
+    msg += "Please try again or contact admin."
+    
+    if chat:
+        await send_telegram_message(chat.get("telegram_user_id"), msg, bot_token)
+    
+    return {"message": "Super chat rejected"}
+
+
 # ============== ANALYTICS / EXPORT APIs ==============
 
 @api_router.get("/analytics/revenue")
@@ -4927,6 +5093,148 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 else:
                     await send_telegram_message(chat_id, "❌ Post not found or expired.", bot_token)
             
+            # Live ticket purchase
+            elif callback_data.startswith("live_ticket_"):
+                session_id = callback_data.replace("live_ticket_", "")
+                session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session:
+                    # Check if already has ticket
+                    existing_ticket = await db.live_tickets.find_one({
+                        "session_id": session_id,
+                        "telegram_user_id": chat_id,
+                        "status": {"$in": ["pending", "approved"]}
+                    }, {"_id": 0})
+                    
+                    if existing_ticket:
+                        if existing_ticket.get("status") == "approved":
+                            msg = "✅ <b>You already have a ticket!</b>\n\n"
+                            if session.get("stream_link"):
+                                msg += f"🔗 Stream Link:\n{session['stream_link']}"
+                            else:
+                                msg += "Stream link will be sent when we go live!"
+                        else:
+                            msg = "⏳ <b>Ticket Pending</b>\n\nYour ticket is pending approval. Please wait!"
+                        await send_telegram_message(chat_id, msg, bot_token)
+                    else:
+                        # Show QR and ask for payment
+                        qr_url = settings.get("qr_code_url", "")
+                        price = session.get("price", 0)
+                        
+                        if price <= 0:
+                            # Free session - auto approve
+                            ticket = {
+                                "id": str(uuid.uuid4()),
+                                "session_id": session_id,
+                                "session_title": session.get("title", ""),
+                                "telegram_user_id": chat_id,
+                                "telegram_username": username,
+                                "amount": 0,
+                                "status": "approved",
+                                "created_at": datetime.now(timezone.utc).isoformat()
+                            }
+                            await db.live_tickets.insert_one(ticket)
+                            await db.live_sessions.update_one({"id": session_id}, {"$inc": {"tickets_sold": 1}})
+                            
+                            msg = "✅ <b>Free Ticket Confirmed!</b>\n\n"
+                            msg += f"📺 Session: <b>{session.get('title')}</b>\n"
+                            msg += f"📅 Date: <b>{session.get('scheduled_date')}</b>\n"
+                            msg += f"🕐 Time: <b>{session.get('scheduled_time')}</b>\n\n"
+                            if session.get("stream_link"):
+                                msg += f"🔗 Stream Link:\n{session['stream_link']}"
+                            else:
+                                msg += "🔔 Stream link will be sent when we go live!"
+                            await send_telegram_message(chat_id, msg, bot_token)
+                        else:
+                            # Paid session - save pending and show QR
+                            await db.pending_screenshots.update_one(
+                                {"telegram_user_id": chat_id},
+                                {"$set": {
+                                    "telegram_user_id": chat_id,
+                                    "telegram_username": username,
+                                    "live_session_id": session_id,
+                                    "live_session_title": session.get("title", ""),
+                                    "expected_amount": price,
+                                    "status": "waiting_live_ticket",
+                                    "created_at": datetime.now(timezone.utc).isoformat()
+                                }},
+                                upsert=True
+                            )
+                            
+                            if qr_url:
+                                msg = f"🎟 <b>Get Ticket: {session.get('title')}</b>\n\n"
+                                msg += f"💰 Price: <b>₹{int(price)}</b>\n\n"
+                                msg += "📱 Scan QR code and pay\n"
+                                msg += "📸 Then send payment screenshot here!\n\n"
+                                msg += "⏳ Waiting for your screenshot..."
+                                
+                                await send_telegram_photo(chat_id, qr_url, msg, bot_token)
+                            else:
+                                msg = f"🎟 <b>Get Ticket: {session.get('title')}</b>\n\n"
+                                msg += f"💰 Price: <b>₹{int(price)}</b>\n\n"
+                                msg += "❌ QR not configured. Contact admin!"
+                                await send_telegram_message(chat_id, msg, bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found.", bot_token)
+            
+            # Super chat session selection
+            elif callback_data.startswith("superchat_select_"):
+                session_id = callback_data.replace("superchat_select_", "")
+                session = await db.live_sessions.find_one({"id": session_id, "status": "live"}, {"_id": 0})
+                
+                if session:
+                    # Ask for amount and message
+                    await db.pending_screenshots.update_one(
+                        {"telegram_user_id": chat_id},
+                        {"$set": {
+                            "telegram_user_id": chat_id,
+                            "telegram_username": username,
+                            "superchat_session_id": session_id,
+                            "superchat_session_title": session.get("title", ""),
+                            "status": "waiting_superchat_amount",
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }},
+                        upsert=True
+                    )
+                    
+                    msg = "💬 <b>Super Chat</b>\n\n"
+                    msg += f"📺 Session: <b>{session.get('title')}</b>\n\n"
+                    msg += "Choose amount:\n"
+                    
+                    buttons = [
+                        [{"text": "₹50", "callback_data": "superchat_amount_50"}],
+                        [{"text": "₹100", "callback_data": "superchat_amount_100"}],
+                        [{"text": "₹200", "callback_data": "superchat_amount_200"}],
+                        [{"text": "₹500", "callback_data": "superchat_amount_500"}],
+                        [{"text": "❌ Cancel", "callback_data": "cancel_action"}]
+                    ]
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session ended or not found.", bot_token)
+            
+            # Super chat amount selection
+            elif callback_data.startswith("superchat_amount_"):
+                amount = int(callback_data.replace("superchat_amount_", ""))
+                pending = await db.pending_screenshots.find_one({"telegram_user_id": chat_id}, {"_id": 0})
+                
+                if pending and pending.get("superchat_session_id"):
+                    # Update with amount and ask for message
+                    await db.pending_screenshots.update_one(
+                        {"telegram_user_id": chat_id},
+                        {"$set": {
+                            "superchat_amount": amount,
+                            "status": "waiting_superchat_message"
+                        }}
+                    )
+                    
+                    msg = f"💬 <b>Super Chat - ₹{amount}</b>\n\n"
+                    msg += "📝 Type your message below:\n"
+                    msg += "(This message will be highlighted during the live stream)"
+                    
+                    await send_telegram_message(chat_id, msg, bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Please start again with /superchat", bot_token)
+            
             # Answer callback to remove loading state
             try:
                 async with httpx.AsyncClient() as http_client:
@@ -4955,10 +5263,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         
         # Handle screenshot/photo for payment verification with OCR
         if photo and bot_token:
-            # Check if we're waiting for screenshot from this user (for subscription OR unlock)
+            # Check if we're waiting for screenshot from this user (for subscription OR unlock OR live ticket OR superchat)
             pending = await db.pending_screenshots.find_one({
                 "telegram_user_id": chat_id, 
-                "status": {"$in": ["waiting", "waiting_unlock"]}
+                "status": {"$in": ["waiting", "waiting_unlock", "waiting_live_ticket", "waiting_superchat_payment"]}
             }, {"_id": 0})
             
             # Handle PAID POST UNLOCK screenshot
@@ -5124,6 +5432,82 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     return {"ok": True}
                 else:
                     await send_telegram_message(chat_id, "❌ Post not found or expired.", bot_token)
+                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                    return {"ok": True}
+            
+            # Handle LIVE TICKET screenshot
+            if pending and pending.get("status") == "waiting_live_ticket":
+                session_id = pending.get("live_session_id")
+                session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session:
+                    photo_file_id = photo[-1]["file_id"] if photo else None
+                    
+                    # Send analyzing message
+                    await send_telegram_message(chat_id, "🔍 <b>Analyzing your screenshot...</b>\n\n⏳ Verifying payment...", bot_token)
+                    
+                    # Create ticket with pending status (admin will verify)
+                    ticket = {
+                        "id": str(uuid.uuid4()),
+                        "session_id": session_id,
+                        "session_title": session.get("title", ""),
+                        "telegram_user_id": chat_id,
+                        "telegram_username": username,
+                        "amount": pending.get("expected_amount", 0),
+                        "screenshot_file_id": photo_file_id,
+                        "status": "pending",
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    await db.live_tickets.insert_one(ticket)
+                    
+                    # Clear pending
+                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                    
+                    msg = "📸 <b>Screenshot Received!</b>\n\n"
+                    msg += f"🎟 Ticket for: <b>{session.get('title')}</b>\n\n"
+                    msg += "⏳ Admin will verify your payment and approve your ticket.\n"
+                    msg += "You'll receive stream link once approved! 🎉"
+                    await send_telegram_message(chat_id, msg, bot_token)
+                    return {"ok": True}
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found or ended.", bot_token)
+                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                    return {"ok": True}
+            
+            # Handle SUPER CHAT screenshot
+            if pending and pending.get("status") == "waiting_superchat_payment":
+                session_id = pending.get("superchat_session_id")
+                session = await db.live_sessions.find_one({"id": session_id, "status": "live"}, {"_id": 0})
+                
+                if session:
+                    photo_file_id = photo[-1]["file_id"] if photo else None
+                    
+                    # Create superchat with pending status
+                    superchat = {
+                        "id": str(uuid.uuid4()),
+                        "session_id": session_id,
+                        "session_title": session.get("title", ""),
+                        "telegram_user_id": chat_id,
+                        "telegram_username": username,
+                        "amount": pending.get("superchat_amount", 0),
+                        "message": pending.get("superchat_message", ""),
+                        "screenshot_file_id": photo_file_id,
+                        "status": "pending",
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    await db.live_superchats.insert_one(superchat)
+                    
+                    # Clear pending
+                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                    
+                    msg = "💬 <b>Super Chat Submitted!</b>\n\n"
+                    msg += f"💰 Amount: ₹{pending.get('superchat_amount', 0)}\n"
+                    msg += f"📝 Message: {pending.get('superchat_message', '')[:50]}...\n\n"
+                    msg += "⏳ Admin will verify payment and show your message during the live!"
+                    await send_telegram_message(chat_id, msg, bot_token)
+                    return {"ok": True}
+                else:
+                    await send_telegram_message(chat_id, "❌ Live session ended.", bot_token)
                     await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
                     return {"ok": True}
             
@@ -5706,6 +6090,8 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             help_msg = "🤖 <b>Bot Commands</b>\n\n"
             help_msg += "/start - View subscription plans\n"
             help_msg += "/status - Check your subscription\n"
+            help_msg += "/live - View & join live sessions\n"
+            help_msg += "/superchat - Send super chat during live\n"
             help_msg += "/videocall - Book a video call\n"
             help_msg += "/share - Get shareable message\n"
             help_msg += "/help - Show this help message\n\n"
@@ -5778,6 +6164,99 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 ]
                 
                 await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+        
+        # Handle /live command
+        elif text and text.startswith("/live"):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            # Get upcoming/live sessions
+            live_sessions = await db.live_sessions.find({
+                "status": {"$in": ["scheduled", "live"]}
+            }, {"_id": 0}).sort("scheduled_date", 1).to_list(10)
+            
+            if not live_sessions:
+                await send_telegram_message(chat_id, "📺 <b>No Live Sessions</b>\n\nNo live sessions scheduled at the moment. Check back later!", bot_token)
+            else:
+                msg = "🔴 <b>Live Sessions</b>\n\n"
+                buttons = []
+                
+                for session in live_sessions:
+                    status_emoji = "🔴 LIVE NOW" if session.get("status") == "live" else "📅 Upcoming"
+                    msg += f"<b>{session.get('title')}</b>\n"
+                    msg += f"   {status_emoji}\n"
+                    msg += f"   📅 {session.get('scheduled_date')} at {session.get('scheduled_time')}\n"
+                    msg += f"   💰 ₹{int(session.get('price', 0))}\n\n"
+                    
+                    buttons.append([{
+                        "text": f"🎟 Get Ticket - {session.get('title')[:20]}... ₹{int(session.get('price', 0))}",
+                        "callback_data": f"live_ticket_{session.get('id')}"
+                    }])
+                
+                buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+        
+        # Handle /superchat command
+        elif text and text.startswith("/superchat"):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            # Get currently live sessions
+            live_now = await db.live_sessions.find({
+                "status": "live"
+            }, {"_id": 0}).to_list(10)
+            
+            if not live_now:
+                await send_telegram_message(chat_id, "💬 <b>Super Chat</b>\n\nNo live sessions are active right now.\nSuper chats are only available during live streams!", bot_token)
+            else:
+                msg = "💬 <b>Super Chat</b>\n\n"
+                msg += "Send a highlighted message during the live stream!\n\n"
+                msg += "Select a live session to send super chat:\n\n"
+                
+                buttons = []
+                for session in live_now:
+                    buttons.append([{
+                        "text": f"💬 {session.get('title')[:30]}...",
+                        "callback_data": f"superchat_select_{session.get('id')}"
+                    }])
+                
+                buttons.append([{"text": "❌ Cancel", "callback_data": "cancel_action"}])
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+        
+        # Handle text messages for superchat flow
+        elif text and not text.startswith("/"):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            # Check if waiting for superchat message
+            pending = await db.pending_screenshots.find_one({
+                "telegram_user_id": chat_id,
+                "status": "waiting_superchat_message"
+            }, {"_id": 0})
+            
+            if pending:
+                # Got the superchat message, now ask for payment screenshot
+                await db.pending_screenshots.update_one(
+                    {"telegram_user_id": chat_id},
+                    {"$set": {
+                        "superchat_message": text,
+                        "status": "waiting_superchat_payment"
+                    }}
+                )
+                
+                qr_url = settings.get("qr_code_url", "")
+                amount = pending.get("superchat_amount", 0)
+                
+                if qr_url:
+                    msg = f"💬 <b>Super Chat - ₹{amount}</b>\n\n"
+                    msg += f"📝 Your message:\n<i>{text[:100]}...</i>\n\n"
+                    msg += "📱 Scan QR and pay, then send screenshot!"
+                    
+                    await send_telegram_photo(chat_id, qr_url, msg, bot_token)
+                else:
+                    msg = f"💬 <b>Super Chat - ₹{amount}</b>\n\n"
+                    msg += "❌ QR not configured. Contact admin!"
+                    await send_telegram_message(chat_id, msg, bot_token)
         
         # Handle photo/screenshot uploads
         photo = message.get("photo")

@@ -22,6 +22,7 @@ import Referrals from "./pages/Referrals";
 import FAQs from "./pages/FAQs";
 import Analytics from "./pages/Analytics";
 import VideoCalls from "./pages/VideoCalls";
+import LiveStream from "./pages/LiveStream";
 import PaidPosts from "./pages/PaidPosts";
 import UserManagement from "./pages/UserManagement";
 
@@ -140,6 +141,7 @@ function AppRouter() {
         <Route path="faqs" element={<FAQs />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="video-calls" element={<VideoCalls />} />
+        <Route path="live-stream" element={<LiveStream />} />
         <Route path="paid-posts" element={<PaidPosts />} />
         <Route path="user-management" element={<UserManagement />} />
       </Route>

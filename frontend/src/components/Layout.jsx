@@ -31,6 +31,7 @@ const navItems = [
   { path: "/subscribers", label: "Subscribers", icon: Users },
   { path: "/payments", label: "Payments", icon: CreditCard },
   { path: "/paid-posts", label: "Paid Posts", icon: Lock },
+  { path: "/live-stream", label: "Live", icon: Radio },
   { path: "/chat-groups", label: "Groups", icon: MessagesSquare },
   { path: "/broadcast", label: "Broadcast", icon: Radio },
   { path: "/coupons", label: "Coupons", icon: Ticket },
