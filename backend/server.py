@@ -3753,6 +3753,26 @@ async def reject_unlock_request(request_id: str, user = Depends(get_current_user
     
     return {"message": "Unlock request rejected"}
 
+@api_router.get("/telegram/file/{file_id}")
+async def get_telegram_file(file_id: str, user = Depends(get_current_user)):
+    """Serve Telegram file (screenshot) for admin preview"""
+    from fastapi.responses import Response
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    if not bot_token:
+        raise HTTPException(status_code=500, detail="Bot token not configured")
+    
+    # Download file from Telegram
+    image_bytes = await download_telegram_photo(file_id, bot_token)
+    
+    if not image_bytes:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Return as image
+    return Response(content=image_bytes, media_type="image/jpeg")
+
 @api_router.post("/telegram/webhook")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     try:

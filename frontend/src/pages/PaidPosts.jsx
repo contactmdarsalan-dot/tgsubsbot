@@ -361,9 +361,25 @@ export default function PaidPosts() {
                 <Card key={request.id} className="border" data-testid={`unlock-request-${request.id}`}>
                   <CardContent className="p-4">
                     <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
-                        <Clock className="w-6 h-6 text-orange-600" />
-                      </div>
+                      {/* Screenshot Preview */}
+                      {request.screenshot_file_id ? (
+                        <div className="w-32 h-32 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                          <img
+                            src={`${API}/telegram/file/${request.screenshot_file_id}`}
+                            alt="Payment Screenshot"
+                            className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={() => window.open(`${API}/telegram/file/${request.screenshot_file_id}`, '_blank')}
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.parentElement.innerHTML = '<div class="w-full h-full flex items-center justify-center text-muted-foreground text-xs">No preview</div>';
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-32 h-32 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                          <Image className="w-8 h-8 text-muted-foreground" />
+                        </div>
+                      )}
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
@@ -379,10 +395,17 @@ export default function PaidPosts() {
 
                         {request.ai_result && (
                           <div className="text-xs text-muted-foreground mb-2">
-                            AI Confidence: {request.ai_result.confidence_score || 0}%
+                            <span className="font-medium">AI Confidence:</span> {request.ai_result.confidence_score || 0}%
                             {request.ai_result.is_valid_payment && 
                               <Badge variant="secondary" className="ml-2 text-xs">Valid Payment</Badge>
                             }
+                            {request.ai_result.extracted_data && (
+                              <div className="mt-1 text-xs bg-muted p-2 rounded">
+                                <p>Detected Amount: {request.ai_result.extracted_data.amount || 'N/A'}</p>
+                                <p>UPI: {request.ai_result.extracted_data.upi_id || 'N/A'}</p>
+                                <p>Status: {request.ai_result.extracted_data.status || 'N/A'}</p>
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -392,7 +415,18 @@ export default function PaidPosts() {
                         </div>
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-col gap-2">
+                        {request.screenshot_file_id && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => window.open(`${API}/telegram/file/${request.screenshot_file_id}`, '_blank')}
+                            data-testid={`view-screenshot-${request.id}`}
+                          >
+                            <Eye className="w-4 h-4 mr-1" />
+                            View Full
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           onClick={() => handleApproveUnlock(request.id)}
