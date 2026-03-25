@@ -872,12 +872,19 @@ async def send_screenshot_reminders(chat_id: str, username: str, bot_token: str)
         ]
         await send_telegram_message_with_buttons(chat_id, final_msg, buttons, bot_token)
 
-async def add_to_channel(user_id: str, plan_channel_id: str = None, plan_name: str = ""):
+async def add_to_channel(user_id: str, plan_channel_id: str = None, plan_name: str = "", use_default: bool = True):
     """Add user to private channel by sending invite link"""
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
-    # Use plan's channel if provided, otherwise use default
-    channel_id = plan_channel_id if plan_channel_id else settings.get("telegram_channel_id", "")
+    
+    # If plan_channel_id is explicitly provided (even if empty), only use it
+    # If use_default is False, don't fall back to default channel
+    if plan_channel_id:
+        channel_id = plan_channel_id
+    elif use_default:
+        channel_id = settings.get("telegram_channel_id", "")
+    else:
+        channel_id = ""
     
     if not bot_token or not channel_id:
         logger.warning("Bot token or channel ID not configured")
@@ -5321,9 +5328,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 
                                 await send_telegram_message(chat_id, success_msg, bot_token)
                                 
-                                # Add user to premium channel
+                                # Add user to premium channel ONLY if plan has a channel_id
                                 plan_channel = plan.get("channel_id", "")
-                                await add_to_channel(chat_id, plan_channel, plan['name'])
+                                if plan_channel:
+                                    await add_to_channel(chat_id, plan_channel, plan['name'], use_default=False)
                             
                         else:
                             # AI/OCR couldn't auto-verify - check if AI explicitly rejected
