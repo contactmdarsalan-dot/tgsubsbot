@@ -693,17 +693,19 @@ async def analyze_payment_screenshot_with_ai(image_bytes: bytes, expected_amount
             api_key=EMERGENT_LLM_KEY,
             session_id=f"payment-analysis-{uuid.uuid4()}",
             system_message="""You are an expert payment screenshot analyzer. Your job is to:
-1. Extract payment details (amount, UPI ID, transaction ID, date/time, payment app, status)
-2. Detect if the screenshot is fake/edited (look for: inconsistent fonts, pixel artifacts, wrong shadows, misaligned elements, suspicious timestamps)
-3. Verify if payment status shows "Success", "Completed", or "Paid"
-4. Match amount and UPI ID if provided
+1. FIRST determine if this is actually a payment screenshot or something else (selfie, random photo, meme, etc.)
+2. Extract payment details (amount, UPI ID, transaction ID, date/time, payment app, status)
+3. Detect if the screenshot is fake/edited (look for: inconsistent fonts, pixel artifacts, wrong shadows, misaligned elements, suspicious timestamps)
+4. Verify if payment status shows "Success", "Completed", or "Paid"
+5. Match amount and UPI ID if provided
 
 RESPOND ONLY IN THIS JSON FORMAT:
 {
+    "is_payment_screenshot": true/false,
     "is_valid_payment": true/false,
     "confidence_score": 0-100,
     "extracted_data": {
-        "amount": "extracted amount or null",
+        "amount": "extracted amount as number or null",
         "upi_id": "extracted UPI ID or null",
         "transaction_id": "extracted transaction ID or null",
         "payment_app": "GPay/PhonePe/Paytm/etc or null",
@@ -712,10 +714,12 @@ RESPOND ONLY IN THIS JSON FORMAT:
     },
     "fake_indicators": ["list of suspicious elements found"],
     "amount_matches": true/false/null,
-    "upi_matches": true/false/null,
+    "upi_id_matches": true/false/null,
     "auto_approve_recommended": true/false,
     "reason": "brief explanation"
-}"""
+}
+
+IMPORTANT: If this is NOT a payment screenshot (selfie, random image, meme, etc.), set is_payment_screenshot to false."""
         ).with_model("openai", "gpt-4o")
         
         # Build prompt
@@ -4870,12 +4874,22 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         
                         else:
                             # Invalid screenshot - check AI result for specific reason
-                            ai_analysis = ai_result.get("ai_analysis", {}) if ai_result.get("ai_enabled") else {}
-                            is_payment_screenshot = ai_analysis.get("is_payment_screenshot", True)
-                            amount_matches = ai_analysis.get("amount_matches", True)
-                            upi_matches = ai_analysis.get("upi_id_matches", True)
-                            detected_amount = ai_analysis.get("detected_amount", 0)
-                            detected_upi = ai_analysis.get("detected_upi_id", "")
+                            # AI result is directly in ai_result, not nested
+                            is_payment_screenshot = ai_result.get("is_payment_screenshot", True) if ai_result.get("ai_enabled") else True
+                            amount_matches = ai_result.get("amount_matches", True) if ai_result.get("ai_enabled") else True
+                            upi_matches = ai_result.get("upi_id_matches", True) if ai_result.get("ai_enabled") else True
+                            
+                            # Get extracted data for amount/upi detection
+                            extracted_data = ai_result.get("extracted_data", {}) if ai_result.get("ai_enabled") else {}
+                            detected_amount = extracted_data.get("amount", 0)
+                            if detected_amount and isinstance(detected_amount, str):
+                                # Try to extract number from string like "₹2000" or "2000"
+                                import re
+                                amount_match = re.search(r'[\d,]+', str(detected_amount).replace(',', ''))
+                                detected_amount = float(amount_match.group()) if amount_match else 0
+                            detected_upi = extracted_data.get("upi_id", "")
+                            
+                            logger.info(f"AI Analysis - is_payment: {is_payment_screenshot}, amount_matches: {amount_matches}, upi_matches: {upi_matches}")
                             
                             if not is_payment_screenshot:
                                 # Not a payment screenshot - funny message
@@ -4894,14 +4908,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 invalid_msg += "• Payment SUCCESS status\n"
                                 invalid_msg += "• Amount\n"
                                 invalid_msg += "• UPI Transaction ID"
-                            elif not amount_matches and detected_amount > 0:
+                            elif amount_matches == False and detected_amount > 0:
                                 # Amount mismatch
                                 expected = pending.get("expected_amount", 0)
                                 invalid_msg = f"💰 <b>Amount Mismatch!</b>\n\n"
                                 invalid_msg += f"Expected: ₹{int(expected)}\n"
                                 invalid_msg += f"Detected: ₹{int(detected_amount)}\n\n"
                                 invalid_msg += "Please pay the correct amount and send screenshot again."
-                            elif not upi_matches and detected_upi:
+                            elif upi_matches == False and detected_upi:
                                 # UPI ID mismatch
                                 invalid_msg = f"📱 <b>Wrong UPI ID!</b>\n\n"
                                 invalid_msg += f"Payment made to: {detected_upi}\n"
@@ -5237,7 +5251,28 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 
                                 await send_telegram_message(chat_id, reject_msg, bot_token)
                             
-                            # Check if this is NOT a payment screenshot at all (selfie, car, random photo)
+                            # Check if AI says this is NOT a payment screenshot at all (selfie, meme, random photo)
+                            elif ai_result.get("ai_enabled") and ai_result.get("is_payment_screenshot") == False:
+                                # AI detected it's NOT a payment screenshot
+                                import random
+                                funny_titles = [
+                                    "😅 Ye kya bhej diya bhai?",
+                                    "🤔 Bhai ye payment screenshot hai?",
+                                    "😂 Galat photo bhej di!",
+                                    "🙈 Ye toh payment nahi hai!",
+                                    "😜 Nice try, but nope!"
+                                ]
+                                title = random.choice(funny_titles)
+                                funny_msg = f"{title}\n\n"
+                                funny_msg += "Payment screenshot chahiye, selfie nahi! 🤳\n\n"
+                                funny_msg += "✅ Valid payment screenshot bhejo jisme dikhe:\n"
+                                funny_msg += "• Payment SUCCESS status\n"
+                                funny_msg += "• Amount\n"
+                                funny_msg += "• UPI Transaction ID"
+                                
+                                await send_telegram_message(chat_id, funny_msg, bot_token)
+                            
+                            # Check if this is NOT a payment screenshot at all using OCR (selfie, car, random photo)
                             elif not ai_result.get("ai_enabled") and len(ocr_result.get("found_keywords", [])) < 2:
                                 # OCR found almost nothing - likely not a payment screenshot
                                 import random
