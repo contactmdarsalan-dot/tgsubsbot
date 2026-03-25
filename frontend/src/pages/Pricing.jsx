@@ -4,7 +4,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
-import { Check, Crown, Zap, Star, MessageCircle, Loader2 } from "lucide-react";
+import { Check, Crown, Zap, Star, MessageCircle, Loader2, LogOut, Bot } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -173,21 +173,60 @@ export default function Pricing({ onSubscribed }) {
     window.location.href = "mailto:nikhil@onlyforyou.club?subject=Lifetime%20Access%20Inquiry&body=Hi,%20I%20am%20interested%20in%20the%20Lifetime%20Access%20plan.";
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("isFirstUser");
+    navigate("/login");
+    toast.success("Logged out successfully");
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 py-12 px-4">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <Badge className="mb-4 bg-primary/10 text-primary border-primary/20">
-            SubsBot Pro
-          </Badge>
-          <h1 className="font-heading text-4xl md:text-5xl font-bold tracking-tight mb-4">
-            Choose Your Plan
-          </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Get full access to SubsBot Dashboard and start managing your Telegram subscriptions like a pro
-          </p>
+    <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
+      {/* Navbar */}
+      <nav className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Bot className="w-8 h-8 text-primary" />
+            <div>
+              <h1 className="font-bold text-lg leading-tight">Tgsubsbot</h1>
+              <p className="text-xs text-muted-foreground">Telegram Subscription Manager</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            {user.email && (
+              <span className="text-sm text-muted-foreground hidden sm:block">
+                {user.email}
+              </span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLogout}
+              className="gap-2"
+            >
+              <LogOut className="w-4 h-4" />
+              Logout
+            </Button>
+          </div>
         </div>
+      </nav>
+
+      <div className="py-12 px-4">
+        <div className="max-w-6xl mx-auto">
+          {/* Header */}
+          <div className="text-center mb-12">
+            <Badge className="mb-4 bg-primary/10 text-primary border-primary/20">
+              SubsBot Pro
+            </Badge>
+            <h1 className="font-heading text-4xl md:text-5xl font-bold tracking-tight mb-4">
+              Choose Your Plan
+            </h1>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Get full access to SubsBot Dashboard and start managing your Telegram subscriptions like a pro
+            </p>
+          </div>
 
         {/* Pricing Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
@@ -279,6 +318,7 @@ export default function Pricing({ onSubscribed }) {
         <p className="text-center text-sm text-muted-foreground mt-8">
           Having trouble? <button className="text-primary underline" onClick={handleContactUs}>Contact Support</button>
         </p>
+        </div>
       </div>
     </div>
   );

@@ -61,7 +61,7 @@ export default function Payments() {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [screenshotModal, setScreenshotModal] = useState({ open: false, url: "", payment: null });
+  const [screenshotModal, setScreenshotModal] = useState({ open: false, url: "", payment: null, imageData: null });
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [selectedPayments, setSelectedPayments] = useState([]);
@@ -71,6 +71,30 @@ export default function Payments() {
     plan_id: "",
     amount: "",
   });
+
+  // Function to load screenshot with auth
+  const loadScreenshot = async (payment) => {
+    if (payment.screenshot_file_id) {
+      try {
+        const response = await axios.get(
+          `${API}/telegram/file/${payment.screenshot_file_id}`,
+          {
+            ...getAuthHeaders(),
+            responseType: 'blob'
+          }
+        );
+        const imageUrl = URL.createObjectURL(response.data);
+        setScreenshotModal({ open: true, url: imageUrl, payment, imageData: response.data });
+      } catch (error) {
+        console.error("Failed to load screenshot:", error);
+        setScreenshotModal({ open: true, url: payment.screenshot_url || "", payment, imageData: null });
+      }
+    } else if (payment.screenshot_url) {
+      setScreenshotModal({ open: true, url: payment.screenshot_url, payment, imageData: null });
+    } else {
+      toast.error("No screenshot available");
+    }
+  };
 
   // Check if user is admin
   const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -609,11 +633,11 @@ export default function Payments() {
                         ₹{payment.amount.toLocaleString("en-IN")}
                       </TableCell>
                       <TableCell>
-                        {payment.screenshot_url ? (
+                        {(payment.screenshot_url || payment.screenshot_file_id) ? (
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setScreenshotModal({ open: true, url: payment.screenshot_url, payment })}
+                            onClick={() => loadScreenshot(payment)}
                             className="gap-1"
                             data-testid={`view-screenshot-${payment.id}`}
                           >
@@ -636,7 +660,7 @@ export default function Payments() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleViewScreenshot(payment)}
+                              onClick={() => loadScreenshot(payment)}
                               data-testid={`view-ss-${payment.id}`}
                               className="text-blue-600 hover:bg-blue-50"
                             >
@@ -767,9 +791,9 @@ export default function Payments() {
                   }}
                 />
               ) : null}
-              <div className="hidden flex-col items-center justify-center py-8 text-muted-foreground">
+              <div className={`${screenshotModal.url ? 'hidden' : 'flex'} flex-col items-center justify-center py-8 text-muted-foreground`}>
                 <XCircle className="w-8 h-8 mb-2" />
-                <p>Failed to load image</p>
+                <p>No screenshot available</p>
               </div>
             </div>
             
