@@ -159,6 +159,12 @@ const ProtectedRoute = ({ children }) => {
   const subStatus = user.dashboard_subscription_status;
   const subEnd = user.dashboard_subscription_end;
   const isAdmin = user.isAdmin || localStorage.getItem("isFirstUser") === "true";
+  const isSuperAdmin = user.role === "super_admin";
+  
+  // Super Admin gets free access - no subscription needed
+  if (isSuperAdmin) {
+    return children;
+  }
   
   // Admin gets free access
   if (isAdmin) {
@@ -197,9 +203,10 @@ const PricingRoute = () => {
   
   const subStatus = user.dashboard_subscription_status;
   const isAdmin = user.isAdmin || localStorage.getItem("isFirstUser") === "true";
+  const isSuperAdmin = user.role === "super_admin";
   
-  // If already subscribed or admin, go to dashboard
-  if (subStatus === "active" || isAdmin) {
+  // If already subscribed or admin or super_admin, go to dashboard
+  if (subStatus === "active" || isAdmin || isSuperAdmin) {
     return <Navigate to="/" replace />;
   }
   
