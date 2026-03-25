@@ -5122,59 +5122,89 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 await add_to_channel(chat_id, plan_channel, plan['name'])
                             
                         else:
-                            # AI/OCR couldn't auto-verify - show manual confirmation buttons
-                            logger.info(f"Auto-verification couldn't confirm payment for user {chat_id}, showing manual confirmation")
+                            # AI/OCR couldn't auto-verify - check if AI explicitly rejected
                             
-                            # Save photo file_id and AI analysis for admin review
-                            await db.pending_screenshots.update_one(
-                                {"telegram_user_id": chat_id},
-                                {"$set": {
-                                    "status": "confirming",
-                                    "photo_file_id": photo_file_id,
+                            # If AI detected FAKE indicators or invalid payment, REJECT immediately
+                            ai_fake_indicators = ai_result.get("fake_indicators", [])
+                            ai_is_valid = ai_result.get("is_valid_payment", True)
+                            ai_reason = ai_result.get("reason", "")
+                            
+                            if ai_result.get("ai_enabled") and (not ai_is_valid or len(ai_fake_indicators) > 0):
+                                # AI REJECTED the payment - show rejection message
+                                logger.info(f"AI REJECTED payment for user {chat_id}: {ai_reason}")
+                                
+                                reject_msg = "❌ <b>Payment Could Not Be Verified!</b>\n\n"
+                                
+                                if ai_reason:
+                                    reject_msg += f"📋 <b>Reason:</b> {ai_reason}\n\n"
+                                
+                                if ai_fake_indicators:
+                                    reject_msg += f"⚠️ <b>Issues detected:</b> {', '.join(ai_fake_indicators[:3])}\n\n"
+                                
+                                reject_msg += "Please ensure:\n"
+                                reject_msg += "✅ Screenshot shows payment SUCCESS\n"
+                                reject_msg += "✅ Amount matches the plan price\n"
+                                reject_msg += "✅ UPI ID is correct\n\n"
+                                reject_msg += "Try again with a valid screenshot or contact admin."
+                                
+                                # Delete pending record
+                                await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                                
+                                await send_telegram_message(chat_id, reject_msg, bot_token)
+                            else:
+                                # OCR-only or AI couldn't decide - send to admin review
+                                logger.info(f"Auto-verification couldn't confirm payment for user {chat_id}, showing manual confirmation")
+                                
+                                # Save photo file_id and AI analysis for admin review
+                                await db.pending_screenshots.update_one(
+                                    {"telegram_user_id": chat_id},
+                                    {"$set": {
+                                        "status": "confirming",
+                                        "photo_file_id": photo_file_id,
+                                        "ocr_result": ocr_result,
+                                        "ai_result": {
+                                            "enabled": ai_result.get("ai_enabled", False),
+                                            "is_valid": ai_result.get("is_valid_payment"),
+                                            "confidence": ai_result.get("confidence_score"),
+                                            "extracted_data": ai_result.get("extracted_data"),
+                                            "fake_indicators": ai_result.get("fake_indicators", []),
+                                            "reason": ai_result.get("reason")
+                                        } if ai_result.get("ai_enabled") else None
+                                    }}
+                                )
+                                
+                                # NO MANUAL CONFIRMATION BUTTONS - Direct admin review
+                                # Security: User can't self-approve anymore
+                                pending_msg = "📸 <b>Screenshot Received!</b>\n\n"
+                                pending_msg += "⏳ <b>Admin verification pending...</b>\n\n"
+                                
+                                if ai_result.get("ai_enabled") and ai_result.get("confidence_score"):
+                                    pending_msg += f"🤖 AI Confidence: <b>{ai_result.get('confidence_score')}%</b>\n"
+                                    if ai_result.get("fake_indicators"):
+                                        pending_msg += f"⚠️ Concerns: {', '.join(ai_result.get('fake_indicators', [])[:2])}\n"
+                                
+                                pending_msg += "\n📋 Your payment screenshot has been submitted for review.\n"
+                                pending_msg += "✅ You'll be notified once verified!\n\n"
+                                pending_msg += "⏱ Usually takes a few minutes."
+                                
+                                # Save for admin dashboard review
+                                payment_pending = {
+                                    "id": str(uuid.uuid4()),
+                                    "telegram_user_id": chat_id,
+                                    "telegram_username": username,
+                                    "amount": plan.get('price'),
+                                    "plan_id": plan_id,
+                                    "plan_name": plan['name'],
+                                    "payment_method": "qr_screenshot",
+                                    "screenshot_file_id": photo_file_id,
+                                    "status": "pending",
                                     "ocr_result": ocr_result,
-                                    "ai_result": {
-                                        "enabled": ai_result.get("ai_enabled", False),
-                                        "is_valid": ai_result.get("is_valid_payment"),
-                                        "confidence": ai_result.get("confidence_score"),
-                                        "extracted_data": ai_result.get("extracted_data"),
-                                        "fake_indicators": ai_result.get("fake_indicators", []),
-                                        "reason": ai_result.get("reason")
-                                    } if ai_result.get("ai_enabled") else None
-                                }}
-                            )
-                            
-                            # NO MANUAL CONFIRMATION BUTTONS - Direct admin review
-                            # Security: User can't self-approve anymore
-                            pending_msg = "📸 <b>Screenshot Received!</b>\n\n"
-                            pending_msg += "⏳ <b>Admin verification pending...</b>\n\n"
-                            
-                            if ai_result.get("ai_enabled") and ai_result.get("confidence_score"):
-                                pending_msg += f"🤖 AI Confidence: <b>{ai_result.get('confidence_score')}%</b>\n"
-                                if ai_result.get("fake_indicators"):
-                                    pending_msg += f"⚠️ Concerns: {', '.join(ai_result.get('fake_indicators', [])[:2])}\n"
-                            
-                            pending_msg += "\n📋 Your payment screenshot has been submitted for review.\n"
-                            pending_msg += "✅ You'll be notified once verified!\n\n"
-                            pending_msg += "⏱ Usually takes a few minutes."
-                            
-                            # Save for admin dashboard review
-                            payment_pending = {
-                                "id": str(uuid.uuid4()),
-                                "telegram_user_id": chat_id,
-                                "telegram_username": username,
-                                "amount": plan.get('price'),
-                                "plan_id": plan_id,
-                                "plan_name": plan['name'],
-                                "payment_method": "qr_screenshot",
-                                "screenshot_file_id": photo_file_id,
-                                "status": "pending",
-                                "ocr_result": ocr_result,
-                                "ai_result": ai_result if ai_result.get("ai_enabled") else None,
-                                "created_at": datetime.now(timezone.utc).isoformat()
-                            }
-                            await db.payments.insert_one(payment_pending)
-                            
-                            await send_telegram_message(chat_id, pending_msg, bot_token)
+                                    "ai_result": ai_result if ai_result.get("ai_enabled") else None,
+                                    "created_at": datetime.now(timezone.utc).isoformat()
+                                }
+                                await db.payments.insert_one(payment_pending)
+                                
+                                await send_telegram_message(chat_id, pending_msg, bot_token)
                     else:
                         # Could not download image - save for admin review
                         logger.error(f"Could not download image for user {chat_id}")
