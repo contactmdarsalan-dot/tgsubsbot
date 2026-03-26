@@ -580,10 +580,10 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
 
 # ============== IMAGE BLUR FOR PAID POSTS ==============
 
-def create_blurred_image(image_bytes: bytes, blur_radius: int = 25) -> bytes:
+def create_blurred_image(image_bytes: bytes, blur_radius: int = 50) -> bytes:
     """
     Create a heavily blurred version of an image for paid post preview.
-    Heavy blur - shows shape but no details visible.
+    Very heavy blur - barely visible, just colors/shapes.
     """
     from PIL import ImageFilter
     
@@ -592,11 +592,13 @@ def create_blurred_image(image_bytes: bytes, blur_radius: int = 25) -> bytes:
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
         
-        # Apply heavy blur (radius 25 for strong blur like in screenshot)
+        # Apply very heavy blur (radius 50 for extreme blur)
         blurred = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+        # Apply second pass for even more blur
+        blurred = blurred.filter(ImageFilter.GaussianBlur(radius=30))
         
-        # Add dark semi-transparent overlay for more obscuring
-        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 80))
+        # Add darker semi-transparent overlay for more obscuring
+        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 120))
         blurred = blurred.convert('RGBA')
         blurred = Image.alpha_composite(blurred, overlay)
         blurred = blurred.convert('RGB')
@@ -5345,6 +5347,134 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
+        
+        # Handle /paid command via PRIVATE MESSAGE (Admin sends photo to bot directly)
+        # This prevents original from being visible in channel
+        if photo and bot_token and caption:
+            import re as re_module
+            caption_lower = caption.lower()
+            is_paid_command = (
+                caption_lower.startswith("/paid") or 
+                " /paid" in caption_lower
+            )
+            
+            if is_paid_command:
+                logger.info(f"Processing /paid command via private message from {chat_id}")
+                
+                # Get channel ID from settings
+                channel_id = settings.get("telegram_channel_id", "") or os.environ.get("TELEGRAM_CHANNEL_ID", "")
+                
+                if not channel_id:
+                    await send_telegram_message(chat_id, "❌ Channel ID not configured. Please set it in Settings.", bot_token)
+                    return {"ok": True}
+                
+                try:
+                    # Get photo file_id
+                    original_file_id = photo[-1].get("file_id", "") if photo else ""
+                    
+                    if not original_file_id:
+                        await send_telegram_message(chat_id, "❌ Could not get photo. Please try again.", bot_token)
+                        return {"ok": True}
+                    
+                    # Download and blur the photo
+                    logger.info(f"Downloading photo for /paid command...")
+                    image_bytes = await download_telegram_photo(original_file_id, bot_token)
+                    
+                    if not image_bytes:
+                        await send_telegram_message(chat_id, "❌ Could not download photo. Please try again.", bot_token)
+                        return {"ok": True}
+                    
+                    logger.info(f"Downloaded {len(image_bytes)} bytes, creating blur...")
+                    blurred_bytes = create_blurred_image(image_bytes)
+                    
+                    if not blurred_bytes:
+                        await send_telegram_message(chat_id, "❌ Could not create blur. Please try again.", bot_token)
+                        return {"ok": True}
+                    
+                    logger.info(f"Created blurred image: {len(blurred_bytes)} bytes")
+                    
+                    # Clean caption and extract price
+                    original_caption = message.get("caption", "")
+                    clean_caption = re_module.sub(r'^/paid[-_]?\s*', '', original_caption, flags=re_module.IGNORECASE).strip()
+                    
+                    price_match = re_module.search(r'^[₹]?(\d+)[-_\s]*', clean_caption)
+                    post_price = float(price_match.group(1)) if price_match else 0
+                    
+                    if price_match:
+                        clean_caption = clean_caption[price_match.end():].strip()
+                        clean_caption = re_module.sub(r'^[-_\s]+', '', clean_caption)
+                    
+                    # Default price from settings or plans
+                    if post_price <= 0:
+                        post_price = settings.get("default_paid_post_price", 0)
+                        if post_price <= 0:
+                            plans = await db.plans.find({"is_active": True}, {"_id": 0}).sort("price", 1).to_list(1)
+                            if plans:
+                                post_price = plans[0].get("price", 99)
+                            else:
+                                post_price = 99
+                    
+                    logger.info(f"Extracted price: {post_price}")
+                    
+                    # Create paid post record
+                    paid_post_id = str(uuid.uuid4())
+                    paid_post = {
+                        "id": paid_post_id,
+                        "channel_id": channel_id,
+                        "original_message_id": None,  # Not from channel
+                        "content_type": "photo",
+                        "original_file_id": original_file_id,
+                        "caption": clean_caption,
+                        "price": post_price,
+                        "unlock_count": 0,
+                        "is_active": True,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        "created_via": "private_message"  # Mark as created via private message
+                    }
+                    await db.paid_posts.insert_one(paid_post)
+                    logger.info(f"Created paid post record: {paid_post_id} with price {post_price}")
+                    
+                    # Prepare Unlock button
+                    bot_username = await get_bot_username(bot_token)
+                    unlock_button = {
+                        "inline_keyboard": [[{
+                            "text": f"🔓 Unlock Post - ₹{int(post_price)}",
+                            "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
+                        }]]
+                    }
+                    
+                    price_text = f"₹{int(post_price)}" if post_price > 0 else "Premium"
+                    blur_caption = f"🔒 <b>Paid Content</b>\n\n"
+                    blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                    blur_caption += "👆 Tap 'Unlock Post' to view full content!"
+                    
+                    # Post blurred image to CHANNEL
+                    logger.info(f"Posting blurred image to channel {channel_id}...")
+                    result = await send_telegram_photo(channel_id, blurred_bytes, blur_caption, bot_token, unlock_button)
+                    
+                    if result and result.get("ok"):
+                        blurred_message_id = result.get("result", {}).get("message_id", 0)
+                        await db.paid_posts.update_one({"id": paid_post_id}, {"$set": {"blurred_message_id": blurred_message_id}})
+                        
+                        # Confirm to admin
+                        success_msg = f"✅ <b>Paid Post Created!</b>\n\n"
+                        success_msg += f"📦 Post ID: <code>{paid_post_id[:8]}</code>\n"
+                        success_msg += f"💰 Price: ₹{int(post_price)}\n"
+                        success_msg += f"📢 Posted to channel!\n\n"
+                        success_msg += "🔒 Original image is safe - only blurred version posted!"
+                        await send_telegram_message(chat_id, success_msg, bot_token)
+                        logger.info(f"Successfully posted blurred image to channel, message_id: {blurred_message_id}")
+                    else:
+                        await send_telegram_message(chat_id, f"❌ Failed to post to channel. Make sure bot is admin in the channel.\n\nError: {result}", bot_token)
+                        logger.error(f"Failed to post to channel: {result}")
+                    
+                except Exception as e:
+                    logger.error(f"Error processing /paid via private message: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    await send_telegram_message(chat_id, f"❌ Error: {str(e)}", bot_token)
+                
+                return {"ok": True}
         
         # Handle screenshot/photo for payment verification with OCR
         if photo and bot_token:
