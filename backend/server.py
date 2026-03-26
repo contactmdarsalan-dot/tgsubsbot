@@ -580,10 +580,10 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
 
 # ============== IMAGE BLUR FOR PAID POSTS ==============
 
-def create_blurred_image(image_bytes: bytes, blur_radius: int = 8) -> bytes:
+def create_blurred_image(image_bytes: bytes, blur_radius: int = 25) -> bytes:
     """
-    Create a lightly blurred version of an image for paid post preview.
-    17% blur - shows enough to tease but not enough to see clearly.
+    Create a heavily blurred version of an image for paid post preview.
+    Heavy blur - shows shape but no details visible.
     """
     from PIL import ImageFilter
     
@@ -592,11 +592,11 @@ def create_blurred_image(image_bytes: bytes, blur_radius: int = 8) -> bytes:
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
         
-        # Apply 17% blur (radius 8)
+        # Apply heavy blur (radius 25 for strong blur like in screenshot)
         blurred = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
         
-        # Add very light semi-transparent overlay (reduced)
-        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 30))
+        # Add dark semi-transparent overlay for more obscuring
+        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 80))
         blurred = blurred.convert('RGBA')
         blurred = Image.alpha_composite(blurred, overlay)
         blurred = blurred.convert('RGB')
@@ -604,6 +604,7 @@ def create_blurred_image(image_bytes: bytes, blur_radius: int = 8) -> bytes:
         # Convert back to bytes
         output = BytesIO()
         blurred.save(output, format='JPEG', quality=85)
+        logger.info(f"Blurred image created: {len(output.getvalue())} bytes")
         return output.getvalue()
         
     except Exception as e:
@@ -4160,10 +4161,6 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         else:
                             logger.error("Failed to download original photo - image_bytes is None")
                     
-                    # NOW delete original message
-                    delete_result = await delete_telegram_message(post_chat_id, message_id, bot_token)
-                    logger.info(f"Deleted original message {message_id}: {delete_result}")
-                    
                     # Clean caption (remove /paid command and variations)
                     clean_caption = re.sub(r'^/paid[-_]?\s*', '', caption, flags=re.IGNORECASE).strip()
                     
@@ -4206,68 +4203,62 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     await db.paid_posts.insert_one(paid_post)
                     logger.info(f"Created paid post record: {paid_post_id} with price {post_price}")
                     
-                    # Post blurred version with Unlock button
-                    blurred_message_id = 0
+                    # Prepare Unlock button
                     bot_username = await get_bot_username(bot_token)
                     unlock_button = {
                         "inline_keyboard": [[{
-                            "text": f"🔓 Unlock Post - ₹{int(post_price)}",
+                            "text": f"🔓 Unlock Post",
                             "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
                         }]]
                     }
                     
                     price_text = f"₹{int(post_price)}" if post_price > 0 else "Premium"
                     blur_caption = f"🔒 <b>Paid Content</b>\n\n"
-                    if clean_caption:
-                        blur_caption += f"{clean_caption}\n\n"
                     blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
                     blur_caption += "👆 Tap 'Unlock Post' to view full content!"
+                    
+                    # POST BLURRED IMAGE FIRST, THEN DELETE ORIGINAL
+                    blurred_posted = False
                     
                     if photo and blurred_bytes:
                         # Send blurred photo
                         logger.info(f"Posting blurred image to channel {post_chat_id}...")
                         result = await send_telegram_photo(post_chat_id, blurred_bytes, blur_caption, bot_token, unlock_button)
                         logger.info(f"Send photo result: {result}")
-                        if result and result.get("result"):
+                        if result and result.get("ok") and result.get("result"):
                             blurred_message_id = result["result"].get("message_id", 0)
                             await db.paid_posts.update_one({"id": paid_post_id}, {"$set": {"blurred_message_id": blurred_message_id}})
                             logger.info(f"Posted blurred image with message_id: {blurred_message_id}")
+                            blurred_posted = True
                         else:
                             logger.error(f"Failed to post blurred image: {result}")
-                            # Try posting as text message with unlock button as fallback
-                            fallback_msg = f"🔒 <b>Paid Content</b>\n\n{blur_caption}\n\n⚠️ Image could not be processed. Contact admin."
-                            await send_telegram_message_with_buttons(post_chat_id, fallback_msg, [[{
-                                "text": f"🔓 Unlock Post - ₹{int(post_price)}",
-                                "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
-                            }]], bot_token)
                     
                     elif photo and not blurred_bytes:
                         # Photo exists but blur failed - post text message
                         logger.warning("Blurred bytes is None, posting text fallback")
                         fallback_msg = f"🔒 <b>Paid Content</b>\n\n"
-                        if clean_caption:
-                            fallback_msg += f"{clean_caption}\n\n"
                         fallback_msg += f"💰 Price: <b>{price_text}</b>\n\n"
                         fallback_msg += "👆 Tap 'Unlock Post' to view full content!"
                         
-                        await send_telegram_message_with_buttons(post_chat_id, fallback_msg, [[{
-                            "text": f"🔓 Unlock Post - ₹{int(post_price)}",
+                        result = await send_telegram_message_with_buttons(post_chat_id, fallback_msg, [[{
+                            "text": f"🔓 Unlock Post",
                             "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
                         }]], bot_token)
+                        if result:
+                            blurred_posted = True
                     
                     elif video and original_file_id:
                         # For videos, send a text message with unlock button
                         video_caption = f"🎬 <b>Paid Video Content</b>\n\n"
-                        if clean_caption:
-                            video_caption += f"{clean_caption}\n\n"
                         video_caption += f"💰 Price: <b>{price_text}</b>\n\n"
                         video_caption += "👆 Tap 'Unlock Post' to watch full video!"
                         
                         result = await send_telegram_message_with_buttons(post_chat_id, video_caption, [[{
-                            "text": f"🔓 Unlock Video - ₹{int(post_price)}",
+                            "text": f"🔓 Unlock Video",
                             "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
                         }]], bot_token)
                         if result:
+                            blurred_posted = True
                             logger.info(f"Posted video unlock message")
                     
                     else:
@@ -4278,10 +4269,19 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         text_caption += f"💰 Price: <b>{price_text}</b>\n\n"
                         text_caption += "👆 Tap 'Unlock Post' to view full content!"
                         
-                        await send_telegram_message_with_buttons(post_chat_id, text_caption, [[{
-                            "text": f"🔓 Unlock Post - ₹{int(post_price)}",
+                        result = await send_telegram_message_with_buttons(post_chat_id, text_caption, [[{
+                            "text": f"🔓 Unlock Post",
                             "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
                         }]], bot_token)
+                        if result:
+                            blurred_posted = True
+                    
+                    # ONLY delete original if blurred was posted successfully
+                    if blurred_posted:
+                        delete_result = await delete_telegram_message(post_chat_id, message_id, bot_token)
+                        logger.info(f"Deleted original message {message_id}: {delete_result}")
+                    else:
+                        logger.error("Blurred post failed - NOT deleting original to preserve content")
                     
                 except Exception as e:
                     logger.error(f"Error processing paid post: {e}")
