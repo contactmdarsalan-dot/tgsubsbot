@@ -3988,13 +3988,108 @@ async def create_live_session(data: dict, user = Depends(get_current_user)):
         "price": float(data.get("price", 0)),
         "max_viewers": int(data.get("max_viewers", 100)),
         "stream_link": data.get("stream_link", ""),
+        "group_id": data.get("group_id", ""),  # Telegram group where live will happen
+        "superchat_enabled": data.get("superchat_enabled", True),
+        "superchat_min_amount": float(data.get("superchat_min_amount", 10)),
         "status": "scheduled",  # scheduled, live, ended
         "tickets_sold": 0,
+        "superchat_total": 0,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.live_sessions.insert_one(session)
     logger.info(f"Created live session: {session['title']}")
     return {"message": "Session created", "id": session["id"]}
+
+@api_router.post("/live/sessions/{session_id}/announce")
+async def announce_live_session(session_id: str, user = Depends(get_current_user)):
+    """Announce live session to channel/group"""
+    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    channel_id = settings.get("telegram_channel_id", "")
+    bot_username = await get_bot_username(bot_token)
+    
+    # Create announcement message
+    msg = "🔴 <b>LIVE SESSION ANNOUNCEMENT!</b>\n\n"
+    msg += f"📺 <b>{session.get('title')}</b>\n\n"
+    if session.get('description'):
+        msg += f"📝 {session['description']}\n\n"
+    msg += f"📅 <b>Date:</b> {session.get('scheduled_date')}\n"
+    msg += f"🕐 <b>Time:</b> {session.get('scheduled_time')}\n"
+    msg += f"💰 <b>Ticket Price:</b> ₹{int(session.get('price', 0))}\n\n"
+    if session.get('superchat_enabled'):
+        msg += f"💬 <b>Superchat Enabled!</b> (Min ₹{int(session.get('superchat_min_amount', 10))})\n\n"
+    msg += "👇 <b>Get Your Ticket Now!</b>"
+    
+    buttons = [[{
+        "text": f"🎫 Buy Ticket - ₹{int(session.get('price', 0))}",
+        "url": f"https://t.me/{bot_username}?start=live_{session_id}"
+    }]]
+    
+    # Post to channel
+    await send_telegram_message_with_buttons(channel_id, msg, buttons, bot_token)
+    
+    # Also post to group if specified
+    if session.get('group_id'):
+        await send_telegram_message_with_buttons(session['group_id'], msg, buttons, bot_token)
+    
+    return {"message": "Announcement sent"}
+
+@api_router.post("/live/sessions/{session_id}/go-live")
+async def go_live(session_id: str, data: dict, user = Depends(get_current_user)):
+    """Start live session and notify all ticket holders"""
+    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    # Update stream link if provided
+    update_data = {"status": "live", "started_at": datetime.now(timezone.utc).isoformat()}
+    if data.get("stream_link"):
+        update_data["stream_link"] = data["stream_link"]
+    
+    await db.live_sessions.update_one({"id": session_id}, {"$set": update_data})
+    
+    # Get updated session
+    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    
+    # Notify all approved ticket holders
+    approved_tickets = await db.live_tickets.find({
+        "session_id": session_id,
+        "status": "approved"
+    }, {"_id": 0}).to_list(1000)
+    
+    bot_username = await get_bot_username(bot_token)
+    
+    for ticket in approved_tickets:
+        msg = "🔴 <b>WE ARE LIVE NOW!</b>\n\n"
+        msg += f"📺 <b>{session.get('title')}</b>\n\n"
+        
+        if session.get("stream_link"):
+            msg += f"🔗 <b>Join here:</b>\n{session['stream_link']}\n\n"
+        
+        if session.get("superchat_enabled"):
+            msg += f"💬 Send Superchat: /superchat {session_id} <amount> <message>\n"
+            msg += f"📢 Min Amount: ₹{int(session.get('superchat_min_amount', 10))}\n\n"
+        
+        msg += "🎉 Enjoy the stream!"
+        
+        # Add superchat button
+        if session.get("superchat_enabled"):
+            buttons = [[{
+                "text": "💬 Send Superchat",
+                "url": f"https://t.me/{bot_username}?start=superchat_{session_id}"
+            }]]
+            await send_telegram_message_with_buttons(ticket.get("telegram_user_id"), msg, buttons, bot_token)
+        else:
+            await send_telegram_message(ticket.get("telegram_user_id"), msg, bot_token)
+    
+    return {"message": "Live started", "notified": len(approved_tickets)}
 
 @api_router.put("/live/sessions/{session_id}")
 async def update_live_session(session_id: str, data: dict, user = Depends(get_current_user)):
