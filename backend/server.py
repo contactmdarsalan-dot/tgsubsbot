@@ -278,6 +278,25 @@ class UserTag(BaseModel):
 # ============== REFERRAL MODEL ==============
 class Referral(BaseModel):
     model_config = ConfigDict(extra="ignore")
+
+# ============== CREATOR MODEL ==============
+class Creator(BaseModel):
+    """Creators can manage live streams and have special access"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    telegram_user_id: str = ""  # Linked Telegram account
+    telegram_username: str = ""
+    email: str = ""
+    role: str = "creator"  # creator, senior_creator
+    permissions: List[str] = ["live_manage", "superchat_view"]  # Granular permissions
+    revenue_share: float = 0  # Percentage of revenue share
+    total_earnings: float = 0
+    is_active: bool = True
+    created_by: str = ""  # Admin who created
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class Referral(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     referrer_id: str  # telegram_user_id of referrer
     referrer_username: str
@@ -4030,6 +4049,96 @@ async def send_renewal_messages(broadcast_id: str, user_ids: list, message: str,
     )
 
 
+# ============== CREATOR APIs ==============
+
+@api_router.get("/creators")
+async def get_creators(user = Depends(get_current_user)):
+    """Get all creators"""
+    creators = await db.creators.find({}, {"_id": 0}).to_list(100)
+    return creators
+
+@api_router.post("/creators")
+async def create_creator(data: dict, user = Depends(get_current_user)):
+    """Create a new creator (Admin only)"""
+    creator = {
+        "id": str(uuid.uuid4()),
+        "name": data.get("name", ""),
+        "telegram_user_id": data.get("telegram_user_id", ""),
+        "telegram_username": data.get("telegram_username", ""),
+        "email": data.get("email", ""),
+        "role": "creator",
+        "permissions": data.get("permissions", ["live_manage", "superchat_view"]),
+        "revenue_share": float(data.get("revenue_share", 0)),
+        "total_earnings": 0,
+        "is_active": True,
+        "created_by": user.get("email", ""),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.creators.insert_one(creator)
+    return {"message": "Creator created", "id": creator["id"]}
+
+@api_router.put("/creators/{creator_id}")
+async def update_creator(creator_id: str, data: dict, user = Depends(get_current_user)):
+    """Update creator details"""
+    update_data = {}
+    for field in ["name", "telegram_user_id", "telegram_username", "email", "permissions", "revenue_share", "is_active"]:
+        if field in data:
+            update_data[field] = data[field]
+    
+    await db.creators.update_one({"id": creator_id}, {"$set": update_data})
+    return {"message": "Creator updated"}
+
+@api_router.delete("/creators/{creator_id}")
+async def delete_creator(creator_id: str, user = Depends(get_current_user)):
+    """Delete a creator"""
+    await db.creators.delete_one({"id": creator_id})
+    return {"message": "Creator deleted"}
+
+@api_router.post("/creators/link-telegram")
+async def link_creator_telegram(data: dict, user = Depends(get_current_user)):
+    """Link Telegram account to creator by username or user_id"""
+    creator_id = data.get("creator_id")
+    telegram_username = data.get("telegram_username", "").replace("@", "")
+    telegram_user_id = data.get("telegram_user_id", "")
+    
+    if not creator_id:
+        raise HTTPException(status_code=400, detail="Creator ID required")
+    
+    update_data = {}
+    if telegram_username:
+        update_data["telegram_username"] = telegram_username
+    if telegram_user_id:
+        update_data["telegram_user_id"] = telegram_user_id
+    
+    await db.creators.update_one({"id": creator_id}, {"$set": update_data})
+    return {"message": "Telegram account linked"}
+
+async def is_admin_or_creator(telegram_user_id: str, telegram_username: str = "") -> bool:
+    """Check if user is admin or creator"""
+    # Check creators collection
+    creator = await db.creators.find_one({
+        "$or": [
+            {"telegram_user_id": telegram_user_id},
+            {"telegram_username": telegram_username}
+        ],
+        "is_active": True
+    }, {"_id": 0})
+    
+    if creator:
+        return True
+    
+    # Check users collection for admin
+    admin_user = await db.users.find_one({
+        "$or": [
+            {"telegram_user_id": telegram_user_id},
+            {"telegram_username": telegram_username}
+        ],
+        "role": {"$in": ["admin", "super_admin"]}
+    }, {"_id": 0})
+    
+    return admin_user is not None
+
+
 # ============== LIVE STREAM APIs ==============
 
 @api_router.get("/live/sessions")
@@ -7411,27 +7520,21 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 buttons.append([{"text": "❌ Cancel", "callback_data": "cancel_action"}])
                 await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
         
-        # Handle /golive command - Admin starts live from Telegram
+        # Handle /golive command - Admin/Creator starts live from Telegram
         elif text and text.startswith("/golive"):
             settings = await get_bot_settings()
             bot_token = settings.get("telegram_bot_token", "")
             
-            # Check if user is admin (check subscribers collection for admin status)
-            is_admin = False
-            admin_user = await db.users.find_one({"$or": [
-                {"telegram_user_id": chat_id},
-                {"telegram_username": username}
-            ]}, {"_id": 0})
-            if admin_user and admin_user.get("role") in ["admin", "super_admin"]:
-                is_admin = True
+            # Check if user is admin or creator
+            has_access = await is_admin_or_creator(chat_id, username)
             
             # Also check settings for admin user IDs
             admin_ids = settings.get("admin_user_ids", [])
             if chat_id in admin_ids or username in admin_ids:
-                is_admin = True
+                has_access = True
             
-            if not is_admin:
-                await send_telegram_message(chat_id, "❌ <b>Access Denied</b>\n\nOnly admins can start live sessions.", bot_token)
+            if not has_access:
+                await send_telegram_message(chat_id, "❌ <b>Access Denied</b>\n\nOnly admins and creators can start live sessions.\n\nContact admin to get creator access.", bot_token)
             else:
                 # Get scheduled sessions that can be started
                 scheduled_sessions = await db.live_sessions.find({

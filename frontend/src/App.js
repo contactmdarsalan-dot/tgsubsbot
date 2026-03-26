@@ -25,6 +25,7 @@ import VideoCalls from "./pages/VideoCalls";
 import LiveStream from "./pages/LiveStream";
 import PaidPosts from "./pages/PaidPosts";
 import UserManagement from "./pages/UserManagement";
+import Creators from "./pages/Creators";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -144,6 +145,7 @@ function AppRouter() {
         <Route path="live-stream" element={<LiveStream />} />
         <Route path="paid-posts" element={<PaidPosts />} />
         <Route path="user-management" element={<UserManagement />} />
+        <Route path="creators" element={<Creators />} />
       </Route>
     </Routes>
   );
