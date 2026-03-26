@@ -580,10 +580,10 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
 
 # ============== IMAGE BLUR FOR PAID POSTS ==============
 
-def create_blurred_image(image_bytes: bytes, blur_radius: int = 15) -> bytes:
+def create_blurred_image(image_bytes: bytes, blur_radius: int = 10) -> bytes:
     """
     Create a lightly blurred version of an image for paid post preview.
-    Light blur (25%) - image visible but slightly obscured.
+    Very light blur (~15-20%) - image mostly visible with soft blur.
     """
     from PIL import ImageFilter
     
@@ -592,11 +592,11 @@ def create_blurred_image(image_bytes: bytes, blur_radius: int = 15) -> bytes:
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
         
-        # Apply light blur (radius 15 for ~25% blur effect)
+        # Apply very light blur (radius 10 for ~15-20% blur effect)
         blurred = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
         
-        # Light overlay for slight darkening
-        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 40))
+        # Very light overlay
+        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 25))
         blurred = blurred.convert('RGBA')
         blurred = Image.alpha_composite(blurred, overlay)
         blurred = blurred.convert('RGB')
