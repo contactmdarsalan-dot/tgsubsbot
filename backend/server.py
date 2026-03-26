@@ -4132,6 +4132,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     return {"ok": False, "error": "No bot token"}
                 
                 try:
+                    # Import re module explicitly to avoid scope issues
+                    import re as re_module
+                    
                     # Get content type and file_id FIRST (before deleting)
                     photo = channel_post.get("photo")
                     video = channel_post.get("video")
@@ -4162,10 +4165,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             logger.error("Failed to download original photo - image_bytes is None")
                     
                     # Clean caption (remove /paid command and variations)
-                    clean_caption = re.sub(r'^/paid[-_]?\s*', '', caption, flags=re.IGNORECASE).strip()
+                    clean_caption = re_module.sub(r'^/paid[-_]?\s*', '', caption, flags=re_module.IGNORECASE).strip()
                     
                     # Extract price if mentioned (e.g., /paid-999, /paid 99, /paid₹99, 999 at start)
-                    price_match = re.search(r'^[₹]?(\d+)[-_\s]*', clean_caption)
+                    price_match = re_module.search(r'^[₹]?(\d+)[-_\s]*', clean_caption)
                     post_price = float(price_match.group(1)) if price_match else 0
                     logger.info(f"Extracted price: {post_price} from caption: {clean_caption[:30]}")
                     
@@ -4173,7 +4176,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     if price_match:
                         clean_caption = clean_caption[price_match.end():].strip()
                         # Also remove leading - or _ if present
-                        clean_caption = re.sub(r'^[-_\s]+', '', clean_caption)
+                        clean_caption = re_module.sub(r'^[-_\s]+', '', clean_caption)
                     
                     # If no price specified, get default from settings or plans
                     if post_price <= 0:
