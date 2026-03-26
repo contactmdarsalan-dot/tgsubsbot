@@ -4667,8 +4667,8 @@ async def reject_unlock_request(request_id: str, user = Depends(get_current_user
     return {"message": "Unlock request rejected"}
 
 @api_router.get("/telegram/file/{file_id}")
-async def get_telegram_file(file_id: str, user = Depends(get_current_user)):
-    """Serve Telegram file (screenshot) for admin preview"""
+async def get_telegram_file(file_id: str):
+    """Serve Telegram file (screenshot) for admin preview - Public endpoint (file_id is security)"""
     from fastapi.responses import Response
     
     settings = await get_bot_settings()
