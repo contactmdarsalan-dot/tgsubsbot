@@ -4251,18 +4251,42 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             blurred_posted = True
                     
                     elif video and original_file_id:
-                        # For videos, send a text message with unlock button
-                        video_caption = f"🎬 <b>Paid Video Content</b>\n\n"
-                        video_caption += f"💰 Price: <b>{price_text}</b>\n\n"
-                        video_caption += "👆 Tap 'Unlock Post' to watch full video!"
+                        # For videos, get thumbnail and blur it, or send video with blur overlay text
+                        video_thumb = video.get("thumbnail") or video.get("thumb")
                         
-                        result = await send_telegram_message_with_buttons(post_chat_id, video_caption, [[{
-                            "text": f"🔓 Unlock Video",
-                            "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
-                        }]], bot_token)
-                        if result:
-                            blurred_posted = True
-                            logger.info(f"Posted video unlock message")
+                        if video_thumb:
+                            # Download and blur thumbnail
+                            thumb_file_id = video_thumb.get("file_id", "")
+                            if thumb_file_id:
+                                logger.info(f"Downloading video thumbnail...")
+                                thumb_bytes = await download_telegram_photo(thumb_file_id, bot_token)
+                                if thumb_bytes:
+                                    blurred_thumb = create_blurred_image(thumb_bytes)
+                                    if blurred_thumb:
+                                        video_caption = f"🎬 <b>Paid Video Content</b>\n\n"
+                                        video_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                                        video_caption += "👆 Tap 'Unlock Video' to watch!"
+                                        
+                                        result = await send_telegram_photo(post_chat_id, blurred_thumb, video_caption, bot_token, unlock_button)
+                                        if result and result.get("ok"):
+                                            blurred_message_id = result.get("result", {}).get("message_id", 0)
+                                            await db.paid_posts.update_one({"id": paid_post_id}, {"$set": {"blurred_message_id": blurred_message_id}})
+                                            blurred_posted = True
+                                            logger.info(f"Posted blurred video thumbnail with message_id: {blurred_message_id}")
+                        
+                        # Fallback: send text message if thumbnail blur failed
+                        if not blurred_posted:
+                            video_caption = f"🎬 <b>Paid Video Content</b>\n\n"
+                            video_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                            video_caption += "👆 Tap 'Unlock Video' to watch full video!"
+                            
+                            result = await send_telegram_message_with_buttons(post_chat_id, video_caption, [[{
+                                "text": f"🔓 Unlock Video - ₹{int(post_price)}",
+                                "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
+                            }]], bot_token)
+                            if result:
+                                blurred_posted = True
+                                logger.info(f"Posted video unlock text message (no thumbnail)")
                     
                     else:
                         # Text-only paid post
@@ -5338,6 +5362,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         text = message.get("text", "")
         username = message.get("from", {}).get("username", "")
         photo = message.get("photo")  # Check if message has photo
+        video = message.get("video")  # Check if message has video
         caption = message.get("caption", "").lower()  # Get caption if any
         
         if not chat_id:
@@ -5346,9 +5371,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
         
-        # Handle /paid command via PRIVATE MESSAGE (Admin sends photo to bot directly)
+        # Handle /paid command via PRIVATE MESSAGE (Admin sends photo/video to bot directly)
         # This prevents original from being visible in channel
-        if photo and bot_token and caption:
+        if (photo or video) and bot_token and caption:
             import re as re_module
             caption_lower = caption.lower()
             is_paid_command = (
@@ -5367,29 +5392,38 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     return {"ok": True}
                 
                 try:
-                    # Get photo file_id
-                    original_file_id = photo[-1].get("file_id", "") if photo else ""
+                    # Determine content type and get file_id
+                    content_type = "photo" if photo else "video"
+                    original_file_id = ""
+                    thumb_bytes = None
+                    
+                    if photo:
+                        original_file_id = photo[-1].get("file_id", "") if photo else ""
+                    elif video:
+                        original_file_id = video.get("file_id", "")
+                        # Get video thumbnail
+                        video_thumb = video.get("thumbnail") or video.get("thumb")
+                        if video_thumb:
+                            thumb_file_id = video_thumb.get("file_id", "")
+                            if thumb_file_id:
+                                logger.info(f"Downloading video thumbnail...")
+                                thumb_bytes = await download_telegram_photo(thumb_file_id, bot_token)
                     
                     if not original_file_id:
-                        await send_telegram_message(chat_id, "❌ Could not get photo. Please try again.", bot_token)
+                        await send_telegram_message(chat_id, "❌ Could not get file. Please try again.", bot_token)
                         return {"ok": True}
                     
-                    # Download and blur the photo
-                    logger.info(f"Downloading photo for /paid command...")
-                    image_bytes = await download_telegram_photo(original_file_id, bot_token)
-                    
-                    if not image_bytes:
-                        await send_telegram_message(chat_id, "❌ Could not download photo. Please try again.", bot_token)
-                        return {"ok": True}
-                    
-                    logger.info(f"Downloaded {len(image_bytes)} bytes, creating blur...")
-                    blurred_bytes = create_blurred_image(image_bytes)
-                    
-                    if not blurred_bytes:
-                        await send_telegram_message(chat_id, "❌ Could not create blur. Please try again.", bot_token)
-                        return {"ok": True}
-                    
-                    logger.info(f"Created blurred image: {len(blurred_bytes)} bytes")
+                    # Download and blur the content
+                    blurred_bytes = None
+                    if photo:
+                        logger.info(f"Downloading photo for /paid command...")
+                        image_bytes = await download_telegram_photo(original_file_id, bot_token)
+                        if image_bytes:
+                            logger.info(f"Downloaded {len(image_bytes)} bytes, creating blur...")
+                            blurred_bytes = create_blurred_image(image_bytes)
+                    elif video and thumb_bytes:
+                        logger.info(f"Creating blur from video thumbnail...")
+                        blurred_bytes = create_blurred_image(thumb_bytes)
                     
                     # Clean caption and extract price
                     original_caption = message.get("caption", "")
@@ -5420,7 +5454,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "id": paid_post_id,
                         "channel_id": channel_id,
                         "original_message_id": None,  # Not from channel
-                        "content_type": "photo",
+                        "content_type": content_type,
                         "original_file_id": original_file_id,
                         "caption": clean_caption,
                         "price": post_price,
@@ -5434,21 +5468,40 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     
                     # Prepare Unlock button
                     bot_username = await get_bot_username(bot_token)
+                    price_text = f"₹{int(post_price)}" if post_price > 0 else "Premium"
+                    button_text = f"🔓 Unlock {'Video' if content_type == 'video' else 'Post'} - {price_text}"
                     unlock_button = {
                         "inline_keyboard": [[{
-                            "text": f"🔓 Unlock Post - ₹{int(post_price)}",
+                            "text": button_text,
                             "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
                         }]]
                     }
                     
-                    price_text = f"₹{int(post_price)}" if post_price > 0 else "Premium"
-                    blur_caption = f"🔒 <b>Paid Content</b>\n\n"
-                    blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
-                    blur_caption += "👆 Tap 'Unlock Post' to view full content!"
-                    
-                    # Post blurred image to CHANNEL
-                    logger.info(f"Posting blurred image to channel {channel_id}...")
-                    result = await send_telegram_photo(channel_id, blurred_bytes, blur_caption, bot_token, unlock_button)
+                    # Post to channel
+                    result = None
+                    if blurred_bytes:
+                        if content_type == "video":
+                            blur_caption = f"🎬 <b>Paid Video Content</b>\n\n"
+                        else:
+                            blur_caption = f"🔒 <b>Paid Content</b>\n\n"
+                        blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                        blur_caption += f"👆 Tap 'Unlock {'Video' if content_type == 'video' else 'Post'}' to view!"
+                        
+                        logger.info(f"Posting blurred {content_type} to channel {channel_id}...")
+                        result = await send_telegram_photo(channel_id, blurred_bytes, blur_caption, bot_token, unlock_button)
+                    else:
+                        # Fallback: text message for video without thumbnail
+                        blur_caption = f"🎬 <b>Paid Video Content</b>\n\n"
+                        blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                        blur_caption += "👆 Tap 'Unlock Video' to watch!"
+                        
+                        logger.info(f"Posting text message for video to channel {channel_id}...")
+                        result = await send_telegram_message_with_buttons(channel_id, blur_caption, [[{
+                            "text": button_text,
+                            "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
+                        }]], bot_token)
+                        if result:
+                            result = {"ok": True, "result": result}
                     
                     if result and result.get("ok"):
                         blurred_message_id = result.get("result", {}).get("message_id", 0)
