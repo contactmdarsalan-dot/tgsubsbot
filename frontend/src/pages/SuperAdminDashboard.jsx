@@ -70,8 +70,11 @@ const getAuthHeaders = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
 });
 
-// Only this email can access
-const SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com";
+// Super Admin emails list
+const SUPER_ADMIN_EMAILS = [
+  "gamerxboys8958@gmail.com",
+  "contactmdarsalan@gmail.com"
+];
 
 export default function SuperAdminDashboard() {
   const [activeTab, setActiveTab] = useState("dashboard-plans");
@@ -102,7 +105,8 @@ export default function SuperAdminDashboard() {
   const [adminReply, setAdminReply] = useState({ ticketId: null, message: "", status: "in_progress" });
   
   const user = JSON.parse(localStorage.getItem("user") || "{}");
-  const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
+  // Check by email list OR by role
+  const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(user.email) || user.role === "super_admin";
 
   useEffect(() => {
     if (isSuperAdmin) {

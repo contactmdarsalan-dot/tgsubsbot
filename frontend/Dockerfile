@@ -2,17 +2,19 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json* ./
+# Copy package files and npmrc
+COPY package.json package-lock.json* yarn.lock* .npmrc* ./
 
-# Install dependencies
-RUN npm install --force
+# Clear npm cache and install with yarn (more reliable)
+RUN npm cache clean --force && \
+    npm install -g yarn && \
+    yarn install --frozen-lockfile || yarn install
 
 # Copy application code
 COPY . .
 
 # Build the app
-RUN npm run build
+RUN yarn build
 
 # Install serve for production
 RUN npm install -g serve

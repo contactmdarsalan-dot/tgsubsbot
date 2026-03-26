@@ -22,6 +22,7 @@ import {
   BarChart3,
   Video,
   Lock,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -32,6 +33,7 @@ const navItems = [
   { path: "/payments", label: "Payments", icon: CreditCard },
   { path: "/paid-posts", label: "Paid Posts", icon: Lock },
   { path: "/live-stream", label: "Live", icon: Radio },
+  { path: "/creators", label: "Creators", icon: Sparkles },
   { path: "/chat-groups", label: "Groups", icon: MessagesSquare },
   { path: "/broadcast", label: "Broadcast", icon: Radio },
   { path: "/coupons", label: "Coupons", icon: Ticket },

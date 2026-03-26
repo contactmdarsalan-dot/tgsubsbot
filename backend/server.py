@@ -25,6 +25,7 @@ from PIL import Image
 from io import BytesIO
 import re
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+import json
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -33,6 +34,46 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+# ============== REDIS CACHE (Optional - for high traffic) ==============
+redis_client = None
+try:
+    import redis
+    redis_url = os.environ.get('REDIS_URL', '')
+    if redis_url:
+        redis_client = redis.from_url(redis_url, decode_responses=True)
+        logger_temp = logging.getLogger("server")
+        logger_temp.info("Redis connected!")
+except Exception as e:
+    pass  # Redis is optional
+
+async def cache_get(key: str, default=None):
+    """Get value from Redis cache"""
+    if not redis_client:
+        return default
+    try:
+        value = redis_client.get(key)
+        return json.loads(value) if value else default
+    except:
+        return default
+
+async def cache_set(key: str, value, ttl: int = 300):
+    """Set value in Redis cache (default 5 min TTL)"""
+    if not redis_client:
+        return
+    try:
+        redis_client.setex(key, ttl, json.dumps(value))
+    except:
+        pass
+
+async def cache_delete(key: str):
+    """Delete key from cache"""
+    if not redis_client:
+        return
+    try:
+        redis_client.delete(key)
+    except:
+        pass
 
 # Razorpay client (optional - only if keys provided)
 razorpay_client = None
@@ -237,6 +278,25 @@ class UserTag(BaseModel):
 # ============== REFERRAL MODEL ==============
 class Referral(BaseModel):
     model_config = ConfigDict(extra="ignore")
+
+# ============== CREATOR MODEL ==============
+class Creator(BaseModel):
+    """Creators can manage live streams and have special access"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    telegram_user_id: str = ""  # Linked Telegram account
+    telegram_username: str = ""
+    email: str = ""
+    role: str = "creator"  # creator, senior_creator
+    permissions: List[str] = ["live_manage", "superchat_view"]  # Granular permissions
+    revenue_share: float = 0  # Percentage of revenue share
+    total_earnings: float = 0
+    is_active: bool = True
+    created_by: str = ""  # Admin who created
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class Referral(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     referrer_id: str  # telegram_user_id of referrer
     referrer_username: str
@@ -370,6 +430,21 @@ class PaidPostUnlock(BaseModel):
     payment_id: str = ""  # Payment record ID
     unlocked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+# ============== CHAT TRACKING MODEL ==============
+class ChatMessage(BaseModel):
+    """Track chat messages from users"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    telegram_user_id: str
+    telegram_username: str = ""
+    user_first_name: str = ""
+    chat_type: str = "private"  # private, group, supergroup
+    group_id: str = ""  # Group ID if from group
+    group_name: str = ""  # Group name
+    message_text: str = ""
+    message_type: str = "text"  # text, photo, video, voice, etc.
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 
 
 # ============== AUTH HELPERS ==============
@@ -409,7 +484,12 @@ TELEGRAM_MIN_INTERVAL = 0.05  # 50ms between messages per chat
 _bot_username_cache = {}
 
 async def get_bot_settings():
-    """Get bot settings from database, with environment variable fallback"""
+    """Get bot settings from database, with Redis cache and environment variable fallback"""
+    # Try Redis cache first
+    cached = await cache_get("bot_settings")
+    if cached:
+        return cached
+    
     settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0})
     settings = settings or {}
     
@@ -419,6 +499,9 @@ async def get_bot_settings():
         if env_token:
             settings["telegram_bot_token"] = env_token
             logger.info("Using TELEGRAM_BOT_TOKEN from environment variable")
+    
+    # Cache for 60 seconds
+    await cache_set("bot_settings", settings, ttl=60)
     
     return settings
 
@@ -580,10 +663,11 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
 
 # ============== IMAGE BLUR FOR PAID POSTS ==============
 
-def create_blurred_image(image_bytes: bytes, blur_radius: int = 15) -> bytes:
+def create_blurred_image(image_bytes: bytes, blur_radius: int = 10, content_type: str = "photo") -> bytes:
     """
-    Create a lightly blurred version of an image for paid post preview.
-    Light blur (25%) - image visible but slightly obscured.
+    Create a blurred version of an image for paid post preview.
+    Photo: Heavy blur (can't see details)
+    Video thumbnail: Light blur (teaser visible)
     """
     from PIL import ImageFilter
     
@@ -592,11 +676,21 @@ def create_blurred_image(image_bytes: bytes, blur_radius: int = 15) -> bytes:
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
         
-        # Apply light blur (radius 15 for ~25% blur effect)
-        blurred = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+        # Different blur levels for photo vs video
+        if content_type == "photo":
+            # Heavy blur for photos - can't see details
+            actual_blur = blur_radius if blur_radius > 15 else 25
+            overlay_alpha = 80
+        else:
+            # Light blur for video thumbnails - teaser visible
+            actual_blur = blur_radius if blur_radius < 15 else 10
+            overlay_alpha = 30
         
-        # Light overlay for slight darkening
-        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 40))
+        # Apply blur
+        blurred = image.filter(ImageFilter.GaussianBlur(radius=actual_blur))
+        
+        # Add overlay
+        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, overlay_alpha))
         blurred = blurred.convert('RGBA')
         blurred = Image.alpha_composite(blurred, overlay)
         blurred = blurred.convert('RGB')
@@ -604,7 +698,7 @@ def create_blurred_image(image_bytes: bytes, blur_radius: int = 15) -> bytes:
         # Convert back to bytes
         output = BytesIO()
         blurred.save(output, format='JPEG', quality=85)
-        logger.info(f"Blurred image created: {len(output.getvalue())} bytes")
+        logger.info(f"Blurred image created ({content_type}): blur={actual_blur}, size={len(output.getvalue())} bytes")
         return output.getvalue()
         
     except Exception as e:
@@ -2184,10 +2278,23 @@ async def get_plans(user = Depends(get_current_user)):
 
 @api_router.get("/plans/active", response_model=List[SubscriptionPlan])
 async def get_active_plans():
+    # Try cache first
+    cached = await cache_get("active_plans")
+    if cached:
+        for plan in cached:
+            if isinstance(plan.get('created_at'), str):
+                plan['created_at'] = datetime.fromisoformat(plan['created_at'])
+        return cached
+    
     plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(100)
     for plan in plans:
         if isinstance(plan.get('created_at'), str):
             plan['created_at'] = datetime.fromisoformat(plan['created_at'])
+    
+    # Cache plans for 5 minutes
+    plans_for_cache = [{**p, 'created_at': p['created_at'].isoformat() if hasattr(p.get('created_at'), 'isoformat') else p.get('created_at')} for p in plans]
+    await cache_set("active_plans", plans_for_cache, ttl=300)
+    
     return plans
 
 @api_router.post("/plans", response_model=SubscriptionPlan)
@@ -3214,6 +3321,116 @@ async def get_broadcast(broadcast_id: str, user = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Broadcast not found")
     return broadcast
 
+# ============== PAID POST BROADCAST ==============
+
+@api_router.post("/paid-posts/{post_id}/broadcast")
+async def broadcast_paid_post(post_id: str, data: dict, background_tasks: BackgroundTasks, user = Depends(get_current_user)):
+    """Broadcast a paid post to all users"""
+    paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True}, {"_id": 0})
+    if not paid_post:
+        raise HTTPException(status_code=404, detail="Paid post not found")
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="Bot token not configured")
+    
+    # Get target users
+    target = data.get("target", "all")
+    user_ids = set()
+    
+    if target in ["all", "subscribers"]:
+        subscribers = await db.subscribers.find({"status": "active"}, {"_id": 0}).to_list(10000)
+        for sub in subscribers:
+            if sub.get("telegram_user_id"):
+                user_ids.add(str(sub["telegram_user_id"]))
+    
+    if target in ["all", "channel_members"]:
+        payments = await db.payments.find({}, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+        for p in payments:
+            if p.get("telegram_user_id"):
+                user_ids.add(str(p["telegram_user_id"]))
+    
+    if not user_ids:
+        raise HTTPException(status_code=400, detail="No users to broadcast to")
+    
+    # Create broadcast record
+    broadcast_id = str(uuid.uuid4())
+    broadcast_record = {
+        "id": broadcast_id,
+        "type": "paid_post",
+        "paid_post_id": post_id,
+        "target": target,
+        "total_users": len(user_ids),
+        "sent_count": 0,
+        "failed_count": 0,
+        "status": "in_progress",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.broadcasts.insert_one(broadcast_record)
+    
+    # Send in background
+    background_tasks.add_task(
+        send_paid_post_broadcast,
+        broadcast_id,
+        post_id,
+        list(user_ids),
+        bot_token
+    )
+    
+    return {"broadcast_id": broadcast_id, "total_users": len(user_ids)}
+
+async def send_paid_post_broadcast(broadcast_id: str, post_id: str, user_ids: list, bot_token: str):
+    """Background task to send paid post to all users"""
+    paid_post = await db.paid_posts.find_one({"id": post_id}, {"_id": 0})
+    if not paid_post:
+        return
+    
+    bot_username = await get_bot_username(bot_token)
+    price = paid_post.get("price", 0)
+    caption = paid_post.get("caption", "")
+    
+    # Create message
+    msg = f"🔒 <b>Exclusive Paid Content!</b>\n\n"
+    msg += f"💰 <b>Price:</b> ₹{int(price)}\n\n"
+    if caption:
+        msg += f"📝 {caption}\n\n"
+    msg += "👇 <b>Unlock Now!</b>"
+    
+    buttons = [[{
+        "text": f"🔓 Unlock - ₹{int(price)}",
+        "url": f"https://t.me/{bot_username}?start=unlock_{post_id}"
+    }]]
+    
+    sent_count = 0
+    failed_count = 0
+    
+    for user_id in user_ids:
+        try:
+            # Try to send blurred photo if available
+            if paid_post.get("blurred_file_id"):
+                await send_telegram_photo(user_id, paid_post["blurred_file_id"], msg, bot_token, {"inline_keyboard": buttons})
+            else:
+                await send_telegram_message_with_buttons(user_id, msg, buttons, bot_token)
+            sent_count += 1
+        except Exception as e:
+            logger.error(f"Failed to send paid post broadcast to {user_id}: {e}")
+            failed_count += 1
+        
+        await asyncio.sleep(0.1)  # Rate limiting
+    
+    # Update broadcast status
+    await db.broadcasts.update_one(
+        {"id": broadcast_id},
+        {"$set": {
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+
 
 # ============== COUPON/DISCOUNT APIs ==============
 
@@ -3629,6 +3846,298 @@ async def delete_video_call_booking(booking_id: str, user = Depends(get_current_
     await db.video_call_bookings.delete_one({"id": booking_id})
     return {"message": "Booking deleted"}
 
+@api_router.get("/video-calls/queue")
+async def get_video_call_queue(user = Depends(get_current_user)):
+    """Get video call queue - who's waiting"""
+    # Get pending/waiting bookings sorted by creation time
+    queue = await db.video_call_bookings.find(
+        {"status": {"$in": ["pending", "paid", "waiting"]}},
+        {"_id": 0}
+    ).sort("created_at", 1).to_list(100)
+    
+    # Get current active call
+    active_call = await db.video_call_bookings.find_one(
+        {"status": "in_progress"},
+        {"_id": 0}
+    )
+    
+    return {
+        "queue": queue,
+        "queue_length": len(queue),
+        "active_call": active_call
+    }
+
+@api_router.post("/video-calls/{booking_id}/start")
+async def start_video_call(booking_id: str, user = Depends(get_current_user)):
+    """Start a video call (marks as in_progress)"""
+    booking = await db.video_call_bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    
+    # Check if another call is already in progress
+    active = await db.video_call_bookings.find_one({"status": "in_progress"}, {"_id": 0})
+    if active:
+        raise HTTPException(status_code=400, detail="Another call is already in progress")
+    
+    await db.video_call_bookings.update_one(
+        {"id": booking_id},
+        {"$set": {"status": "in_progress", "started_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    # Notify user
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    msg = "📞 <b>Your video call is starting NOW!</b>\n\n"
+    msg += "👆 Check the meeting link above and join!"
+    await send_telegram_message(booking.get("telegram_user_id"), msg, bot_token)
+    
+    return {"message": "Call started"}
+
+@api_router.post("/video-calls/{booking_id}/end")
+async def end_video_call(booking_id: str, user = Depends(get_current_user)):
+    """End a video call and notify next in queue"""
+    await db.video_call_bookings.update_one(
+        {"id": booking_id},
+        {"$set": {"status": "completed", "ended_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    # Notify next in queue
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    next_in_queue = await db.video_call_bookings.find_one(
+        {"status": {"$in": ["pending", "paid", "waiting"]}},
+        {"_id": 0},
+        sort=[("created_at", 1)]
+    )
+    
+    if next_in_queue:
+        msg = "⏰ <b>You're Next!</b>\n\n"
+        msg += "🎯 Get ready! Your video call will start soon.\n"
+        msg += "📱 Make sure you have good internet connection."
+        await send_telegram_message(next_in_queue.get("telegram_user_id"), msg, bot_token)
+    
+    return {"message": "Call ended", "next_in_queue": next_in_queue}
+
+# ============== RENEWAL BROADCAST ==============
+
+@api_router.post("/renewal-broadcast")
+async def send_renewal_broadcast(data: dict, background_tasks: BackgroundTasks, user = Depends(get_current_user)):
+    """Send renewal reminder to expired/expiring subscribers"""
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="Bot token not configured")
+    
+    target = data.get("target", "expired")  # expired, expiring_soon, all
+    message = data.get("message", "")
+    video_note_file_id = data.get("video_note_file_id")  # Optional video note
+    discount_percent = data.get("discount_percent", 0)
+    
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    
+    user_ids = set()
+    
+    if target in ["expired", "all"]:
+        # Get expired subscribers
+        expired = await db.subscribers.find(
+            {"status": {"$in": ["expired", "cancelled"]}},
+            {"_id": 0}
+        ).to_list(10000)
+        for sub in expired:
+            if sub.get("telegram_user_id"):
+                user_ids.add(str(sub["telegram_user_id"]))
+    
+    if target in ["expiring_soon", "all"]:
+        # Get subscribers expiring in next 3 days
+        three_days_later = (now + timedelta(days=3)).isoformat()
+        expiring = await db.subscribers.find(
+            {"status": "active", "end_time": {"$lte": three_days_later}},
+            {"_id": 0}
+        ).to_list(10000)
+        for sub in expiring:
+            if sub.get("telegram_user_id"):
+                user_ids.add(str(sub["telegram_user_id"]))
+    
+    if not user_ids:
+        return {"message": "No users to send renewal to", "count": 0}
+    
+    # Create broadcast record
+    broadcast_id = str(uuid.uuid4())
+    broadcast_record = {
+        "id": broadcast_id,
+        "type": "renewal",
+        "target": target,
+        "message": message,
+        "total_users": len(user_ids),
+        "sent_count": 0,
+        "failed_count": 0,
+        "status": "in_progress",
+        "created_at": now.isoformat()
+    }
+    await db.broadcasts.insert_one(broadcast_record)
+    
+    # Send in background
+    background_tasks.add_task(
+        send_renewal_messages,
+        broadcast_id,
+        list(user_ids),
+        message,
+        discount_percent,
+        video_note_file_id,
+        bot_token
+    )
+    
+    return {"broadcast_id": broadcast_id, "total_users": len(user_ids)}
+
+async def send_renewal_messages(broadcast_id: str, user_ids: list, message: str, discount_percent: int, video_note_file_id: str, bot_token: str):
+    """Background task to send renewal messages"""
+    bot_username = await get_bot_username(bot_token)
+    
+    sent_count = 0
+    failed_count = 0
+    
+    for user_id in user_ids:
+        try:
+            # Build renewal message
+            msg = "🔔 <b>Time to Renew!</b>\n\n"
+            if message:
+                msg += f"{message}\n\n"
+            else:
+                msg += "Your subscription has expired or is about to expire.\n"
+                msg += "Don't miss out on exclusive content!\n\n"
+            
+            if discount_percent > 0:
+                msg += f"🎁 <b>Special Offer: {discount_percent}% OFF!</b>\n\n"
+            
+            msg += "👇 <b>Renew Now!</b>"
+            
+            buttons = [[{
+                "text": "🔄 Renew Subscription",
+                "url": f"https://t.me/{bot_username}?start=subscribe"
+            }]]
+            
+            # Send video note if available
+            if video_note_file_id:
+                try:
+                    async with httpx.AsyncClient() as http_client:
+                        await http_client.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendVideoNote",
+                            json={"chat_id": user_id, "video_note": video_note_file_id}
+                        )
+                except Exception:
+                    pass
+            
+            await send_telegram_message_with_buttons(user_id, msg, buttons, bot_token)
+            sent_count += 1
+        except Exception as e:
+            logger.error(f"Failed to send renewal to {user_id}: {e}")
+            failed_count += 1
+        
+        await asyncio.sleep(0.1)
+    
+    await db.broadcasts.update_one(
+        {"id": broadcast_id},
+        {"$set": {
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+
+
+# ============== CREATOR APIs ==============
+
+@api_router.get("/creators")
+async def get_creators(user = Depends(get_current_user)):
+    """Get all creators"""
+    creators = await db.creators.find({}, {"_id": 0}).to_list(100)
+    return creators
+
+@api_router.post("/creators")
+async def create_creator(data: dict, user = Depends(get_current_user)):
+    """Create a new creator (Admin only)"""
+    creator = {
+        "id": str(uuid.uuid4()),
+        "name": data.get("name", ""),
+        "telegram_user_id": data.get("telegram_user_id", ""),
+        "telegram_username": data.get("telegram_username", ""),
+        "email": data.get("email", ""),
+        "role": "creator",
+        "permissions": data.get("permissions", ["live_manage", "superchat_view"]),
+        "revenue_share": float(data.get("revenue_share", 0)),
+        "total_earnings": 0,
+        "is_active": True,
+        "created_by": user.get("email", ""),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.creators.insert_one(creator)
+    return {"message": "Creator created", "id": creator["id"]}
+
+@api_router.put("/creators/{creator_id}")
+async def update_creator(creator_id: str, data: dict, user = Depends(get_current_user)):
+    """Update creator details"""
+    update_data = {}
+    for field in ["name", "telegram_user_id", "telegram_username", "email", "permissions", "revenue_share", "is_active"]:
+        if field in data:
+            update_data[field] = data[field]
+    
+    await db.creators.update_one({"id": creator_id}, {"$set": update_data})
+    return {"message": "Creator updated"}
+
+@api_router.delete("/creators/{creator_id}")
+async def delete_creator(creator_id: str, user = Depends(get_current_user)):
+    """Delete a creator"""
+    await db.creators.delete_one({"id": creator_id})
+    return {"message": "Creator deleted"}
+
+@api_router.post("/creators/link-telegram")
+async def link_creator_telegram(data: dict, user = Depends(get_current_user)):
+    """Link Telegram account to creator by username or user_id"""
+    creator_id = data.get("creator_id")
+    telegram_username = data.get("telegram_username", "").replace("@", "")
+    telegram_user_id = data.get("telegram_user_id", "")
+    
+    if not creator_id:
+        raise HTTPException(status_code=400, detail="Creator ID required")
+    
+    update_data = {}
+    if telegram_username:
+        update_data["telegram_username"] = telegram_username
+    if telegram_user_id:
+        update_data["telegram_user_id"] = telegram_user_id
+    
+    await db.creators.update_one({"id": creator_id}, {"$set": update_data})
+    return {"message": "Telegram account linked"}
+
+async def is_admin_or_creator(telegram_user_id: str, telegram_username: str = "") -> bool:
+    """Check if user is admin or creator"""
+    # Check creators collection
+    creator = await db.creators.find_one({
+        "$or": [
+            {"telegram_user_id": telegram_user_id},
+            {"telegram_username": telegram_username}
+        ],
+        "is_active": True
+    }, {"_id": 0})
+    
+    if creator:
+        return True
+    
+    # Check users collection for admin
+    admin_user = await db.users.find_one({
+        "$or": [
+            {"telegram_user_id": telegram_user_id},
+            {"telegram_username": telegram_username}
+        ],
+        "role": {"$in": ["admin", "super_admin"]}
+    }, {"_id": 0})
+    
+    return admin_user is not None
+
 
 # ============== LIVE STREAM APIs ==============
 
@@ -3650,13 +4159,242 @@ async def create_live_session(data: dict, user = Depends(get_current_user)):
         "price": float(data.get("price", 0)),
         "max_viewers": int(data.get("max_viewers", 100)),
         "stream_link": data.get("stream_link", ""),
+        "group_id": data.get("group_id", ""),  # Telegram group where live will happen
+        "superchat_enabled": data.get("superchat_enabled", True),
+        "superchat_min_amount": float(data.get("superchat_min_amount", 10)),
         "status": "scheduled",  # scheduled, live, ended
         "tickets_sold": 0,
+        "superchat_total": 0,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.live_sessions.insert_one(session)
     logger.info(f"Created live session: {session['title']}")
     return {"message": "Session created", "id": session["id"]}
+
+@api_router.post("/live/sessions/{session_id}/announce")
+async def announce_live_session(session_id: str, user = Depends(get_current_user)):
+    """Announce live session to channel/group"""
+    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    channel_id = settings.get("telegram_channel_id", "")
+    bot_username = await get_bot_username(bot_token)
+    
+    # Create announcement message
+    msg = "🔴 <b>LIVE SESSION ANNOUNCEMENT!</b>\n\n"
+    msg += f"📺 <b>{session.get('title')}</b>\n\n"
+    if session.get('description'):
+        msg += f"📝 {session['description']}\n\n"
+    msg += f"📅 <b>Date:</b> {session.get('scheduled_date')}\n"
+    msg += f"🕐 <b>Time:</b> {session.get('scheduled_time')}\n"
+    msg += f"💰 <b>Ticket Price:</b> ₹{int(session.get('price', 0))}\n\n"
+    if session.get('superchat_enabled'):
+        msg += f"💬 <b>Superchat Enabled!</b> (Min ₹{int(session.get('superchat_min_amount', 10))})\n\n"
+    msg += "👇 <b>Get Your Ticket Now!</b>"
+    
+    buttons = [[{
+        "text": f"🎫 Buy Ticket - ₹{int(session.get('price', 0))}",
+        "url": f"https://t.me/{bot_username}?start=live_{session_id}"
+    }]]
+    
+    # Post to channel
+    await send_telegram_message_with_buttons(channel_id, msg, buttons, bot_token)
+    
+    # Also post to group if specified
+    if session.get('group_id'):
+        await send_telegram_message_with_buttons(session['group_id'], msg, buttons, bot_token)
+    
+    return {"message": "Announcement sent"}
+
+@api_router.post("/live/sessions/{session_id}/go-live")
+async def go_live(session_id: str, data: dict, user = Depends(get_current_user)):
+    """Start live session and notify all ticket holders"""
+    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    # Update stream link if provided
+    update_data = {"status": "live", "started_at": datetime.now(timezone.utc).isoformat()}
+    if data.get("stream_link"):
+        update_data["stream_link"] = data["stream_link"]
+    
+    await db.live_sessions.update_one({"id": session_id}, {"$set": update_data})
+    
+    # Get updated session
+    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    
+    # Notify all approved ticket holders
+    approved_tickets = await db.live_tickets.find({
+        "session_id": session_id,
+        "status": "approved"
+    }, {"_id": 0}).to_list(1000)
+    
+    bot_username = await get_bot_username(bot_token)
+    
+    for ticket in approved_tickets:
+        msg = "🔴 <b>WE ARE LIVE NOW!</b>\n\n"
+        msg += f"📺 <b>{session.get('title')}</b>\n\n"
+        
+        if session.get("stream_link"):
+            msg += f"🔗 <b>Join here:</b>\n{session['stream_link']}\n\n"
+        
+        if session.get("superchat_enabled"):
+            msg += f"💬 Send Superchat: /superchat {session_id} <amount> <message>\n"
+            msg += f"📢 Min Amount: ₹{int(session.get('superchat_min_amount', 10))}\n\n"
+        
+        msg += "🎉 Enjoy the stream!"
+        
+        # Add superchat button
+        if session.get("superchat_enabled"):
+            buttons = [[{
+                "text": "💬 Send Superchat",
+                "url": f"https://t.me/{bot_username}?start=superchat_{session_id}"
+            }]]
+            await send_telegram_message_with_buttons(ticket.get("telegram_user_id"), msg, buttons, bot_token)
+        else:
+            await send_telegram_message(ticket.get("telegram_user_id"), msg, bot_token)
+    
+    return {"message": "Live started", "notified": len(approved_tickets)}
+
+@api_router.post("/live/sessions/{session_id}/start-countdown")
+async def start_countdown_timer(session_id: str, data: dict, user = Depends(get_current_user)):
+    """Post countdown timer to group - 30 mins before live"""
+    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    channel_id = settings.get("telegram_channel_id", "")
+    bot_username = await get_bot_username(bot_token)
+    
+    # Get target group (from session or default channel)
+    target_group = data.get("group_id") or session.get("group_id") or channel_id
+    minutes_remaining = data.get("minutes", 30)
+    
+    # Create countdown message
+    msg = "⏰ <b>LIVE STARTING SOON!</b>\n\n"
+    msg += "━━━━━━━━━━━━━━━\n"
+    msg += f"📺 <b>{session.get('title')}</b>\n\n"
+    msg += f"🕐 <b>Starting in: {minutes_remaining} minutes!</b>\n"
+    msg += "━━━━━━━━━━━━━━━\n\n"
+    
+    if session.get('description'):
+        msg += f"📝 {session['description']}\n\n"
+    
+    msg += f"💰 <b>Ticket Price:</b> ₹{int(session.get('price', 0))}\n"
+    
+    if session.get('superchat_enabled'):
+        msg += f"💬 <b>Superchat:</b> Enabled!\n\n"
+    
+    msg += "👇 <b>Get your ticket now before it starts!</b>"
+    
+    buttons = [
+        [{
+            "text": f"🎫 Buy Ticket - ₹{int(session.get('price', 0))}",
+            "url": f"https://t.me/{bot_username}?start=live_{session_id}"
+        }],
+        [{
+            "text": "🔔 Subscribe for Updates",
+            "url": f"https://t.me/{bot_username}?start=subscribe"
+        }]
+    ]
+    
+    # Post to group
+    result = await send_telegram_message_with_buttons(target_group, msg, buttons, bot_token)
+    
+    # Store message_id so we can update it later
+    if result:
+        await db.live_sessions.update_one(
+            {"id": session_id},
+            {"$set": {
+                "countdown_message_id": result.get("message_id"),
+                "countdown_chat_id": target_group,
+                "countdown_started_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+    
+    return {"message": "Countdown started", "group_id": target_group}
+
+@api_router.post("/live/sessions/{session_id}/update-countdown")
+async def update_countdown_timer(session_id: str, data: dict, user = Depends(get_current_user)):
+    """Update countdown timer message"""
+    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    if not session.get("countdown_message_id"):
+        raise HTTPException(status_code=400, detail="No countdown active")
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    bot_username = await get_bot_username(bot_token)
+    
+    minutes_remaining = data.get("minutes", 10)
+    
+    # Create updated message
+    if minutes_remaining <= 0:
+        msg = "🔴 <b>WE ARE LIVE NOW!</b>\n\n"
+        msg += "━━━━━━━━━━━━━━━\n"
+        msg += f"📺 <b>{session.get('title')}</b>\n"
+        msg += "━━━━━━━━━━━━━━━\n\n"
+        msg += "🎉 <b>Join the stream now!</b>"
+        
+        buttons = [[{
+            "text": "🔴 JOIN LIVE NOW",
+            "url": session.get('stream_link') or f"https://t.me/{bot_username}?start=live_{session_id}"
+        }]]
+    else:
+        msg = "⏰ <b>LIVE STARTING SOON!</b>\n\n"
+        msg += "━━━━━━━━━━━━━━━\n"
+        msg += f"📺 <b>{session.get('title')}</b>\n\n"
+        
+        if minutes_remaining >= 60:
+            hours = minutes_remaining // 60
+            mins = minutes_remaining % 60
+            time_str = f"{hours}h {mins}m" if mins > 0 else f"{hours}h"
+        else:
+            time_str = f"{minutes_remaining} minutes"
+        
+        msg += f"🕐 <b>Starting in: {time_str}!</b>\n"
+        msg += "━━━━━━━━━━━━━━━\n\n"
+        msg += f"💰 Ticket: ₹{int(session.get('price', 0))}\n\n"
+        msg += "👇 <b>Get your ticket!</b>"
+        
+        buttons = [
+            [{
+                "text": f"🎫 Buy Ticket - ₹{int(session.get('price', 0))}",
+                "url": f"https://t.me/{bot_username}?start=live_{session_id}"
+            }],
+            [{
+                "text": "🔔 Subscribe",
+                "url": f"https://t.me/{bot_username}?start=subscribe"
+            }]
+        ]
+    
+    # Edit the countdown message
+    try:
+        async with httpx.AsyncClient() as http_client:
+            await http_client.post(
+                f"https://api.telegram.org/bot{bot_token}/editMessageText",
+                json={
+                    "chat_id": session.get("countdown_chat_id"),
+                    "message_id": session.get("countdown_message_id"),
+                    "text": msg,
+                    "parse_mode": "HTML",
+                    "reply_markup": {"inline_keyboard": buttons}
+                }
+            )
+    except Exception as e:
+        logger.error(f"Failed to update countdown: {e}")
+    
+    return {"message": "Countdown updated"}
 
 @api_router.put("/live/sessions/{session_id}")
 async def update_live_session(session_id: str, data: dict, user = Depends(get_current_user)):
@@ -3888,6 +4626,53 @@ async def export_payments(user = Depends(get_current_user)):
     
     return {"csv_data": csv_data, "count": len(payments)}
 
+# ============== CHAT TRACKING API ==============
+
+@api_router.get("/chat-messages")
+async def get_chat_messages(user = Depends(get_current_user), limit: int = 100, chat_type: str = None):
+    """Get chat messages from users (Bot DM + Groups)"""
+    query = {}
+    if chat_type:
+        query["chat_type"] = chat_type
+    
+    messages = await db.chat_messages.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return messages
+
+@api_router.get("/chat-messages/stats")
+async def get_chat_stats(user = Depends(get_current_user)):
+    """Get chat statistics"""
+    # Count by chat type
+    private_count = await db.chat_messages.count_documents({"chat_type": "private"})
+    group_count = await db.chat_messages.count_documents({"chat_type": {"$in": ["group", "supergroup"]}})
+    
+    # Unique users who chatted
+    unique_users = await db.chat_messages.distinct("telegram_user_id")
+    
+    # Recent active users (last 24 hours)
+    from datetime import timedelta
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    recent_messages = await db.chat_messages.find(
+        {"created_at": {"$gte": yesterday}}, 
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    
+    return {
+        "total_messages": private_count + group_count,
+        "private_messages": private_count,
+        "group_messages": group_count,
+        "unique_users": len(unique_users),
+        "recent_messages": recent_messages
+    }
+
+@api_router.get("/chat-messages/user/{user_id}")
+async def get_user_chat_history(user_id: str, user = Depends(get_current_user)):
+    """Get chat history for a specific user"""
+    messages = await db.chat_messages.find(
+        {"telegram_user_id": user_id}, 
+        {"_id": 0}
+    ).sort("created_at", -1).limit(100).to_list(100)
+    return messages
+
 
 # ============== TELEGRAM WEBHOOK ==============
 
@@ -4053,8 +4838,8 @@ async def reject_unlock_request(request_id: str, user = Depends(get_current_user
     return {"message": "Unlock request rejected"}
 
 @api_router.get("/telegram/file/{file_id}")
-async def get_telegram_file(file_id: str, user = Depends(get_current_user)):
-    """Serve Telegram file (screenshot) for admin preview"""
+async def get_telegram_file(file_id: str):
+    """Serve Telegram file (screenshot) for admin preview - Public endpoint (file_id is security)"""
     from fastapi.responses import Response
     
     settings = await get_bot_settings()
@@ -4156,7 +4941,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         image_bytes = await download_telegram_photo(original_file_id, bot_token)
                         if image_bytes:
                             logger.info(f"Downloaded {len(image_bytes)} bytes, creating blur...")
-                            blurred_bytes = create_blurred_image(image_bytes)
+                            blurred_bytes = create_blurred_image(image_bytes, content_type="photo")
                             if blurred_bytes:
                                 logger.info(f"Created blurred image: {len(blurred_bytes)} bytes")
                             else:
@@ -4218,6 +5003,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     price_text = f"₹{int(post_price)}" if post_price > 0 else "Premium"
                     blur_caption = f"🔒 <b>Paid Content</b>\n\n"
                     blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                    # Add original caption if present
+                    if clean_caption and clean_caption.strip():
+                        blur_caption += f"📝 {clean_caption}\n\n"
                     blur_caption += "👆 Tap 'Unlock Post' to view full content!"
                     
                     # POST BLURRED IMAGE FIRST, THEN DELETE ORIGINAL
@@ -4251,18 +5039,45 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             blurred_posted = True
                     
                     elif video and original_file_id:
-                        # For videos, send a text message with unlock button
-                        video_caption = f"🎬 <b>Paid Video Content</b>\n\n"
-                        video_caption += f"💰 Price: <b>{price_text}</b>\n\n"
-                        video_caption += "👆 Tap 'Unlock Post' to watch full video!"
+                        # For videos, get thumbnail and blur it, or send video with blur overlay text
+                        video_thumb = video.get("thumbnail") or video.get("thumb")
                         
-                        result = await send_telegram_message_with_buttons(post_chat_id, video_caption, [[{
-                            "text": f"🔓 Unlock Video",
-                            "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
-                        }]], bot_token)
-                        if result:
-                            blurred_posted = True
-                            logger.info(f"Posted video unlock message")
+                        if video_thumb:
+                            # Download and blur thumbnail
+                            thumb_file_id = video_thumb.get("file_id", "")
+                            if thumb_file_id:
+                                logger.info(f"Downloading video thumbnail...")
+                                thumb_bytes = await download_telegram_photo(thumb_file_id, bot_token)
+                                if thumb_bytes:
+                                    blurred_thumb = create_blurred_image(thumb_bytes, content_type="video")
+                                    if blurred_thumb:
+                                        video_caption = f"🎬 <b>Paid Video Content</b>\n\n"
+                                        video_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                                        # Add caption if present
+                                        if clean_caption and clean_caption.strip():
+                                            video_caption += f"📝 {clean_caption}\n\n"
+                                        video_caption += "👆 Tap 'Unlock Video' to watch!"
+                                        
+                                        result = await send_telegram_photo(post_chat_id, blurred_thumb, video_caption, bot_token, unlock_button)
+                                        if result and result.get("ok"):
+                                            blurred_message_id = result.get("result", {}).get("message_id", 0)
+                                            await db.paid_posts.update_one({"id": paid_post_id}, {"$set": {"blurred_message_id": blurred_message_id}})
+                                            blurred_posted = True
+                                            logger.info(f"Posted blurred video thumbnail with message_id: {blurred_message_id}")
+                        
+                        # Fallback: send text message if thumbnail blur failed
+                        if not blurred_posted:
+                            video_caption = f"🎬 <b>Paid Video Content</b>\n\n"
+                            video_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                            video_caption += "👆 Tap 'Unlock Video' to watch full video!"
+                            
+                            result = await send_telegram_message_with_buttons(post_chat_id, video_caption, [[{
+                                "text": f"🔓 Unlock Video - ₹{int(post_price)}",
+                                "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
+                            }]], bot_token)
+                            if result:
+                                blurred_posted = True
+                                logger.info(f"Posted video unlock text message (no thumbnail)")
                     
                     else:
                         # Text-only paid post
@@ -4460,6 +5275,8 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
                 qr_url = settings.get("qr_code_url", "")
                 
+                logger.info(f"QR Request - plan_id: {plan_id}, plan: {plan}, qr_url: {qr_url[:50] if qr_url else 'EMPTY'}...")
+                
                 # Calculate discounted price if applicable
                 original_price = plan["price"] if plan else 0
                 discount_pct = plan.get('discount_percentage', 0) if plan else 0
@@ -4490,20 +5307,36 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 
                 if qr_url:
                     try:
+                        logger.info(f"Sending QR to {chat_id}...")
                         async with httpx.AsyncClient() as http_client:
                             url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-                            await http_client.post(url, json={
+                            
+                            # For large payments (₹500+), show UPI ID along with QR
+                            upi_id = settings.get("upi_id", "") or settings.get("payment_upi_id", "")
+                            
+                            caption_text = f"📱 <b>Scan & Pay {price_display}</b>\n\n"
+                            caption_text += f"📦 Plan: <b>{plan['name'] if plan else ''}</b>\n\n"
+                            
+                            # Show UPI ID for large amounts (₹500+)
+                            if final_price >= 500 and upi_id:
+                                caption_text += f"💳 <b>UPI ID:</b> <code>{upi_id}</code>\n"
+                                caption_text += f"<i>(Large amount? Pay directly to UPI ID)</i>\n\n"
+                            
+                            caption_text += f"⚠️ <b>Payment ke baad turant screenshot bhejo!</b>\n\n"
+                            caption_text += f"⏳ Waiting for your screenshot..."
+                            
+                            response = await http_client.post(url, json={
                                 "chat_id": chat_id,
                                 "photo": qr_url,
-                                "caption": f"📱 <b>Scan & Pay {price_display}</b>\n\n"
-                                          f"📦 Plan: <b>{plan['name'] if plan else ''}</b>\n\n"
-                                          f"⚠️ <b>Payment ke baad turant screenshot bhejo!</b>\n\n"
-                                          f"⏳ Waiting for your screenshot...",
+                                "caption": caption_text,
                                 "parse_mode": "HTML"
                             })
+                            logger.info(f"QR send response: {response.status_code} - {response.text[:200]}")
                     except Exception as e:
                         logger.error(f"Failed to send QR: {e}")
                         await send_telegram_message(chat_id, f"QR Code: {qr_url}\n\n📸 Screenshot bhejo!", bot_token)
+                else:
+                    logger.warning(f"QR URL is empty! Cannot send QR code.")
                 
                 # Send reminder message
                 reminder_msg = f"👆 @{username if username else 'User'}\n\n"
@@ -5115,10 +5948,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 post_id = callback_data.replace("unlock_qr_", "")
                 paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True}, {"_id": 0})
                 
+                logger.info(f"unlock_qr_ - post_id: {post_id}, paid_post: {paid_post}")
+                
                 if paid_post:
                     settings = await get_bot_settings()
                     qr_code_url = settings.get("qr_code_url", "")
                     post_price = paid_post.get("price", 99)
+                    
+                    logger.info(f"unlock_qr_ - qr_code_url: {qr_code_url[:50] if qr_code_url else 'EMPTY'}...")
                     
                     if qr_code_url:
                         # Save pending unlock request so bot knows to expect screenshot
@@ -5135,16 +5972,28 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             upsert=True
                         )
                         
+                        # Get UPI ID for large payments
+                        upi_id = settings.get("upi_id", "") or settings.get("payment_upi_id", "")
+                        
                         qr_msg = f"📱 <b>Scan & Pay ₹{int(post_price)}</b>\n\n"
+                        
+                        # Show UPI ID for large amounts (₹500+)
+                        if post_price >= 500 and upi_id:
+                            qr_msg += f"💳 <b>UPI ID:</b> <code>{upi_id}</code>\n"
+                            qr_msg += f"<i>(Large amount? Pay directly to UPI ID)</i>\n\n"
+                        
                         qr_msg += "━━━━━━━━━━━━━━━\n"
                         qr_msg += "📸 <b>Payment ke baad:</b>\n"
                         qr_msg += "👉 Payment screenshot yahan bhejo\n"
                         qr_msg += "👉 Auto-verify hoke content unlock ho jayega!\n"
                         qr_msg += "━━━━━━━━━━━━━━━"
-                        await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token)
+                        result = await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token)
+                        logger.info(f"unlock_qr_ - send_telegram_photo result: {result}")
                     else:
+                        logger.warning("unlock_qr_ - QR Code URL is EMPTY!")
                         await send_telegram_message(chat_id, "❌ QR Code not configured. Contact admin.", bot_token)
                 else:
+                    logger.warning(f"unlock_qr_ - paid_post not found for id: {post_id}")
                     await send_telegram_message(chat_id, "❌ Post not found or expired.", bot_token)
             
             elif callback_data.startswith("unlock_paid_"):
@@ -5262,6 +6111,408 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 else:
                     await send_telegram_message(chat_id, "❌ Session not found.", bot_token)
             
+            # Admin GO LIVE callback
+            elif callback_data.startswith("admin_golive_"):
+                session_id = callback_data.replace("admin_golive_", "")
+                session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session:
+                    # Update session to live
+                    await db.live_sessions.update_one(
+                        {"id": session_id},
+                        {"$set": {
+                            "status": "live",
+                            "started_at": datetime.now(timezone.utc).isoformat()
+                        }}
+                    )
+                    
+                    # Get channel/group to post
+                    channel_id = settings.get("telegram_channel_id", "")
+                    group_id = session.get("group_id") or channel_id
+                    bot_username = await get_bot_username(bot_token)
+                    
+                    # Post to channel/group
+                    live_msg = "🔴 <b>WE ARE LIVE NOW!</b>\n\n"
+                    live_msg += f"📺 <b>{session.get('title')}</b>\n\n"
+                    
+                    if session.get("superchat_enabled"):
+                        live_msg += f"💬 Superchat: /superchat\n"
+                        live_msg += f"📢 Min Amount: ₹{int(session.get('superchat_min_amount', 10))}\n\n"
+                    
+                    live_msg += "🎉 Join now!"
+                    
+                    channel_buttons = [[{
+                        "text": "🎫 Get Ticket Now!",
+                        "url": f"https://t.me/{bot_username}?start=live_{session_id}"
+                    }]]
+                    
+                    await send_telegram_message_with_buttons(group_id, live_msg, channel_buttons, bot_token)
+                    
+                    # Notify all approved ticket holders
+                    approved_tickets = await db.live_tickets.find({
+                        "session_id": session_id,
+                        "status": "approved"
+                    }, {"_id": 0}).to_list(1000)
+                    
+                    for ticket in approved_tickets:
+                        ticket_msg = "🔴 <b>LIVE STARTED!</b>\n\n"
+                        ticket_msg += f"📺 <b>{session.get('title')}</b>\n\n"
+                        
+                        if session.get("stream_link"):
+                            ticket_msg += f"🔗 Join: {session['stream_link']}\n\n"
+                        
+                        if session.get("superchat_enabled"):
+                            ticket_msg += "💬 Send Superchat: /superchat"
+                        
+                        superchat_buttons = [[{
+                            "text": "💬 Send Superchat",
+                            "url": f"https://t.me/{bot_username}?start=superchat_{session_id}"
+                        }]]
+                        
+                        await send_telegram_message_with_buttons(ticket.get("telegram_user_id"), ticket_msg, superchat_buttons, bot_token)
+                    
+                    # Confirm to admin
+                    admin_msg = f"✅ <b>LIVE STARTED!</b>\n\n"
+                    admin_msg += f"📺 {session.get('title')}\n"
+                    admin_msg += f"🎟 {len(approved_tickets)} ticket holders notified\n\n"
+                    admin_msg += "Commands:\n"
+                    admin_msg += "• /endlive - End the session\n"
+                    admin_msg += "• /superchat - View superchats"
+                    
+                    await send_telegram_message(chat_id, admin_msg, bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found.", bot_token)
+            
+            # Admin END LIVE callback
+            elif callback_data.startswith("admin_endlive_"):
+                session_id = callback_data.replace("admin_endlive_", "")
+                session = await db.live_sessions.find_one({"id": session_id, "status": "live"}, {"_id": 0})
+                
+                if session:
+                    # Update session to ended
+                    await db.live_sessions.update_one(
+                        {"id": session_id},
+                        {"$set": {
+                            "status": "ended",
+                            "ended_at": datetime.now(timezone.utc).isoformat()
+                        }}
+                    )
+                    
+                    # Calculate stats
+                    tickets_sold = session.get("tickets_sold", 0)
+                    superchat_total = await db.live_superchats.aggregate([
+                        {"$match": {"session_id": session_id, "status": "approved"}},
+                        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+                    ]).to_list(1)
+                    total_superchat = superchat_total[0]["total"] if superchat_total else 0
+                    
+                    # Confirm to admin
+                    end_msg = "🛑 <b>LIVE ENDED!</b>\n\n"
+                    end_msg += f"📺 {session.get('title')}\n\n"
+                    end_msg += f"📊 <b>Stats:</b>\n"
+                    end_msg += f"   🎟 Tickets Sold: {tickets_sold}\n"
+                    end_msg += f"   💰 Superchat Revenue: ₹{int(total_superchat)}\n"
+                    end_msg += f"   💵 Total: ₹{int(session.get('price', 0) * tickets_sold + total_superchat)}"
+                    
+                    await send_telegram_message(chat_id, end_msg, bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found or not live.", bot_token)
+            
+            # ============== LIVE SETUP WIZARD CALLBACKS ==============
+            
+            # Live Setup - New
+            elif callback_data == "live_setup_new":
+                msg = "🆕 <b>Setup New Live Stream</b>\n\n"
+                msg += "━━━━━━━━━━━━━━━\n"
+                msg += "Send me the live details in this format:\n\n"
+                msg += "<code>/newlive Title | Price | Time</code>\n\n"
+                msg += "<b>Example:</b>\n"
+                msg += "<code>/newlive Friday Night Party | 299 | 8:00 PM</code>\n\n"
+                msg += "━━━━━━━━━━━━━━━\n"
+                msg += "Or use quick setup buttons below:"
+                
+                buttons = [
+                    [{"text": "🎉 Free Live (₹0)", "callback_data": "live_quick_free"}],
+                    [{"text": "💰 Paid Live (₹99)", "callback_data": "live_quick_99"}],
+                    [{"text": "💎 Premium Live (₹299)", "callback_data": "live_quick_299"}],
+                    [{"text": "⬅️ Back", "callback_data": "live_menu"}]
+                ]
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            # Quick Live Setup
+            elif callback_data.startswith("live_quick_"):
+                price = int(callback_data.replace("live_quick_", "").replace("free", "0"))
+                
+                # Create session with default values
+                session_id = str(uuid.uuid4())
+                now = datetime.now(timezone.utc)
+                
+                # Store pending live setup
+                await db.pending_live_setup.update_one(
+                    {"telegram_user_id": chat_id},
+                    {"$set": {
+                        "telegram_user_id": chat_id,
+                        "telegram_username": username,
+                        "session_id": session_id,
+                        "price": price,
+                        "step": "title",
+                        "created_at": now.isoformat()
+                    }},
+                    upsert=True
+                )
+                
+                price_text = "FREE" if price == 0 else f"₹{price}"
+                msg = f"🎬 <b>Quick Live Setup ({price_text})</b>\n\n"
+                msg += "What's the title of your live stream?\n\n"
+                msg += "<i>Just type the title and send...</i>"
+                
+                await send_telegram_message(chat_id, msg, bot_token)
+            
+            # My Scheduled Lives
+            elif callback_data == "live_my_scheduled":
+                my_sessions = await db.live_sessions.find({
+                    "status": "scheduled"
+                }, {"_id": 0}).sort("scheduled_date", -1).to_list(10)
+                
+                if not my_sessions:
+                    msg = "📋 <b>No Scheduled Lives</b>\n\n"
+                    msg += "You don't have any scheduled live streams.\n"
+                    msg += "Create one using the Setup option!"
+                    
+                    buttons = [[{"text": "🆕 Setup New Live", "callback_data": "live_setup_new"}]]
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                else:
+                    msg = "📋 <b>Your Scheduled Lives</b>\n\n"
+                    buttons = []
+                    
+                    for session in my_sessions:
+                        msg += f"📺 <b>{session.get('title')}</b>\n"
+                        msg += f"   💰 ₹{int(session.get('price', 0))} | 🎟 {session.get('tickets_sold', 0)} sold\n"
+                        msg += f"   📅 {session.get('scheduled_date')} {session.get('scheduled_time')}\n\n"
+                        
+                        buttons.append([
+                            {"text": f"⚙️ {session.get('title')[:15]}...", "callback_data": f"live_manage_{session.get('id')}"},
+                            {"text": "🔴 GO LIVE", "callback_data": f"admin_golive_{session.get('id')}"}
+                        ])
+                    
+                    buttons.append([{"text": "⬅️ Back", "callback_data": "live_menu"}])
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            # Live Menu (Back button)
+            elif callback_data == "live_menu":
+                msg = "📺 <b>Live Stream Manager</b>\n\n"
+                msg += "━━━━━━━━━━━━━━━\n"
+                msg += "What would you like to do?\n"
+                msg += "━━━━━━━━━━━━━━━"
+                
+                buttons = [
+                    [{"text": "🆕 Setup New Live", "callback_data": "live_setup_new"}],
+                    [{"text": "📋 My Scheduled Lives", "callback_data": "live_my_scheduled"}],
+                    [{"text": "🔴 Go Live Now", "callback_data": "live_go_now"}],
+                    [{"text": "📊 Live Analytics", "callback_data": "live_analytics"}],
+                    [{"text": "❌ Close", "callback_data": "cancel_action"}]
+                ]
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            # Go Live Now - Show scheduled sessions
+            elif callback_data == "live_go_now":
+                scheduled = await db.live_sessions.find({"status": "scheduled"}, {"_id": 0}).to_list(10)
+                
+                if not scheduled:
+                    msg = "📺 <b>No Sessions to Start</b>\n\n"
+                    msg += "Create a live session first!"
+                    buttons = [[{"text": "🆕 Setup New Live", "callback_data": "live_setup_new"}]]
+                else:
+                    msg = "🔴 <b>Select Session to Go LIVE</b>\n\n"
+                    buttons = []
+                    
+                    for session in scheduled:
+                        buttons.append([{
+                            "text": f"🔴 {session.get('title')[:30]} - ₹{int(session.get('price', 0))}",
+                            "callback_data": f"admin_golive_{session.get('id')}"
+                        }])
+                    
+                    buttons.append([{"text": "⬅️ Back", "callback_data": "live_menu"}])
+                
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            # Live Analytics
+            elif callback_data == "live_analytics":
+                # Get stats
+                total_sessions = await db.live_sessions.count_documents({})
+                live_sessions = await db.live_sessions.count_documents({"status": "live"})
+                total_tickets = await db.live_tickets.count_documents({})
+                
+                # Calculate revenue
+                revenue_result = await db.live_tickets.aggregate([
+                    {"$match": {"status": "approved"}},
+                    {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+                ]).to_list(1)
+                total_revenue = revenue_result[0]["total"] if revenue_result else 0
+                
+                superchat_result = await db.live_superchats.aggregate([
+                    {"$match": {"status": "approved"}},
+                    {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+                ]).to_list(1)
+                total_superchat = superchat_result[0]["total"] if superchat_result else 0
+                
+                msg = "📊 <b>Live Stream Analytics</b>\n\n"
+                msg += "━━━━━━━━━━━━━━━\n"
+                msg += f"📺 Total Sessions: <b>{total_sessions}</b>\n"
+                msg += f"🔴 Currently Live: <b>{live_sessions}</b>\n"
+                msg += f"🎟 Tickets Sold: <b>{total_tickets}</b>\n"
+                msg += "━━━━━━━━━━━━━━━\n"
+                msg += f"💰 Ticket Revenue: <b>₹{int(total_revenue)}</b>\n"
+                msg += f"💬 Superchat Revenue: <b>₹{int(total_superchat)}</b>\n"
+                msg += f"📈 <b>Total: ₹{int(total_revenue + total_superchat)}</b>\n"
+                msg += "━━━━━━━━━━━━━━━"
+                
+                buttons = [[{"text": "⬅️ Back", "callback_data": "live_menu"}]]
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            # Manage specific live session
+            elif callback_data.startswith("live_manage_"):
+                session_id = callback_data.replace("live_manage_", "")
+                session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session:
+                    msg = f"⚙️ <b>Manage: {session.get('title')}</b>\n\n"
+                    msg += "━━━━━━━━━━━━━━━\n"
+                    msg += f"💰 Price: ₹{int(session.get('price', 0))}\n"
+                    msg += f"🎟 Tickets: {session.get('tickets_sold', 0)}\n"
+                    msg += f"💬 Superchat: {'✅ ON' if session.get('superchat_enabled') else '❌ OFF'}\n"
+                    msg += f"📅 Scheduled: {session.get('scheduled_date')} {session.get('scheduled_time')}\n"
+                    msg += "━━━━━━━━━━━━━━━"
+                    
+                    buttons = [
+                        [{"text": "🔴 GO LIVE NOW", "callback_data": f"admin_golive_{session_id}"}],
+                        [{"text": "📢 Announce", "callback_data": f"live_announce_{session_id}"}],
+                        [{"text": "⏰ Start Countdown", "callback_data": f"live_countdown_{session_id}"}],
+                        [
+                            {"text": "✏️ Edit", "callback_data": f"live_edit_{session_id}"},
+                            {"text": "🗑 Delete", "callback_data": f"live_delete_{session_id}"}
+                        ],
+                        [{"text": "⬅️ Back", "callback_data": "live_my_scheduled"}]
+                    ]
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found", bot_token)
+            
+            # Announce live session
+            elif callback_data.startswith("live_announce_"):
+                session_id = callback_data.replace("live_announce_", "")
+                session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session:
+                    channel_id = settings.get("telegram_channel_id", "")
+                    bot_username = await get_bot_username(bot_token)
+                    
+                    announce_msg = "🔴 <b>LIVE STREAM ANNOUNCEMENT!</b>\n\n"
+                    announce_msg += f"📺 <b>{session.get('title')}</b>\n\n"
+                    if session.get('description'):
+                        announce_msg += f"📝 {session['description']}\n\n"
+                    announce_msg += f"📅 <b>Date:</b> {session.get('scheduled_date')}\n"
+                    announce_msg += f"🕐 <b>Time:</b> {session.get('scheduled_time')}\n"
+                    announce_msg += f"💰 <b>Ticket:</b> ₹{int(session.get('price', 0))}\n\n"
+                    announce_msg += "👇 <b>Get Your Ticket Now!</b>"
+                    
+                    announce_buttons = [[{
+                        "text": f"🎫 Buy Ticket - ₹{int(session.get('price', 0))}",
+                        "url": f"https://t.me/{bot_username}?start=live_{session_id}"
+                    }]]
+                    
+                    await send_telegram_message_with_buttons(channel_id, announce_msg, announce_buttons, bot_token)
+                    await send_telegram_message(chat_id, "✅ Announcement posted to channel!", bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found", bot_token)
+            
+            # Start countdown
+            elif callback_data.startswith("live_countdown_"):
+                session_id = callback_data.replace("live_countdown_", "")
+                session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session:
+                    channel_id = settings.get("telegram_channel_id", "") 
+                    group_id = session.get("group_id") or channel_id
+                    bot_username = await get_bot_username(bot_token)
+                    
+                    countdown_msg = "⏰ <b>LIVE STARTING SOON!</b>\n\n"
+                    countdown_msg += "━━━━━━━━━━━━━━━\n"
+                    countdown_msg += f"📺 <b>{session.get('title')}</b>\n\n"
+                    countdown_msg += "🕐 <b>Starting in 30 minutes!</b>\n"
+                    countdown_msg += "━━━━━━━━━━━━━━━\n\n"
+                    countdown_msg += f"💰 Ticket: ₹{int(session.get('price', 0))}\n\n"
+                    countdown_msg += "👇 <b>Get your ticket NOW!</b>"
+                    
+                    countdown_buttons = [
+                        [{"text": f"🎫 Buy Ticket - ₹{int(session.get('price', 0))}", "url": f"https://t.me/{bot_username}?start=live_{session_id}"}],
+                        [{"text": "🔔 Subscribe", "url": f"https://t.me/{bot_username}?start=subscribe"}]
+                    ]
+                    
+                    await send_telegram_message_with_buttons(group_id, countdown_msg, countdown_buttons, bot_token)
+                    
+                    await db.live_sessions.update_one(
+                        {"id": session_id},
+                        {"$set": {"countdown_started": True}}
+                    )
+                    
+                    await send_telegram_message(chat_id, "✅ Countdown posted!", bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found", bot_token)
+            
+            # Delete live session
+            elif callback_data.startswith("live_delete_"):
+                session_id = callback_data.replace("live_delete_", "")
+                await db.live_sessions.delete_one({"id": session_id})
+                await send_telegram_message(chat_id, "✅ Live session deleted!", bot_token)
+            
+            # Superchat enable/disable in setup
+            elif callback_data == "live_superchat_on":
+                await db.pending_live_setup.update_one(
+                    {"telegram_user_id": chat_id},
+                    {"$set": {"superchat_enabled": True, "step": "superchat_min"}}
+                )
+                
+                msg = "✅ <b>Superchat Enabled!</b>\n\n"
+                msg += "What's the minimum superchat amount?\n\n"
+                msg += "Choose below or type a custom amount:"
+                
+                buttons = [
+                    [
+                        {"text": "₹10", "callback_data": "live_scmin_10"},
+                        {"text": "₹29", "callback_data": "live_scmin_29"},
+                        {"text": "₹49", "callback_data": "live_scmin_49"}
+                    ],
+                    [
+                        {"text": "₹99", "callback_data": "live_scmin_99"},
+                        {"text": "₹199", "callback_data": "live_scmin_199"}
+                    ]
+                ]
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            elif callback_data == "live_superchat_off":
+                await db.pending_live_setup.update_one(
+                    {"telegram_user_id": chat_id},
+                    {"$set": {"superchat_enabled": False, "step": "stream_link"}}
+                )
+                
+                msg = "✅ <b>Superchat Disabled</b>\n\n"
+                msg += "Send the stream link (YouTube/Telegram):\n\n"
+                msg += "(or type 'skip' if you'll add it later)"
+                await send_telegram_message(chat_id, msg, bot_token)
+            
+            elif callback_data.startswith("live_scmin_"):
+                min_amount = int(callback_data.replace("live_scmin_", ""))
+                await db.pending_live_setup.update_one(
+                    {"telegram_user_id": chat_id},
+                    {"$set": {"superchat_min": min_amount, "step": "stream_link"}}
+                )
+                
+                msg = f"✅ <b>Min Superchat: ₹{min_amount}</b>\n\n"
+                msg += "Send the stream link (YouTube/Telegram):\n\n"
+                msg += "(or type 'skip' if you'll add it later)"
+                await send_telegram_message(chat_id, msg, bot_token)
+            
             # Super chat session selection
             elif callback_data.startswith("superchat_select_"):
                 session_id = callback_data.replace("superchat_select_", "")
@@ -5337,8 +6588,11 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         chat_id = str(message.get("chat", {}).get("id", ""))
         text = message.get("text", "")
         username = message.get("from", {}).get("username", "")
+        first_name = message.get("from", {}).get("first_name", "")
         photo = message.get("photo")  # Check if message has photo
+        video = message.get("video")  # Check if message has video
         caption = message.get("caption", "").lower()  # Get caption if any
+        chat_type = message.get("chat", {}).get("type", "private")  # private, group, supergroup
         
         if not chat_id:
             return {"ok": True}
@@ -5346,9 +6600,50 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
         
-        # Handle /paid command via PRIVATE MESSAGE (Admin sends photo to bot directly)
+        # ============== CHAT TRACKING ==============
+        # Track all user messages (DM + Group) for analytics
+        if text or photo or video:
+            try:
+                # Determine message type
+                msg_type = "text"
+                if photo:
+                    msg_type = "photo"
+                elif video:
+                    msg_type = "video"
+                elif message.get("voice"):
+                    msg_type = "voice"
+                elif message.get("document"):
+                    msg_type = "document"
+                
+                # Get group info if from group
+                group_id = ""
+                group_name = ""
+                if chat_type in ["group", "supergroup"]:
+                    group_id = chat_id
+                    group_name = message.get("chat", {}).get("title", "")
+                
+                # Save chat message (don't save commands starting with /)
+                if not (text and text.startswith("/")):
+                    chat_record = {
+                        "id": str(uuid.uuid4()),
+                        "telegram_user_id": str(message.get("from", {}).get("id", chat_id)),
+                        "telegram_username": username,
+                        "user_first_name": first_name,
+                        "chat_type": chat_type,
+                        "group_id": group_id,
+                        "group_name": group_name,
+                        "message_text": text[:500] if text else f"[{msg_type}]",  # Limit text length
+                        "message_type": msg_type,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    await db.chat_messages.insert_one(chat_record)
+                    logger.info(f"Chat tracked: {username or first_name} in {chat_type}")
+            except Exception as e:
+                logger.error(f"Error tracking chat: {e}")
+        
+        # Handle /paid command via PRIVATE MESSAGE (Admin sends photo/video to bot directly)
         # This prevents original from being visible in channel
-        if photo and bot_token and caption:
+        if (photo or video) and bot_token and caption:
             import re as re_module
             caption_lower = caption.lower()
             is_paid_command = (
@@ -5367,29 +6662,38 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     return {"ok": True}
                 
                 try:
-                    # Get photo file_id
-                    original_file_id = photo[-1].get("file_id", "") if photo else ""
+                    # Determine content type and get file_id
+                    content_type = "photo" if photo else "video"
+                    original_file_id = ""
+                    thumb_bytes = None
+                    
+                    if photo:
+                        original_file_id = photo[-1].get("file_id", "") if photo else ""
+                    elif video:
+                        original_file_id = video.get("file_id", "")
+                        # Get video thumbnail
+                        video_thumb = video.get("thumbnail") or video.get("thumb")
+                        if video_thumb:
+                            thumb_file_id = video_thumb.get("file_id", "")
+                            if thumb_file_id:
+                                logger.info(f"Downloading video thumbnail...")
+                                thumb_bytes = await download_telegram_photo(thumb_file_id, bot_token)
                     
                     if not original_file_id:
-                        await send_telegram_message(chat_id, "❌ Could not get photo. Please try again.", bot_token)
+                        await send_telegram_message(chat_id, "❌ Could not get file. Please try again.", bot_token)
                         return {"ok": True}
                     
-                    # Download and blur the photo
-                    logger.info(f"Downloading photo for /paid command...")
-                    image_bytes = await download_telegram_photo(original_file_id, bot_token)
-                    
-                    if not image_bytes:
-                        await send_telegram_message(chat_id, "❌ Could not download photo. Please try again.", bot_token)
-                        return {"ok": True}
-                    
-                    logger.info(f"Downloaded {len(image_bytes)} bytes, creating blur...")
-                    blurred_bytes = create_blurred_image(image_bytes)
-                    
-                    if not blurred_bytes:
-                        await send_telegram_message(chat_id, "❌ Could not create blur. Please try again.", bot_token)
-                        return {"ok": True}
-                    
-                    logger.info(f"Created blurred image: {len(blurred_bytes)} bytes")
+                    # Download and blur the content
+                    blurred_bytes = None
+                    if photo:
+                        logger.info(f"Downloading photo for /paid command...")
+                        image_bytes = await download_telegram_photo(original_file_id, bot_token)
+                        if image_bytes:
+                            logger.info(f"Downloaded {len(image_bytes)} bytes, creating blur...")
+                            blurred_bytes = create_blurred_image(image_bytes, content_type="photo")
+                    elif video and thumb_bytes:
+                        logger.info(f"Creating blur from video thumbnail...")
+                        blurred_bytes = create_blurred_image(thumb_bytes, content_type="video")
                     
                     # Clean caption and extract price
                     original_caption = message.get("caption", "")
@@ -5420,7 +6724,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "id": paid_post_id,
                         "channel_id": channel_id,
                         "original_message_id": None,  # Not from channel
-                        "content_type": "photo",
+                        "content_type": content_type,
                         "original_file_id": original_file_id,
                         "caption": clean_caption,
                         "price": post_price,
@@ -5434,21 +6738,43 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     
                     # Prepare Unlock button
                     bot_username = await get_bot_username(bot_token)
+                    price_text = f"₹{int(post_price)}" if post_price > 0 else "Premium"
+                    button_text = f"🔓 Unlock {'Video' if content_type == 'video' else 'Post'} - {price_text}"
                     unlock_button = {
                         "inline_keyboard": [[{
-                            "text": f"🔓 Unlock Post - ₹{int(post_price)}",
+                            "text": button_text,
                             "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
                         }]]
                     }
                     
-                    price_text = f"₹{int(post_price)}" if post_price > 0 else "Premium"
-                    blur_caption = f"🔒 <b>Paid Content</b>\n\n"
-                    blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
-                    blur_caption += "👆 Tap 'Unlock Post' to view full content!"
-                    
-                    # Post blurred image to CHANNEL
-                    logger.info(f"Posting blurred image to channel {channel_id}...")
-                    result = await send_telegram_photo(channel_id, blurred_bytes, blur_caption, bot_token, unlock_button)
+                    # Post to channel
+                    result = None
+                    if blurred_bytes:
+                        if content_type == "video":
+                            blur_caption = f"🎬 <b>Paid Video Content</b>\n\n"
+                        else:
+                            blur_caption = f"🔒 <b>Paid Content</b>\n\n"
+                        blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                        # Add original caption if present
+                        if clean_caption and clean_caption.strip():
+                            blur_caption += f"📝 {clean_caption}\n\n"
+                        blur_caption += f"👆 Tap 'Unlock {'Video' if content_type == 'video' else 'Post'}' to view!"
+                        
+                        logger.info(f"Posting blurred {content_type} to channel {channel_id}...")
+                        result = await send_telegram_photo(channel_id, blurred_bytes, blur_caption, bot_token, unlock_button)
+                    else:
+                        # Fallback: text message for video without thumbnail
+                        blur_caption = f"🎬 <b>Paid Video Content</b>\n\n"
+                        blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                        blur_caption += "👆 Tap 'Unlock Video' to watch!"
+                        
+                        logger.info(f"Posting text message for video to channel {channel_id}...")
+                        result = await send_telegram_message_with_buttons(channel_id, blur_caption, [[{
+                            "text": button_text,
+                            "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
+                        }]], bot_token)
+                        if result:
+                            result = {"ok": True, "result": result}
                     
                     if result and result.get("ok"):
                         blurred_message_id = result.get("result", {}).get("message_id", 0)
@@ -6311,6 +7637,61 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             help_msg += "💬 You can also ask me any questions!"
             await send_telegram_message(chat_id, help_msg)
         
+        # Handle /plan command - share specific plan
+        elif text.startswith("/plan"):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            bot_username = await get_bot_username(bot_token)
+            
+            # Extract plan name from command (e.g., /plan monthly, /plan-monthly, /plan_weekly)
+            plan_query = text.replace("/plan", "").replace("-", " ").replace("_", " ").strip().lower()
+            
+            plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(20)
+            
+            if not plan_query:
+                # Show list of available plans to share
+                plan_list_msg = "📋 <b>Share Specific Plan</b>\n\n"
+                plan_list_msg += "Use command like:\n"
+                for plan in plans:
+                    plan_cmd = plan['name'].lower().replace(" ", "_")
+                    plan_list_msg += f"• <code>/plan {plan_cmd}</code>\n"
+                plan_list_msg += "\n<i>Example: /plan monthly_membership</i>"
+                await send_telegram_message(chat_id, plan_list_msg, bot_token)
+            else:
+                # Find matching plan
+                matched_plan = None
+                for plan in plans:
+                    plan_name_lower = plan['name'].lower()
+                    if plan_query in plan_name_lower or plan_name_lower.startswith(plan_query):
+                        matched_plan = plan
+                        break
+                
+                if matched_plan:
+                    # Create shareable message for this specific plan
+                    plan_msg = f"🔥 <b>{matched_plan['name']}</b> 🔥\n\n"
+                    plan_msg += "━━━━━━━━━━━━━━━\n"
+                    plan_msg += f"💰 <b>Price:</b> ₹{matched_plan['price']}\n"
+                    plan_msg += f"⏱ <b>Duration:</b> {matched_plan['duration_days']} days\n\n"
+                    
+                    if matched_plan.get('features'):
+                        plan_msg += "<b>Features:</b>\n"
+                        for feat in matched_plan['features']:
+                            plan_msg += f"✅ {feat}\n"
+                        plan_msg += "\n"
+                    
+                    plan_msg += "━━━━━━━━━━━━━━━\n"
+                    plan_msg += "👇 <b>Click to Subscribe Now!</b>"
+                    
+                    buttons = [[{
+                        "text": f"🚀 Get {matched_plan['name']}",
+                        "url": f"https://t.me/{bot_username}?start=buy_{matched_plan['id']}"
+                    }]]
+                    
+                    await send_telegram_message_with_buttons(chat_id, plan_msg, buttons, bot_token)
+                    await send_telegram_message(chat_id, "👆 Forward this to share this specific plan!", bot_token)
+                else:
+                    await send_telegram_message(chat_id, f"❌ Plan not found: {plan_query}\n\nUse /plan to see available options.", bot_token)
+        
         elif text == "/share":
             # Get bot username
             settings = await get_bot_settings()
@@ -6406,7 +7787,223 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "callback_data": f"live_ticket_{session.get('id')}"
                     }])
                 
-                buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+        
+        # Handle /endlive command - End live session
+        elif text and text.startswith("/endlive"):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            # Get currently live sessions
+            live_sessions = await db.live_sessions.find({"status": "live"}, {"_id": 0}).to_list(10)
+            
+            if not live_sessions:
+                await send_telegram_message(chat_id, "📺 No live sessions currently running.", bot_token)
+            else:
+                msg = "🛑 <b>End Live Session</b>\n\n"
+                buttons = []
+                
+                for session in live_sessions:
+                    msg += f"🔴 <b>{session.get('title')}</b>\n"
+                    msg += f"   🎟 {session.get('tickets_sold', 0)} tickets | 💰 ₹{session.get('superchat_total', 0)} superchats\n\n"
+                    
+                    buttons.append([{
+                        "text": f"🛑 END - {session.get('title')[:25]}...",
+                        "callback_data": f"admin_endlive_{session.get('id')}"
+                    }])
+                
+                buttons.append([{"text": "❌ Cancel", "callback_data": "cancel_action"}])
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+        
+        # Handle /live command - Complete Live Stream Setup Wizard
+        elif text and (text == "/live" or text.startswith("/livestream")):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            # Check if user is admin or creator
+            has_access = await is_admin_or_creator(chat_id, username)
+            
+            if not has_access:
+                await send_telegram_message(chat_id, "❌ <b>Access Denied</b>\n\nOnly admins and creators can manage live streams.", bot_token)
+            else:
+                # Show Live Stream Menu
+                msg = "📺 <b>Live Stream Manager</b>\n\n"
+                msg += "━━━━━━━━━━━━━━━\n"
+                msg += "What would you like to do?\n"
+                msg += "━━━━━━━━━━━━━━━"
+                
+                buttons = [
+                    [{"text": "🆕 Setup New Live", "callback_data": "live_setup_new"}],
+                    [{"text": "📋 My Scheduled Lives", "callback_data": "live_my_scheduled"}],
+                    [{"text": "🔴 Go Live Now", "callback_data": "live_go_now"}],
+                    [{"text": "📊 Live Analytics", "callback_data": "live_analytics"}],
+                    [{"text": "❌ Close", "callback_data": "cancel_action"}]
+                ]
+                
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+        
+        # Handle /newlive command - Quick one-liner live setup
+        elif text and text.startswith("/newlive"):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            # Check if user is admin or creator
+            has_access = await is_admin_or_creator(chat_id, username)
+            
+            if not has_access:
+                await send_telegram_message(chat_id, "❌ <b>Access Denied</b>\n\nOnly admins and creators can create live streams.", bot_token)
+            else:
+                # Parse: /newlive Title | Price | Time
+                parts = text.replace("/newlive", "").strip()
+                
+                if not parts or "|" not in parts:
+                    msg = "📺 <b>Quick Live Setup</b>\n\n"
+                    msg += "Format: <code>/newlive Title | Price | Time</code>\n\n"
+                    msg += "<b>Examples:</b>\n"
+                    msg += "• <code>/newlive Friday Party | 99 | 8PM</code>\n"
+                    msg += "• <code>/newlive Free Q&A | 0 | Now</code>\n"
+                    msg += "• <code>/newlive Premium Show | 499 | 10PM</code>"
+                    await send_telegram_message(chat_id, msg, bot_token)
+                else:
+                    try:
+                        split_parts = [p.strip() for p in parts.split("|")]
+                        title = split_parts[0] if len(split_parts) > 0 else "Live Stream"
+                        price = int(split_parts[1]) if len(split_parts) > 1 and split_parts[1].isdigit() else 0
+                        time = split_parts[2] if len(split_parts) > 2 else "Now"
+                        
+                        # Create session
+                        now = datetime.now(timezone.utc)
+                        session_id = str(uuid.uuid4())
+                        session = {
+                            "id": session_id,
+                            "title": title,
+                            "description": "",
+                            "scheduled_date": now.strftime("%Y-%m-%d"),
+                            "scheduled_time": time,
+                            "price": price,
+                            "max_viewers": 100,
+                            "stream_link": "",
+                            "superchat_enabled": True,
+                            "superchat_min_amount": 10,
+                            "status": "scheduled",
+                            "tickets_sold": 0,
+                            "created_by": username or chat_id,
+                            "created_at": now.isoformat()
+                        }
+                        await db.live_sessions.insert_one(session)
+                        
+                        price_text = "FREE" if price == 0 else f"₹{price}"
+                        msg = "🎉 <b>Live Created!</b>\n\n"
+                        msg += f"📺 <b>{title}</b>\n"
+                        msg += f"💰 {price_text} | 🕐 {time}\n"
+                        msg += "💬 Superchat: ✅ ON\n\n"
+                        msg += "What's next?"
+                        
+                        buttons = [
+                            [{"text": "🔴 GO LIVE NOW", "callback_data": f"admin_golive_{session_id}"}],
+                            [{"text": "📢 Announce", "callback_data": f"live_announce_{session_id}"}],
+                            [{"text": "⚙️ Manage", "callback_data": f"live_manage_{session_id}"}]
+                        ]
+                        await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                        
+                    except Exception as e:
+                        logger.error(f"Error creating quick live: {e}")
+                        await send_telegram_message(chat_id, "❌ Error. Use format: /newlive Title | Price | Time", bot_token)
+        
+        # Handle /golive command - Admin/Creator starts live from Telegram
+        elif text and text.startswith("/golive"):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            # Check if user is admin or creator
+            has_access = await is_admin_or_creator(chat_id, username)
+            
+            # Also check settings for admin user IDs
+            admin_ids = settings.get("admin_user_ids", [])
+            if chat_id in admin_ids or username in admin_ids:
+                has_access = True
+            
+            if not has_access:
+                await send_telegram_message(chat_id, "❌ <b>Access Denied</b>\n\nOnly admins and creators can start live sessions.\n\nContact admin to get creator access.", bot_token)
+            else:
+                # Get scheduled sessions that can be started
+                scheduled_sessions = await db.live_sessions.find({
+                    "status": "scheduled"
+                }, {"_id": 0}).sort("scheduled_date", 1).to_list(10)
+                
+                if not scheduled_sessions:
+                    msg = "📺 <b>No Sessions to Start</b>\n\n"
+                    msg += "Create a live session from the dashboard first.\n\n"
+                    msg += "Or use: /createlive <title> <price>"
+                    await send_telegram_message(chat_id, msg, bot_token)
+                else:
+                    msg = "🔴 <b>Start Live Session</b>\n\n"
+                    msg += "Select a session to go LIVE:\n\n"
+                    
+                    buttons = []
+                    for session in scheduled_sessions:
+                        msg += f"📺 <b>{session.get('title')}</b>\n"
+                        msg += f"   📅 {session.get('scheduled_date')} at {session.get('scheduled_time')}\n"
+                        msg += f"   🎟 {session.get('tickets_sold', 0)} tickets sold\n\n"
+                        
+                        buttons.append([{
+                            "text": f"🔴 GO LIVE - {session.get('title')[:25]}...",
+                            "callback_data": f"admin_golive_{session.get('id')}"
+                        }])
+                    
+                    buttons.append([{"text": "❌ Cancel", "callback_data": "cancel_action"}])
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+        
+        # Handle /createlive command - Quick create live session from Telegram
+        elif text and text.startswith("/createlive"):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            # Parse command: /createlive Title Here 499
+            parts = text.replace("/createlive", "").strip()
+            
+            if not parts:
+                msg = "📺 <b>Create Live Session</b>\n\n"
+                msg += "Usage: <code>/createlive Title Here 499</code>\n\n"
+                msg += "Example: <code>/createlive Friday Night Party 299</code>"
+                await send_telegram_message(chat_id, msg, bot_token)
+            else:
+                # Extract price (last number) and title (rest)
+                import re as re_module
+                price_match = re_module.search(r'(\d+)\s*$', parts)
+                price = int(price_match.group(1)) if price_match else 99
+                title = re_module.sub(r'\d+\s*$', '', parts).strip() or "Live Session"
+                
+                # Create session
+                session_id = str(uuid.uuid4())
+                now = datetime.now(timezone.utc)
+                session = {
+                    "id": session_id,
+                    "title": title,
+                    "description": "",
+                    "scheduled_date": now.strftime("%Y-%m-%d"),
+                    "scheduled_time": now.strftime("%H:%M"),
+                    "price": price,
+                    "max_viewers": 100,
+                    "stream_link": "",
+                    "superchat_enabled": True,
+                    "superchat_min_amount": 10,
+                    "status": "scheduled",
+                    "tickets_sold": 0,
+                    "created_at": now.isoformat(),
+                    "created_by": username or chat_id
+                }
+                await db.live_sessions.insert_one(session)
+                
+                msg = "✅ <b>Live Session Created!</b>\n\n"
+                msg += f"📺 <b>{title}</b>\n"
+                msg += f"💰 Price: ₹{price}\n\n"
+                msg += "Use /golive to start the session!"
+                
+                buttons = [[{
+                    "text": "🔴 GO LIVE NOW",
+                    "callback_data": f"admin_golive_{session_id}"
+                }]]
                 await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
         
         # Handle /superchat command
@@ -6440,6 +8037,113 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         elif text and not text.startswith("/"):
             settings = await get_bot_settings()
             bot_token = settings.get("telegram_bot_token", "")
+            
+            # ============== LIVE SETUP WIZARD - Text Input Handlers ==============
+            # Check if user is in live setup flow
+            pending_live = await db.pending_live_setup.find_one({
+                "telegram_user_id": chat_id
+            }, {"_id": 0})
+            
+            if pending_live:
+                step = pending_live.get("step", "")
+                session_data = pending_live
+                
+                if step == "title":
+                    # Got title, ask for description
+                    await db.pending_live_setup.update_one(
+                        {"telegram_user_id": chat_id},
+                        {"$set": {"title": text, "step": "description"}}
+                    )
+                    
+                    msg = "✅ <b>Title Set!</b>\n\n"
+                    msg += f"📺 Title: <b>{text}</b>\n\n"
+                    msg += "Now send a short description (or type 'skip'):"
+                    await send_telegram_message(chat_id, msg, bot_token)
+                
+                elif step == "description":
+                    # Got description, ask for time
+                    desc = "" if text.lower() == "skip" else text
+                    await db.pending_live_setup.update_one(
+                        {"telegram_user_id": chat_id},
+                        {"$set": {"description": desc, "step": "time"}}
+                    )
+                    
+                    msg = "✅ <b>Description Set!</b>\n\n"
+                    msg += "When will you go live?\n\n"
+                    msg += "Send time like: <code>8:00 PM</code> or <code>Today 9PM</code>\n"
+                    msg += "(or type 'now' to go live immediately)"
+                    await send_telegram_message(chat_id, msg, bot_token)
+                
+                elif step == "time":
+                    # Got time, ask for superchat settings
+                    await db.pending_live_setup.update_one(
+                        {"telegram_user_id": chat_id},
+                        {"$set": {"scheduled_time": text, "step": "superchat"}}
+                    )
+                    
+                    msg = "✅ <b>Time Set!</b>\n\n"
+                    msg += "Enable Superchat for this live?\n"
+                    msg += "(Viewers can pay to highlight their messages)"
+                    
+                    buttons = [
+                        [
+                            {"text": "✅ Enable Superchat", "callback_data": "live_superchat_on"},
+                            {"text": "❌ Disable", "callback_data": "live_superchat_off"}
+                        ]
+                    ]
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                
+                elif step == "stream_link":
+                    # Got stream link, create the session
+                    stream_link = "" if text.lower() == "skip" else text
+                    
+                    # Create the live session
+                    now = datetime.now(timezone.utc)
+                    session = {
+                        "id": session_data.get("session_id", str(uuid.uuid4())),
+                        "title": session_data.get("title", "Live Stream"),
+                        "description": session_data.get("description", ""),
+                        "scheduled_date": now.strftime("%Y-%m-%d"),
+                        "scheduled_time": session_data.get("scheduled_time", "Now"),
+                        "price": session_data.get("price", 0),
+                        "max_viewers": 100,
+                        "stream_link": stream_link,
+                        "group_id": "",
+                        "superchat_enabled": session_data.get("superchat_enabled", True),
+                        "superchat_min_amount": session_data.get("superchat_min", 10),
+                        "status": "scheduled",
+                        "tickets_sold": 0,
+                        "superchat_total": 0,
+                        "created_by": username or chat_id,
+                        "created_at": now.isoformat()
+                    }
+                    
+                    await db.live_sessions.insert_one(session)
+                    
+                    # Clear pending setup
+                    await db.pending_live_setup.delete_one({"telegram_user_id": chat_id})
+                    
+                    # Show success with options
+                    price_text = "FREE" if session["price"] == 0 else f"₹{session['price']}"
+                    msg = "🎉 <b>Live Stream Created!</b>\n\n"
+                    msg += "━━━━━━━━━━━━━━━\n"
+                    msg += f"📺 <b>{session['title']}</b>\n"
+                    msg += f"💰 Ticket: {price_text}\n"
+                    msg += f"🕐 Time: {session['scheduled_time']}\n"
+                    msg += f"💬 Superchat: {'✅ ON' if session['superchat_enabled'] else '❌ OFF'}\n"
+                    msg += "━━━━━━━━━━━━━━━\n\n"
+                    msg += "What would you like to do?"
+                    
+                    bot_username = await get_bot_username(bot_token)
+                    buttons = [
+                        [{"text": "🔴 GO LIVE NOW", "callback_data": f"admin_golive_{session['id']}"}],
+                        [{"text": "📢 Announce to Channel", "callback_data": f"live_announce_{session['id']}"}],
+                        [{"text": "⏰ Start Countdown", "callback_data": f"live_countdown_{session['id']}"}],
+                        [{"text": "📋 View All Lives", "callback_data": "live_my_scheduled"}]
+                    ]
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                
+                return {"ok": True}
             
             # Check if waiting for superchat message
             pending = await db.pending_screenshots.find_one({
@@ -6796,8 +8500,93 @@ async def startup():
     scheduler.add_job(send_daily_reminders, 'cron', hour=14, minute=30) # 2:30 PM
     scheduler.add_job(send_daily_reminders, 'cron', hour=20, minute=0)  # 8 PM
     
+    # Check for upcoming live sessions every 5 minutes
+    scheduler.add_job(check_upcoming_live_sessions, 'interval', minutes=5)
+    
     scheduler.start()
     logger.info("Scheduler started with daily reminders")
+
+async def check_upcoming_live_sessions():
+    """Auto-post countdown for live sessions starting in 30 mins"""
+    try:
+        settings = await get_bot_settings()
+        bot_token = settings.get("telegram_bot_token", "")
+        channel_id = settings.get("telegram_channel_id", "")
+        
+        if not bot_token:
+            return
+        
+        from datetime import timedelta
+        now = datetime.now(timezone.utc)
+        
+        # Get scheduled sessions
+        sessions = await db.live_sessions.find({
+            "status": "scheduled",
+            "countdown_started": {"$ne": True}
+        }, {"_id": 0}).to_list(100)
+        
+        for session in sessions:
+            try:
+                # Parse scheduled date and time
+                scheduled_date = session.get("scheduled_date", "")
+                scheduled_time = session.get("scheduled_time", "")
+                
+                if not scheduled_date or not scheduled_time:
+                    continue
+                
+                # Try to parse datetime
+                try:
+                    scheduled_dt = datetime.strptime(f"{scheduled_date} {scheduled_time}", "%Y-%m-%d %H:%M")
+                    scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
+                except:
+                    continue
+                
+                # Check if session is starting in 25-35 minutes
+                time_until = (scheduled_dt - now).total_seconds() / 60
+                
+                if 25 <= time_until <= 35:
+                    # Auto-post countdown
+                    logger.info(f"Auto-posting countdown for session: {session.get('title')}")
+                    
+                    bot_username = await get_bot_username(bot_token)
+                    target_group = session.get("group_id") or channel_id
+                    
+                    msg = "⏰ <b>LIVE STARTING IN 30 MINUTES!</b>\n\n"
+                    msg += "━━━━━━━━━━━━━━━\n"
+                    msg += f"📺 <b>{session.get('title')}</b>\n\n"
+                    msg += f"🕐 <b>Time: {scheduled_time}</b>\n"
+                    msg += "━━━━━━━━━━━━━━━\n\n"
+                    msg += f"💰 <b>Ticket:</b> ₹{int(session.get('price', 0))}\n\n"
+                    msg += "👇 <b>Get your ticket NOW!</b>"
+                    
+                    buttons = [
+                        [{
+                            "text": f"🎫 Buy Ticket - ₹{int(session.get('price', 0))}",
+                            "url": f"https://t.me/{bot_username}?start=live_{session.get('id')}"
+                        }],
+                        [{
+                            "text": "🔔 Subscribe",
+                            "url": f"https://t.me/{bot_username}?start=subscribe"
+                        }]
+                    ]
+                    
+                    result = await send_telegram_message_with_buttons(target_group, msg, buttons, bot_token)
+                    
+                    # Mark as countdown started
+                    await db.live_sessions.update_one(
+                        {"id": session.get("id")},
+                        {"$set": {
+                            "countdown_started": True,
+                            "countdown_message_id": result.get("message_id") if result else None,
+                            "countdown_chat_id": target_group
+                        }}
+                    )
+                    
+            except Exception as e:
+                logger.error(f"Error processing session countdown: {e}")
+                
+    except Exception as e:
+        logger.error(f"Error in check_upcoming_live_sessions: {e}")
 
 @app.on_event("shutdown")
 async def shutdown():
