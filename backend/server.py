@@ -6398,13 +6398,50 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 else:
                     await send_telegram_message(chat_id, "❌ Session not found", bot_token)
             
-            # Announce live session
-            elif callback_data.startswith("live_announce_"):
+            # Announce live session - Show channel selection menu
+            elif callback_data.startswith("live_announce_") and "_to_" not in callback_data:
                 session_id = callback_data.replace("live_announce_", "")
                 session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
                 
                 if session:
-                    channel_id = settings.get("telegram_channel_id", "")
+                    # Get all channels/groups from database
+                    groups = await db.groups.find({"is_active": True}, {"_id": 0}).to_list(50)
+                    default_channel = settings.get("telegram_channel_id", "")
+                    
+                    msg = "📢 <b>Select Channel for Announcement</b>\n\n"
+                    msg += f"📺 Live: <b>{session.get('title')}</b>\n\n"
+                    msg += "Choose where to send:"
+                    
+                    buttons = []
+                    
+                    # Add default channel option
+                    if default_channel:
+                        buttons.append([{"text": "📢 Default Channel", "callback_data": f"live_announce_{session_id}_to_{default_channel}"}])
+                    
+                    # Add other groups/channels
+                    for group in groups[:8]:  # Max 8 groups
+                        group_name = group.get("name", group.get("group_id", "Unknown"))[:20]
+                        group_id = group.get("group_id", "")
+                        if group_id and group_id != default_channel:
+                            buttons.append([{"text": f"📣 {group_name}", "callback_data": f"live_announce_{session_id}_to_{group_id}"}])
+                    
+                    # Add manual input option
+                    buttons.append([{"text": "✏️ Enter Channel ID Manually", "callback_data": f"live_announce_manual_{session_id}"}])
+                    buttons.append([{"text": "❌ Cancel", "callback_data": "cancel"}])
+                    
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found", bot_token)
+            
+            # Announce to specific channel
+            elif callback_data.startswith("live_announce_") and "_to_" in callback_data:
+                parts = callback_data.replace("live_announce_", "").split("_to_")
+                session_id = parts[0]
+                target_channel = parts[1] if len(parts) > 1 else ""
+                
+                session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session and target_channel:
                     bot_username = await get_bot_username(bot_token)
                     
                     announce_msg = "🔴 <b>LIVE STREAM ANNOUNCEMENT!</b>\n\n"
@@ -6421,8 +6458,40 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "url": f"https://t.me/{bot_username}?start=live_{session_id}"
                     }]]
                     
-                    await send_telegram_message_with_buttons(channel_id, announce_msg, announce_buttons, bot_token)
-                    await send_telegram_message(chat_id, "✅ Announcement posted to channel!", bot_token)
+                    try:
+                        await send_telegram_message_with_buttons(target_channel, announce_msg, announce_buttons, bot_token)
+                        await send_telegram_message(chat_id, f"✅ Announcement posted to channel: {target_channel}", bot_token)
+                    except Exception as e:
+                        logger.error(f"Failed to send announcement: {e}")
+                        await send_telegram_message(chat_id, f"❌ Failed to send to {target_channel}. Make sure bot is admin in that channel.", bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found or invalid channel", bot_token)
+            
+            # Manual channel input for announcement
+            elif callback_data.startswith("live_announce_manual_"):
+                session_id = callback_data.replace("live_announce_manual_", "")
+                session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session:
+                    # Store pending action
+                    await db.pending_actions.update_one(
+                        {"user_id": str(chat_id)},
+                        {"$set": {
+                            "user_id": str(chat_id),
+                            "action": "live_announce_channel",
+                            "session_id": session_id,
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }},
+                        upsert=True
+                    )
+                    
+                    msg = "📢 <b>Enter Channel ID</b>\n\n"
+                    msg += "Send the channel ID (e.g., <code>-1001234567890</code>)\n\n"
+                    msg += "💡 <b>How to get Channel ID:</b>\n"
+                    msg += "1. Forward any message from channel to @userinfobot\n"
+                    msg += "2. Or use @getidsbot in your channel"
+                    
+                    await send_telegram_message(chat_id, msg, bot_token)
                 else:
                     await send_telegram_message(chat_id, "❌ Session not found", bot_token)
             
@@ -7576,6 +7645,54 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             )
             
             return {"ok": True}
+        
+        # Check for pending actions (like manual channel input for live announce)
+        if text and not text.startswith("/"):
+            pending_action = await db.pending_actions.find_one({"user_id": str(chat_id)}, {"_id": 0})
+            
+            if pending_action and pending_action.get("action") == "live_announce_channel":
+                session_id = pending_action.get("session_id")
+                target_channel = text.strip()
+                
+                # Delete pending action
+                await db.pending_actions.delete_one({"user_id": str(chat_id)})
+                
+                # Validate channel ID format
+                if not target_channel.startswith("-"):
+                    await send_telegram_message(chat_id, "❌ Invalid channel ID. Channel IDs start with '-' (e.g., -1001234567890)", bot_token)
+                    return {"ok": True}
+                
+                session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session:
+                    settings = await get_bot_settings()
+                    bot_token = settings.get("telegram_bot_token", "")
+                    bot_username = await get_bot_username(bot_token)
+                    
+                    announce_msg = "🔴 <b>LIVE STREAM ANNOUNCEMENT!</b>\n\n"
+                    announce_msg += f"📺 <b>{session.get('title')}</b>\n\n"
+                    if session.get('description'):
+                        announce_msg += f"📝 {session['description']}\n\n"
+                    announce_msg += f"📅 <b>Date:</b> {session.get('scheduled_date')}\n"
+                    announce_msg += f"🕐 <b>Time:</b> {session.get('scheduled_time')}\n"
+                    announce_msg += f"💰 <b>Ticket:</b> ₹{int(session.get('price', 0))}\n\n"
+                    announce_msg += "👇 <b>Get Your Ticket Now!</b>"
+                    
+                    announce_buttons = [[{
+                        "text": f"🎫 Buy Ticket - ₹{int(session.get('price', 0))}",
+                        "url": f"https://t.me/{bot_username}?start=live_{session_id}"
+                    }]]
+                    
+                    try:
+                        await send_telegram_message_with_buttons(target_channel, announce_msg, announce_buttons, bot_token)
+                        await send_telegram_message(chat_id, f"✅ Announcement posted to channel: {target_channel}", bot_token)
+                    except Exception as e:
+                        logger.error(f"Failed to send announcement: {e}")
+                        await send_telegram_message(chat_id, f"❌ Failed to send to {target_channel}. Make sure bot is admin in that channel.", bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found", bot_token)
+                
+                return {"ok": True}
         
         if text == "/start" or text == "/start subscribe" or text == "/plans":
             # Show plans directly - fetch from database dynamically
