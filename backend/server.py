@@ -5940,6 +5940,113 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 else:
                     await send_telegram_message(chat_id, "❌ Session not found.", bot_token)
             
+            # Admin GO LIVE callback
+            elif callback_data.startswith("admin_golive_"):
+                session_id = callback_data.replace("admin_golive_", "")
+                session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session:
+                    # Update session to live
+                    await db.live_sessions.update_one(
+                        {"id": session_id},
+                        {"$set": {
+                            "status": "live",
+                            "started_at": datetime.now(timezone.utc).isoformat()
+                        }}
+                    )
+                    
+                    # Get channel/group to post
+                    channel_id = settings.get("telegram_channel_id", "")
+                    group_id = session.get("group_id") or channel_id
+                    bot_username = await get_bot_username(bot_token)
+                    
+                    # Post to channel/group
+                    live_msg = "🔴 <b>WE ARE LIVE NOW!</b>\n\n"
+                    live_msg += f"📺 <b>{session.get('title')}</b>\n\n"
+                    
+                    if session.get("superchat_enabled"):
+                        live_msg += f"💬 Superchat: /superchat\n"
+                        live_msg += f"📢 Min Amount: ₹{int(session.get('superchat_min_amount', 10))}\n\n"
+                    
+                    live_msg += "🎉 Join now!"
+                    
+                    channel_buttons = [[{
+                        "text": "🎫 Get Ticket Now!",
+                        "url": f"https://t.me/{bot_username}?start=live_{session_id}"
+                    }]]
+                    
+                    await send_telegram_message_with_buttons(group_id, live_msg, channel_buttons, bot_token)
+                    
+                    # Notify all approved ticket holders
+                    approved_tickets = await db.live_tickets.find({
+                        "session_id": session_id,
+                        "status": "approved"
+                    }, {"_id": 0}).to_list(1000)
+                    
+                    for ticket in approved_tickets:
+                        ticket_msg = "🔴 <b>LIVE STARTED!</b>\n\n"
+                        ticket_msg += f"📺 <b>{session.get('title')}</b>\n\n"
+                        
+                        if session.get("stream_link"):
+                            ticket_msg += f"🔗 Join: {session['stream_link']}\n\n"
+                        
+                        if session.get("superchat_enabled"):
+                            ticket_msg += "💬 Send Superchat: /superchat"
+                        
+                        superchat_buttons = [[{
+                            "text": "💬 Send Superchat",
+                            "url": f"https://t.me/{bot_username}?start=superchat_{session_id}"
+                        }]]
+                        
+                        await send_telegram_message_with_buttons(ticket.get("telegram_user_id"), ticket_msg, superchat_buttons, bot_token)
+                    
+                    # Confirm to admin
+                    admin_msg = f"✅ <b>LIVE STARTED!</b>\n\n"
+                    admin_msg += f"📺 {session.get('title')}\n"
+                    admin_msg += f"🎟 {len(approved_tickets)} ticket holders notified\n\n"
+                    admin_msg += "Commands:\n"
+                    admin_msg += "• /endlive - End the session\n"
+                    admin_msg += "• /superchat - View superchats"
+                    
+                    await send_telegram_message(chat_id, admin_msg, bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found.", bot_token)
+            
+            # Admin END LIVE callback
+            elif callback_data.startswith("admin_endlive_"):
+                session_id = callback_data.replace("admin_endlive_", "")
+                session = await db.live_sessions.find_one({"id": session_id, "status": "live"}, {"_id": 0})
+                
+                if session:
+                    # Update session to ended
+                    await db.live_sessions.update_one(
+                        {"id": session_id},
+                        {"$set": {
+                            "status": "ended",
+                            "ended_at": datetime.now(timezone.utc).isoformat()
+                        }}
+                    )
+                    
+                    # Calculate stats
+                    tickets_sold = session.get("tickets_sold", 0)
+                    superchat_total = await db.live_superchats.aggregate([
+                        {"$match": {"session_id": session_id, "status": "approved"}},
+                        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+                    ]).to_list(1)
+                    total_superchat = superchat_total[0]["total"] if superchat_total else 0
+                    
+                    # Confirm to admin
+                    end_msg = "🛑 <b>LIVE ENDED!</b>\n\n"
+                    end_msg += f"📺 {session.get('title')}\n\n"
+                    end_msg += f"📊 <b>Stats:</b>\n"
+                    end_msg += f"   🎟 Tickets Sold: {tickets_sold}\n"
+                    end_msg += f"   💰 Superchat Revenue: ₹{int(total_superchat)}\n"
+                    end_msg += f"   💵 Total: ₹{int(session.get('price', 0) * tickets_sold + total_superchat)}"
+                    
+                    await send_telegram_message(chat_id, end_msg, bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found or not live.", bot_token)
+            
             # Super chat session selection
             elif callback_data.startswith("superchat_select_"):
                 session_id = callback_data.replace("superchat_select_", "")
@@ -7214,7 +7321,134 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "callback_data": f"live_ticket_{session.get('id')}"
                     }])
                 
-                buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+        
+        # Handle /endlive command - End live session
+        elif text and text.startswith("/endlive"):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            # Get currently live sessions
+            live_sessions = await db.live_sessions.find({"status": "live"}, {"_id": 0}).to_list(10)
+            
+            if not live_sessions:
+                await send_telegram_message(chat_id, "📺 No live sessions currently running.", bot_token)
+            else:
+                msg = "🛑 <b>End Live Session</b>\n\n"
+                buttons = []
+                
+                for session in live_sessions:
+                    msg += f"🔴 <b>{session.get('title')}</b>\n"
+                    msg += f"   🎟 {session.get('tickets_sold', 0)} tickets | 💰 ₹{session.get('superchat_total', 0)} superchats\n\n"
+                    
+                    buttons.append([{
+                        "text": f"🛑 END - {session.get('title')[:25]}...",
+                        "callback_data": f"admin_endlive_{session.get('id')}"
+                    }])
+                
+                buttons.append([{"text": "❌ Cancel", "callback_data": "cancel_action"}])
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+        
+        # Handle /golive command - Admin starts live from Telegram
+        elif text and text.startswith("/golive"):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            # Check if user is admin (check subscribers collection for admin status)
+            is_admin = False
+            admin_user = await db.users.find_one({"$or": [
+                {"telegram_user_id": chat_id},
+                {"telegram_username": username}
+            ]}, {"_id": 0})
+            if admin_user and admin_user.get("role") in ["admin", "super_admin"]:
+                is_admin = True
+            
+            # Also check settings for admin user IDs
+            admin_ids = settings.get("admin_user_ids", [])
+            if chat_id in admin_ids or username in admin_ids:
+                is_admin = True
+            
+            if not is_admin:
+                await send_telegram_message(chat_id, "❌ <b>Access Denied</b>\n\nOnly admins can start live sessions.", bot_token)
+            else:
+                # Get scheduled sessions that can be started
+                scheduled_sessions = await db.live_sessions.find({
+                    "status": "scheduled"
+                }, {"_id": 0}).sort("scheduled_date", 1).to_list(10)
+                
+                if not scheduled_sessions:
+                    msg = "📺 <b>No Sessions to Start</b>\n\n"
+                    msg += "Create a live session from the dashboard first.\n\n"
+                    msg += "Or use: /createlive <title> <price>"
+                    await send_telegram_message(chat_id, msg, bot_token)
+                else:
+                    msg = "🔴 <b>Start Live Session</b>\n\n"
+                    msg += "Select a session to go LIVE:\n\n"
+                    
+                    buttons = []
+                    for session in scheduled_sessions:
+                        msg += f"📺 <b>{session.get('title')}</b>\n"
+                        msg += f"   📅 {session.get('scheduled_date')} at {session.get('scheduled_time')}\n"
+                        msg += f"   🎟 {session.get('tickets_sold', 0)} tickets sold\n\n"
+                        
+                        buttons.append([{
+                            "text": f"🔴 GO LIVE - {session.get('title')[:25]}...",
+                            "callback_data": f"admin_golive_{session.get('id')}"
+                        }])
+                    
+                    buttons.append([{"text": "❌ Cancel", "callback_data": "cancel_action"}])
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+        
+        # Handle /createlive command - Quick create live session from Telegram
+        elif text and text.startswith("/createlive"):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            # Parse command: /createlive Title Here 499
+            parts = text.replace("/createlive", "").strip()
+            
+            if not parts:
+                msg = "📺 <b>Create Live Session</b>\n\n"
+                msg += "Usage: <code>/createlive Title Here 499</code>\n\n"
+                msg += "Example: <code>/createlive Friday Night Party 299</code>"
+                await send_telegram_message(chat_id, msg, bot_token)
+            else:
+                # Extract price (last number) and title (rest)
+                import re as re_module
+                price_match = re_module.search(r'(\d+)\s*$', parts)
+                price = int(price_match.group(1)) if price_match else 99
+                title = re_module.sub(r'\d+\s*$', '', parts).strip() or "Live Session"
+                
+                # Create session
+                session_id = str(uuid.uuid4())
+                now = datetime.now(timezone.utc)
+                session = {
+                    "id": session_id,
+                    "title": title,
+                    "description": "",
+                    "scheduled_date": now.strftime("%Y-%m-%d"),
+                    "scheduled_time": now.strftime("%H:%M"),
+                    "price": price,
+                    "max_viewers": 100,
+                    "stream_link": "",
+                    "superchat_enabled": True,
+                    "superchat_min_amount": 10,
+                    "status": "scheduled",
+                    "tickets_sold": 0,
+                    "created_at": now.isoformat(),
+                    "created_by": username or chat_id
+                }
+                await db.live_sessions.insert_one(session)
+                
+                msg = "✅ <b>Live Session Created!</b>\n\n"
+                msg += f"📺 <b>{title}</b>\n"
+                msg += f"💰 Price: ₹{price}\n\n"
+                msg += "Use /golive to start the session!"
+                
+                buttons = [[{
+                    "text": "🔴 GO LIVE NOW",
+                    "callback_data": f"admin_golive_{session_id}"
+                }]]
                 await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
         
         # Handle /superchat command
