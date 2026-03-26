@@ -370,6 +370,21 @@ class PaidPostUnlock(BaseModel):
     payment_id: str = ""  # Payment record ID
     unlocked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+# ============== CHAT TRACKING MODEL ==============
+class ChatMessage(BaseModel):
+    """Track chat messages from users"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    telegram_user_id: str
+    telegram_username: str = ""
+    user_first_name: str = ""
+    chat_type: str = "private"  # private, group, supergroup
+    group_id: str = ""  # Group ID if from group
+    group_name: str = ""  # Group name
+    message_text: str = ""
+    message_type: str = "text"  # text, photo, video, voice, etc.
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 
 
 # ============== AUTH HELPERS ==============
@@ -580,10 +595,11 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
 
 # ============== IMAGE BLUR FOR PAID POSTS ==============
 
-def create_blurred_image(image_bytes: bytes, blur_radius: int = 10) -> bytes:
+def create_blurred_image(image_bytes: bytes, blur_radius: int = 10, content_type: str = "photo") -> bytes:
     """
-    Create a lightly blurred version of an image for paid post preview.
-    Very light blur (~15-20%) - image mostly visible with soft blur.
+    Create a blurred version of an image for paid post preview.
+    Photo: Heavy blur (can't see details)
+    Video thumbnail: Light blur (teaser visible)
     """
     from PIL import ImageFilter
     
@@ -592,11 +608,21 @@ def create_blurred_image(image_bytes: bytes, blur_radius: int = 10) -> bytes:
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
         
-        # Apply very light blur (radius 10 for ~15-20% blur effect)
-        blurred = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+        # Different blur levels for photo vs video
+        if content_type == "photo":
+            # Heavy blur for photos - can't see details
+            actual_blur = blur_radius if blur_radius > 15 else 25
+            overlay_alpha = 80
+        else:
+            # Light blur for video thumbnails - teaser visible
+            actual_blur = blur_radius if blur_radius < 15 else 10
+            overlay_alpha = 30
         
-        # Very light overlay
-        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 25))
+        # Apply blur
+        blurred = image.filter(ImageFilter.GaussianBlur(radius=actual_blur))
+        
+        # Add overlay
+        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, overlay_alpha))
         blurred = blurred.convert('RGBA')
         blurred = Image.alpha_composite(blurred, overlay)
         blurred = blurred.convert('RGB')
@@ -604,7 +630,7 @@ def create_blurred_image(image_bytes: bytes, blur_radius: int = 10) -> bytes:
         # Convert back to bytes
         output = BytesIO()
         blurred.save(output, format='JPEG', quality=85)
-        logger.info(f"Blurred image created: {len(output.getvalue())} bytes")
+        logger.info(f"Blurred image created ({content_type}): blur={actual_blur}, size={len(output.getvalue())} bytes")
         return output.getvalue()
         
     except Exception as e:
@@ -3214,6 +3240,116 @@ async def get_broadcast(broadcast_id: str, user = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Broadcast not found")
     return broadcast
 
+# ============== PAID POST BROADCAST ==============
+
+@api_router.post("/paid-posts/{post_id}/broadcast")
+async def broadcast_paid_post(post_id: str, data: dict, background_tasks: BackgroundTasks, user = Depends(get_current_user)):
+    """Broadcast a paid post to all users"""
+    paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True}, {"_id": 0})
+    if not paid_post:
+        raise HTTPException(status_code=404, detail="Paid post not found")
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="Bot token not configured")
+    
+    # Get target users
+    target = data.get("target", "all")
+    user_ids = set()
+    
+    if target in ["all", "subscribers"]:
+        subscribers = await db.subscribers.find({"status": "active"}, {"_id": 0}).to_list(10000)
+        for sub in subscribers:
+            if sub.get("telegram_user_id"):
+                user_ids.add(str(sub["telegram_user_id"]))
+    
+    if target in ["all", "channel_members"]:
+        payments = await db.payments.find({}, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+        for p in payments:
+            if p.get("telegram_user_id"):
+                user_ids.add(str(p["telegram_user_id"]))
+    
+    if not user_ids:
+        raise HTTPException(status_code=400, detail="No users to broadcast to")
+    
+    # Create broadcast record
+    broadcast_id = str(uuid.uuid4())
+    broadcast_record = {
+        "id": broadcast_id,
+        "type": "paid_post",
+        "paid_post_id": post_id,
+        "target": target,
+        "total_users": len(user_ids),
+        "sent_count": 0,
+        "failed_count": 0,
+        "status": "in_progress",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.broadcasts.insert_one(broadcast_record)
+    
+    # Send in background
+    background_tasks.add_task(
+        send_paid_post_broadcast,
+        broadcast_id,
+        post_id,
+        list(user_ids),
+        bot_token
+    )
+    
+    return {"broadcast_id": broadcast_id, "total_users": len(user_ids)}
+
+async def send_paid_post_broadcast(broadcast_id: str, post_id: str, user_ids: list, bot_token: str):
+    """Background task to send paid post to all users"""
+    paid_post = await db.paid_posts.find_one({"id": post_id}, {"_id": 0})
+    if not paid_post:
+        return
+    
+    bot_username = await get_bot_username(bot_token)
+    price = paid_post.get("price", 0)
+    caption = paid_post.get("caption", "")
+    
+    # Create message
+    msg = f"🔒 <b>Exclusive Paid Content!</b>\n\n"
+    msg += f"💰 <b>Price:</b> ₹{int(price)}\n\n"
+    if caption:
+        msg += f"📝 {caption}\n\n"
+    msg += "👇 <b>Unlock Now!</b>"
+    
+    buttons = [[{
+        "text": f"🔓 Unlock - ₹{int(price)}",
+        "url": f"https://t.me/{bot_username}?start=unlock_{post_id}"
+    }]]
+    
+    sent_count = 0
+    failed_count = 0
+    
+    for user_id in user_ids:
+        try:
+            # Try to send blurred photo if available
+            if paid_post.get("blurred_file_id"):
+                await send_telegram_photo(user_id, paid_post["blurred_file_id"], msg, bot_token, {"inline_keyboard": buttons})
+            else:
+                await send_telegram_message_with_buttons(user_id, msg, buttons, bot_token)
+            sent_count += 1
+        except Exception as e:
+            logger.error(f"Failed to send paid post broadcast to {user_id}: {e}")
+            failed_count += 1
+        
+        await asyncio.sleep(0.1)  # Rate limiting
+    
+    # Update broadcast status
+    await db.broadcasts.update_one(
+        {"id": broadcast_id},
+        {"$set": {
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+
 
 # ============== COUPON/DISCOUNT APIs ==============
 
@@ -3629,6 +3765,208 @@ async def delete_video_call_booking(booking_id: str, user = Depends(get_current_
     await db.video_call_bookings.delete_one({"id": booking_id})
     return {"message": "Booking deleted"}
 
+@api_router.get("/video-calls/queue")
+async def get_video_call_queue(user = Depends(get_current_user)):
+    """Get video call queue - who's waiting"""
+    # Get pending/waiting bookings sorted by creation time
+    queue = await db.video_call_bookings.find(
+        {"status": {"$in": ["pending", "paid", "waiting"]}},
+        {"_id": 0}
+    ).sort("created_at", 1).to_list(100)
+    
+    # Get current active call
+    active_call = await db.video_call_bookings.find_one(
+        {"status": "in_progress"},
+        {"_id": 0}
+    )
+    
+    return {
+        "queue": queue,
+        "queue_length": len(queue),
+        "active_call": active_call
+    }
+
+@api_router.post("/video-calls/{booking_id}/start")
+async def start_video_call(booking_id: str, user = Depends(get_current_user)):
+    """Start a video call (marks as in_progress)"""
+    booking = await db.video_call_bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    
+    # Check if another call is already in progress
+    active = await db.video_call_bookings.find_one({"status": "in_progress"}, {"_id": 0})
+    if active:
+        raise HTTPException(status_code=400, detail="Another call is already in progress")
+    
+    await db.video_call_bookings.update_one(
+        {"id": booking_id},
+        {"$set": {"status": "in_progress", "started_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    # Notify user
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    msg = "📞 <b>Your video call is starting NOW!</b>\n\n"
+    msg += "👆 Check the meeting link above and join!"
+    await send_telegram_message(booking.get("telegram_user_id"), msg, bot_token)
+    
+    return {"message": "Call started"}
+
+@api_router.post("/video-calls/{booking_id}/end")
+async def end_video_call(booking_id: str, user = Depends(get_current_user)):
+    """End a video call and notify next in queue"""
+    await db.video_call_bookings.update_one(
+        {"id": booking_id},
+        {"$set": {"status": "completed", "ended_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    # Notify next in queue
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    next_in_queue = await db.video_call_bookings.find_one(
+        {"status": {"$in": ["pending", "paid", "waiting"]}},
+        {"_id": 0},
+        sort=[("created_at", 1)]
+    )
+    
+    if next_in_queue:
+        msg = "⏰ <b>You're Next!</b>\n\n"
+        msg += "🎯 Get ready! Your video call will start soon.\n"
+        msg += "📱 Make sure you have good internet connection."
+        await send_telegram_message(next_in_queue.get("telegram_user_id"), msg, bot_token)
+    
+    return {"message": "Call ended", "next_in_queue": next_in_queue}
+
+# ============== RENEWAL BROADCAST ==============
+
+@api_router.post("/renewal-broadcast")
+async def send_renewal_broadcast(data: dict, background_tasks: BackgroundTasks, user = Depends(get_current_user)):
+    """Send renewal reminder to expired/expiring subscribers"""
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="Bot token not configured")
+    
+    target = data.get("target", "expired")  # expired, expiring_soon, all
+    message = data.get("message", "")
+    video_note_file_id = data.get("video_note_file_id")  # Optional video note
+    discount_percent = data.get("discount_percent", 0)
+    
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    
+    user_ids = set()
+    
+    if target in ["expired", "all"]:
+        # Get expired subscribers
+        expired = await db.subscribers.find(
+            {"status": {"$in": ["expired", "cancelled"]}},
+            {"_id": 0}
+        ).to_list(10000)
+        for sub in expired:
+            if sub.get("telegram_user_id"):
+                user_ids.add(str(sub["telegram_user_id"]))
+    
+    if target in ["expiring_soon", "all"]:
+        # Get subscribers expiring in next 3 days
+        three_days_later = (now + timedelta(days=3)).isoformat()
+        expiring = await db.subscribers.find(
+            {"status": "active", "end_time": {"$lte": three_days_later}},
+            {"_id": 0}
+        ).to_list(10000)
+        for sub in expiring:
+            if sub.get("telegram_user_id"):
+                user_ids.add(str(sub["telegram_user_id"]))
+    
+    if not user_ids:
+        return {"message": "No users to send renewal to", "count": 0}
+    
+    # Create broadcast record
+    broadcast_id = str(uuid.uuid4())
+    broadcast_record = {
+        "id": broadcast_id,
+        "type": "renewal",
+        "target": target,
+        "message": message,
+        "total_users": len(user_ids),
+        "sent_count": 0,
+        "failed_count": 0,
+        "status": "in_progress",
+        "created_at": now.isoformat()
+    }
+    await db.broadcasts.insert_one(broadcast_record)
+    
+    # Send in background
+    background_tasks.add_task(
+        send_renewal_messages,
+        broadcast_id,
+        list(user_ids),
+        message,
+        discount_percent,
+        video_note_file_id,
+        bot_token
+    )
+    
+    return {"broadcast_id": broadcast_id, "total_users": len(user_ids)}
+
+async def send_renewal_messages(broadcast_id: str, user_ids: list, message: str, discount_percent: int, video_note_file_id: str, bot_token: str):
+    """Background task to send renewal messages"""
+    bot_username = await get_bot_username(bot_token)
+    
+    sent_count = 0
+    failed_count = 0
+    
+    for user_id in user_ids:
+        try:
+            # Build renewal message
+            msg = "🔔 <b>Time to Renew!</b>\n\n"
+            if message:
+                msg += f"{message}\n\n"
+            else:
+                msg += "Your subscription has expired or is about to expire.\n"
+                msg += "Don't miss out on exclusive content!\n\n"
+            
+            if discount_percent > 0:
+                msg += f"🎁 <b>Special Offer: {discount_percent}% OFF!</b>\n\n"
+            
+            msg += "👇 <b>Renew Now!</b>"
+            
+            buttons = [[{
+                "text": "🔄 Renew Subscription",
+                "url": f"https://t.me/{bot_username}?start=subscribe"
+            }]]
+            
+            # Send video note if available
+            if video_note_file_id:
+                try:
+                    async with httpx.AsyncClient() as http_client:
+                        await http_client.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendVideoNote",
+                            json={"chat_id": user_id, "video_note": video_note_file_id}
+                        )
+                except Exception:
+                    pass
+            
+            await send_telegram_message_with_buttons(user_id, msg, buttons, bot_token)
+            sent_count += 1
+        except Exception as e:
+            logger.error(f"Failed to send renewal to {user_id}: {e}")
+            failed_count += 1
+        
+        await asyncio.sleep(0.1)
+    
+    await db.broadcasts.update_one(
+        {"id": broadcast_id},
+        {"$set": {
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+
 
 # ============== LIVE STREAM APIs ==============
 
@@ -3887,6 +4225,53 @@ async def export_payments(user = Depends(get_current_user)):
         csv_data += f"{p.get('id','')},{p.get('telegram_user_id','')},{p.get('telegram_username','')},{p.get('amount','')},{p.get('plan_name','')},{p.get('status','')},{p.get('payment_method','')},{p.get('created_at','')},{p.get('verified_at','')}\n"
     
     return {"csv_data": csv_data, "count": len(payments)}
+
+# ============== CHAT TRACKING API ==============
+
+@api_router.get("/chat-messages")
+async def get_chat_messages(user = Depends(get_current_user), limit: int = 100, chat_type: str = None):
+    """Get chat messages from users (Bot DM + Groups)"""
+    query = {}
+    if chat_type:
+        query["chat_type"] = chat_type
+    
+    messages = await db.chat_messages.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return messages
+
+@api_router.get("/chat-messages/stats")
+async def get_chat_stats(user = Depends(get_current_user)):
+    """Get chat statistics"""
+    # Count by chat type
+    private_count = await db.chat_messages.count_documents({"chat_type": "private"})
+    group_count = await db.chat_messages.count_documents({"chat_type": {"$in": ["group", "supergroup"]}})
+    
+    # Unique users who chatted
+    unique_users = await db.chat_messages.distinct("telegram_user_id")
+    
+    # Recent active users (last 24 hours)
+    from datetime import timedelta
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    recent_messages = await db.chat_messages.find(
+        {"created_at": {"$gte": yesterday}}, 
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    
+    return {
+        "total_messages": private_count + group_count,
+        "private_messages": private_count,
+        "group_messages": group_count,
+        "unique_users": len(unique_users),
+        "recent_messages": recent_messages
+    }
+
+@api_router.get("/chat-messages/user/{user_id}")
+async def get_user_chat_history(user_id: str, user = Depends(get_current_user)):
+    """Get chat history for a specific user"""
+    messages = await db.chat_messages.find(
+        {"telegram_user_id": user_id}, 
+        {"_id": 0}
+    ).sort("created_at", -1).limit(100).to_list(100)
+    return messages
 
 
 # ============== TELEGRAM WEBHOOK ==============
@@ -4156,7 +4541,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         image_bytes = await download_telegram_photo(original_file_id, bot_token)
                         if image_bytes:
                             logger.info(f"Downloaded {len(image_bytes)} bytes, creating blur...")
-                            blurred_bytes = create_blurred_image(image_bytes)
+                            blurred_bytes = create_blurred_image(image_bytes, content_type="photo")
                             if blurred_bytes:
                                 logger.info(f"Created blurred image: {len(blurred_bytes)} bytes")
                             else:
@@ -4218,6 +4603,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     price_text = f"₹{int(post_price)}" if post_price > 0 else "Premium"
                     blur_caption = f"🔒 <b>Paid Content</b>\n\n"
                     blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                    # Add original caption if present
+                    if clean_caption and clean_caption.strip():
+                        blur_caption += f"📝 {clean_caption}\n\n"
                     blur_caption += "👆 Tap 'Unlock Post' to view full content!"
                     
                     # POST BLURRED IMAGE FIRST, THEN DELETE ORIGINAL
@@ -4261,10 +4649,13 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 logger.info(f"Downloading video thumbnail...")
                                 thumb_bytes = await download_telegram_photo(thumb_file_id, bot_token)
                                 if thumb_bytes:
-                                    blurred_thumb = create_blurred_image(thumb_bytes)
+                                    blurred_thumb = create_blurred_image(thumb_bytes, content_type="video")
                                     if blurred_thumb:
                                         video_caption = f"🎬 <b>Paid Video Content</b>\n\n"
                                         video_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                                        # Add caption if present
+                                        if clean_caption and clean_caption.strip():
+                                            video_caption += f"📝 {clean_caption}\n\n"
                                         video_caption += "👆 Tap 'Unlock Video' to watch!"
                                         
                                         result = await send_telegram_photo(post_chat_id, blurred_thumb, video_caption, bot_token, unlock_button)
@@ -4519,13 +4910,25 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         logger.info(f"Sending QR to {chat_id}...")
                         async with httpx.AsyncClient() as http_client:
                             url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+                            
+                            # For large payments (₹500+), show UPI ID along with QR
+                            upi_id = settings.get("upi_id", "") or settings.get("payment_upi_id", "")
+                            
+                            caption_text = f"📱 <b>Scan & Pay {price_display}</b>\n\n"
+                            caption_text += f"📦 Plan: <b>{plan['name'] if plan else ''}</b>\n\n"
+                            
+                            # Show UPI ID for large amounts (₹500+)
+                            if final_price >= 500 and upi_id:
+                                caption_text += f"💳 <b>UPI ID:</b> <code>{upi_id}</code>\n"
+                                caption_text += f"<i>(Large amount? Pay directly to UPI ID)</i>\n\n"
+                            
+                            caption_text += f"⚠️ <b>Payment ke baad turant screenshot bhejo!</b>\n\n"
+                            caption_text += f"⏳ Waiting for your screenshot..."
+                            
                             response = await http_client.post(url, json={
                                 "chat_id": chat_id,
                                 "photo": qr_url,
-                                "caption": f"📱 <b>Scan & Pay {price_display}</b>\n\n"
-                                          f"📦 Plan: <b>{plan['name'] if plan else ''}</b>\n\n"
-                                          f"⚠️ <b>Payment ke baad turant screenshot bhejo!</b>\n\n"
-                                          f"⏳ Waiting for your screenshot...",
+                                "caption": caption_text,
                                 "parse_mode": "HTML"
                             })
                             logger.info(f"QR send response: {response.status_code} - {response.text[:200]}")
@@ -5169,7 +5572,16 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             upsert=True
                         )
                         
+                        # Get UPI ID for large payments
+                        upi_id = settings.get("upi_id", "") or settings.get("payment_upi_id", "")
+                        
                         qr_msg = f"📱 <b>Scan & Pay ₹{int(post_price)}</b>\n\n"
+                        
+                        # Show UPI ID for large amounts (₹500+)
+                        if post_price >= 500 and upi_id:
+                            qr_msg += f"💳 <b>UPI ID:</b> <code>{upi_id}</code>\n"
+                            qr_msg += f"<i>(Large amount? Pay directly to UPI ID)</i>\n\n"
+                        
                         qr_msg += "━━━━━━━━━━━━━━━\n"
                         qr_msg += "📸 <b>Payment ke baad:</b>\n"
                         qr_msg += "👉 Payment screenshot yahan bhejo\n"
@@ -5374,15 +5786,58 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         chat_id = str(message.get("chat", {}).get("id", ""))
         text = message.get("text", "")
         username = message.get("from", {}).get("username", "")
+        first_name = message.get("from", {}).get("first_name", "")
         photo = message.get("photo")  # Check if message has photo
         video = message.get("video")  # Check if message has video
         caption = message.get("caption", "").lower()  # Get caption if any
+        chat_type = message.get("chat", {}).get("type", "private")  # private, group, supergroup
         
         if not chat_id:
             return {"ok": True}
         
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
+        
+        # ============== CHAT TRACKING ==============
+        # Track all user messages (DM + Group) for analytics
+        if text or photo or video:
+            try:
+                # Determine message type
+                msg_type = "text"
+                if photo:
+                    msg_type = "photo"
+                elif video:
+                    msg_type = "video"
+                elif message.get("voice"):
+                    msg_type = "voice"
+                elif message.get("document"):
+                    msg_type = "document"
+                
+                # Get group info if from group
+                group_id = ""
+                group_name = ""
+                if chat_type in ["group", "supergroup"]:
+                    group_id = chat_id
+                    group_name = message.get("chat", {}).get("title", "")
+                
+                # Save chat message (don't save commands starting with /)
+                if not (text and text.startswith("/")):
+                    chat_record = {
+                        "id": str(uuid.uuid4()),
+                        "telegram_user_id": str(message.get("from", {}).get("id", chat_id)),
+                        "telegram_username": username,
+                        "user_first_name": first_name,
+                        "chat_type": chat_type,
+                        "group_id": group_id,
+                        "group_name": group_name,
+                        "message_text": text[:500] if text else f"[{msg_type}]",  # Limit text length
+                        "message_type": msg_type,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    await db.chat_messages.insert_one(chat_record)
+                    logger.info(f"Chat tracked: {username or first_name} in {chat_type}")
+            except Exception as e:
+                logger.error(f"Error tracking chat: {e}")
         
         # Handle /paid command via PRIVATE MESSAGE (Admin sends photo/video to bot directly)
         # This prevents original from being visible in channel
@@ -5433,10 +5888,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         image_bytes = await download_telegram_photo(original_file_id, bot_token)
                         if image_bytes:
                             logger.info(f"Downloaded {len(image_bytes)} bytes, creating blur...")
-                            blurred_bytes = create_blurred_image(image_bytes)
+                            blurred_bytes = create_blurred_image(image_bytes, content_type="photo")
                     elif video and thumb_bytes:
                         logger.info(f"Creating blur from video thumbnail...")
-                        blurred_bytes = create_blurred_image(thumb_bytes)
+                        blurred_bytes = create_blurred_image(thumb_bytes, content_type="video")
                     
                     # Clean caption and extract price
                     original_caption = message.get("caption", "")
@@ -5498,6 +5953,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         else:
                             blur_caption = f"🔒 <b>Paid Content</b>\n\n"
                         blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                        # Add original caption if present
+                        if clean_caption and clean_caption.strip():
+                            blur_caption += f"📝 {clean_caption}\n\n"
                         blur_caption += f"👆 Tap 'Unlock {'Video' if content_type == 'video' else 'Post'}' to view!"
                         
                         logger.info(f"Posting blurred {content_type} to channel {channel_id}...")
@@ -6376,6 +6834,61 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             help_msg += "/help - Show this help message\n\n"
             help_msg += "💬 You can also ask me any questions!"
             await send_telegram_message(chat_id, help_msg)
+        
+        # Handle /plan command - share specific plan
+        elif text.startswith("/plan"):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            bot_username = await get_bot_username(bot_token)
+            
+            # Extract plan name from command (e.g., /plan monthly, /plan-monthly, /plan_weekly)
+            plan_query = text.replace("/plan", "").replace("-", " ").replace("_", " ").strip().lower()
+            
+            plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(20)
+            
+            if not plan_query:
+                # Show list of available plans to share
+                plan_list_msg = "📋 <b>Share Specific Plan</b>\n\n"
+                plan_list_msg += "Use command like:\n"
+                for plan in plans:
+                    plan_cmd = plan['name'].lower().replace(" ", "_")
+                    plan_list_msg += f"• <code>/plan {plan_cmd}</code>\n"
+                plan_list_msg += "\n<i>Example: /plan monthly_membership</i>"
+                await send_telegram_message(chat_id, plan_list_msg, bot_token)
+            else:
+                # Find matching plan
+                matched_plan = None
+                for plan in plans:
+                    plan_name_lower = plan['name'].lower()
+                    if plan_query in plan_name_lower or plan_name_lower.startswith(plan_query):
+                        matched_plan = plan
+                        break
+                
+                if matched_plan:
+                    # Create shareable message for this specific plan
+                    plan_msg = f"🔥 <b>{matched_plan['name']}</b> 🔥\n\n"
+                    plan_msg += "━━━━━━━━━━━━━━━\n"
+                    plan_msg += f"💰 <b>Price:</b> ₹{matched_plan['price']}\n"
+                    plan_msg += f"⏱ <b>Duration:</b> {matched_plan['duration_days']} days\n\n"
+                    
+                    if matched_plan.get('features'):
+                        plan_msg += "<b>Features:</b>\n"
+                        for feat in matched_plan['features']:
+                            plan_msg += f"✅ {feat}\n"
+                        plan_msg += "\n"
+                    
+                    plan_msg += "━━━━━━━━━━━━━━━\n"
+                    plan_msg += "👇 <b>Click to Subscribe Now!</b>"
+                    
+                    buttons = [[{
+                        "text": f"🚀 Get {matched_plan['name']}",
+                        "url": f"https://t.me/{bot_username}?start=buy_{matched_plan['id']}"
+                    }]]
+                    
+                    await send_telegram_message_with_buttons(chat_id, plan_msg, buttons, bot_token)
+                    await send_telegram_message(chat_id, "👆 Forward this to share this specific plan!", bot_token)
+                else:
+                    await send_telegram_message(chat_id, f"❌ Plan not found: {plan_query}\n\nUse /plan to see available options.", bot_token)
         
         elif text == "/share":
             # Get bot username
