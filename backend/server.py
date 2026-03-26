@@ -580,10 +580,10 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
 
 # ============== IMAGE BLUR FOR PAID POSTS ==============
 
-def create_blurred_image(image_bytes: bytes, blur_radius: int = 8) -> bytes:
+def create_blurred_image(image_bytes: bytes, blur_radius: int = 15) -> bytes:
     """
     Create a lightly blurred version of an image for paid post preview.
-    17% blur - shows enough to tease but not enough to see clearly.
+    Light blur (25%) - image visible but slightly obscured.
     """
     from PIL import ImageFilter
     
@@ -592,11 +592,11 @@ def create_blurred_image(image_bytes: bytes, blur_radius: int = 8) -> bytes:
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
         
-        # Apply 17% blur (radius 8)
+        # Apply light blur (radius 15 for ~25% blur effect)
         blurred = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
         
-        # Add very light semi-transparent overlay (reduced)
-        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 30))
+        # Light overlay for slight darkening
+        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 40))
         blurred = blurred.convert('RGBA')
         blurred = Image.alpha_composite(blurred, overlay)
         blurred = blurred.convert('RGB')
@@ -604,6 +604,7 @@ def create_blurred_image(image_bytes: bytes, blur_radius: int = 8) -> bytes:
         # Convert back to bytes
         output = BytesIO()
         blurred.save(output, format='JPEG', quality=85)
+        logger.info(f"Blurred image created: {len(output.getvalue())} bytes")
         return output.getvalue()
         
     except Exception as e:
@@ -4131,6 +4132,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     return {"ok": False, "error": "No bot token"}
                 
                 try:
+                    # Import re module explicitly to avoid scope issues
+                    import re as re_module
+                    
                     # Get content type and file_id FIRST (before deleting)
                     photo = channel_post.get("photo")
                     video = channel_post.get("video")
@@ -4160,15 +4164,11 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         else:
                             logger.error("Failed to download original photo - image_bytes is None")
                     
-                    # NOW delete original message
-                    delete_result = await delete_telegram_message(post_chat_id, message_id, bot_token)
-                    logger.info(f"Deleted original message {message_id}: {delete_result}")
-                    
                     # Clean caption (remove /paid command and variations)
-                    clean_caption = re.sub(r'^/paid[-_]?\s*', '', caption, flags=re.IGNORECASE).strip()
+                    clean_caption = re_module.sub(r'^/paid[-_]?\s*', '', caption, flags=re_module.IGNORECASE).strip()
                     
                     # Extract price if mentioned (e.g., /paid-999, /paid 99, /paid₹99, 999 at start)
-                    price_match = re.search(r'^[₹]?(\d+)[-_\s]*', clean_caption)
+                    price_match = re_module.search(r'^[₹]?(\d+)[-_\s]*', clean_caption)
                     post_price = float(price_match.group(1)) if price_match else 0
                     logger.info(f"Extracted price: {post_price} from caption: {clean_caption[:30]}")
                     
@@ -4176,7 +4176,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     if price_match:
                         clean_caption = clean_caption[price_match.end():].strip()
                         # Also remove leading - or _ if present
-                        clean_caption = re.sub(r'^[-_\s]+', '', clean_caption)
+                        clean_caption = re_module.sub(r'^[-_\s]+', '', clean_caption)
                     
                     # If no price specified, get default from settings or plans
                     if post_price <= 0:
@@ -4206,68 +4206,62 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     await db.paid_posts.insert_one(paid_post)
                     logger.info(f"Created paid post record: {paid_post_id} with price {post_price}")
                     
-                    # Post blurred version with Unlock button
-                    blurred_message_id = 0
+                    # Prepare Unlock button
                     bot_username = await get_bot_username(bot_token)
                     unlock_button = {
                         "inline_keyboard": [[{
-                            "text": f"🔓 Unlock Post - ₹{int(post_price)}",
+                            "text": f"🔓 Unlock Post",
                             "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
                         }]]
                     }
                     
                     price_text = f"₹{int(post_price)}" if post_price > 0 else "Premium"
                     blur_caption = f"🔒 <b>Paid Content</b>\n\n"
-                    if clean_caption:
-                        blur_caption += f"{clean_caption}\n\n"
                     blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
                     blur_caption += "👆 Tap 'Unlock Post' to view full content!"
+                    
+                    # POST BLURRED IMAGE FIRST, THEN DELETE ORIGINAL
+                    blurred_posted = False
                     
                     if photo and blurred_bytes:
                         # Send blurred photo
                         logger.info(f"Posting blurred image to channel {post_chat_id}...")
                         result = await send_telegram_photo(post_chat_id, blurred_bytes, blur_caption, bot_token, unlock_button)
                         logger.info(f"Send photo result: {result}")
-                        if result and result.get("result"):
+                        if result and result.get("ok") and result.get("result"):
                             blurred_message_id = result["result"].get("message_id", 0)
                             await db.paid_posts.update_one({"id": paid_post_id}, {"$set": {"blurred_message_id": blurred_message_id}})
                             logger.info(f"Posted blurred image with message_id: {blurred_message_id}")
+                            blurred_posted = True
                         else:
                             logger.error(f"Failed to post blurred image: {result}")
-                            # Try posting as text message with unlock button as fallback
-                            fallback_msg = f"🔒 <b>Paid Content</b>\n\n{blur_caption}\n\n⚠️ Image could not be processed. Contact admin."
-                            await send_telegram_message_with_buttons(post_chat_id, fallback_msg, [[{
-                                "text": f"🔓 Unlock Post - ₹{int(post_price)}",
-                                "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
-                            }]], bot_token)
                     
                     elif photo and not blurred_bytes:
                         # Photo exists but blur failed - post text message
                         logger.warning("Blurred bytes is None, posting text fallback")
                         fallback_msg = f"🔒 <b>Paid Content</b>\n\n"
-                        if clean_caption:
-                            fallback_msg += f"{clean_caption}\n\n"
                         fallback_msg += f"💰 Price: <b>{price_text}</b>\n\n"
                         fallback_msg += "👆 Tap 'Unlock Post' to view full content!"
                         
-                        await send_telegram_message_with_buttons(post_chat_id, fallback_msg, [[{
-                            "text": f"🔓 Unlock Post - ₹{int(post_price)}",
+                        result = await send_telegram_message_with_buttons(post_chat_id, fallback_msg, [[{
+                            "text": f"🔓 Unlock Post",
                             "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
                         }]], bot_token)
+                        if result:
+                            blurred_posted = True
                     
                     elif video and original_file_id:
                         # For videos, send a text message with unlock button
                         video_caption = f"🎬 <b>Paid Video Content</b>\n\n"
-                        if clean_caption:
-                            video_caption += f"{clean_caption}\n\n"
                         video_caption += f"💰 Price: <b>{price_text}</b>\n\n"
                         video_caption += "👆 Tap 'Unlock Post' to watch full video!"
                         
                         result = await send_telegram_message_with_buttons(post_chat_id, video_caption, [[{
-                            "text": f"🔓 Unlock Video - ₹{int(post_price)}",
+                            "text": f"🔓 Unlock Video",
                             "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
                         }]], bot_token)
                         if result:
+                            blurred_posted = True
                             logger.info(f"Posted video unlock message")
                     
                     else:
@@ -4278,10 +4272,19 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         text_caption += f"💰 Price: <b>{price_text}</b>\n\n"
                         text_caption += "👆 Tap 'Unlock Post' to view full content!"
                         
-                        await send_telegram_message_with_buttons(post_chat_id, text_caption, [[{
-                            "text": f"🔓 Unlock Post - ₹{int(post_price)}",
+                        result = await send_telegram_message_with_buttons(post_chat_id, text_caption, [[{
+                            "text": f"🔓 Unlock Post",
                             "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
                         }]], bot_token)
+                        if result:
+                            blurred_posted = True
+                    
+                    # ONLY delete original if blurred was posted successfully
+                    if blurred_posted:
+                        delete_result = await delete_telegram_message(post_chat_id, message_id, bot_token)
+                        logger.info(f"Deleted original message {message_id}: {delete_result}")
+                    else:
+                        logger.error("Blurred post failed - NOT deleting original to preserve content")
                     
                 except Exception as e:
                     logger.error(f"Error processing paid post: {e}")
@@ -5342,6 +5345,134 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
+        
+        # Handle /paid command via PRIVATE MESSAGE (Admin sends photo to bot directly)
+        # This prevents original from being visible in channel
+        if photo and bot_token and caption:
+            import re as re_module
+            caption_lower = caption.lower()
+            is_paid_command = (
+                caption_lower.startswith("/paid") or 
+                " /paid" in caption_lower
+            )
+            
+            if is_paid_command:
+                logger.info(f"Processing /paid command via private message from {chat_id}")
+                
+                # Get channel ID from settings
+                channel_id = settings.get("telegram_channel_id", "") or os.environ.get("TELEGRAM_CHANNEL_ID", "")
+                
+                if not channel_id:
+                    await send_telegram_message(chat_id, "❌ Channel ID not configured. Please set it in Settings.", bot_token)
+                    return {"ok": True}
+                
+                try:
+                    # Get photo file_id
+                    original_file_id = photo[-1].get("file_id", "") if photo else ""
+                    
+                    if not original_file_id:
+                        await send_telegram_message(chat_id, "❌ Could not get photo. Please try again.", bot_token)
+                        return {"ok": True}
+                    
+                    # Download and blur the photo
+                    logger.info(f"Downloading photo for /paid command...")
+                    image_bytes = await download_telegram_photo(original_file_id, bot_token)
+                    
+                    if not image_bytes:
+                        await send_telegram_message(chat_id, "❌ Could not download photo. Please try again.", bot_token)
+                        return {"ok": True}
+                    
+                    logger.info(f"Downloaded {len(image_bytes)} bytes, creating blur...")
+                    blurred_bytes = create_blurred_image(image_bytes)
+                    
+                    if not blurred_bytes:
+                        await send_telegram_message(chat_id, "❌ Could not create blur. Please try again.", bot_token)
+                        return {"ok": True}
+                    
+                    logger.info(f"Created blurred image: {len(blurred_bytes)} bytes")
+                    
+                    # Clean caption and extract price
+                    original_caption = message.get("caption", "")
+                    clean_caption = re_module.sub(r'^/paid[-_]?\s*', '', original_caption, flags=re_module.IGNORECASE).strip()
+                    
+                    price_match = re_module.search(r'^[₹]?(\d+)[-_\s]*', clean_caption)
+                    post_price = float(price_match.group(1)) if price_match else 0
+                    
+                    if price_match:
+                        clean_caption = clean_caption[price_match.end():].strip()
+                        clean_caption = re_module.sub(r'^[-_\s]+', '', clean_caption)
+                    
+                    # Default price from settings or plans
+                    if post_price <= 0:
+                        post_price = settings.get("default_paid_post_price", 0)
+                        if post_price <= 0:
+                            plans = await db.plans.find({"is_active": True}, {"_id": 0}).sort("price", 1).to_list(1)
+                            if plans:
+                                post_price = plans[0].get("price", 99)
+                            else:
+                                post_price = 99
+                    
+                    logger.info(f"Extracted price: {post_price}")
+                    
+                    # Create paid post record
+                    paid_post_id = str(uuid.uuid4())
+                    paid_post = {
+                        "id": paid_post_id,
+                        "channel_id": channel_id,
+                        "original_message_id": None,  # Not from channel
+                        "content_type": "photo",
+                        "original_file_id": original_file_id,
+                        "caption": clean_caption,
+                        "price": post_price,
+                        "unlock_count": 0,
+                        "is_active": True,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        "created_via": "private_message"  # Mark as created via private message
+                    }
+                    await db.paid_posts.insert_one(paid_post)
+                    logger.info(f"Created paid post record: {paid_post_id} with price {post_price}")
+                    
+                    # Prepare Unlock button
+                    bot_username = await get_bot_username(bot_token)
+                    unlock_button = {
+                        "inline_keyboard": [[{
+                            "text": f"🔓 Unlock Post - ₹{int(post_price)}",
+                            "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
+                        }]]
+                    }
+                    
+                    price_text = f"₹{int(post_price)}" if post_price > 0 else "Premium"
+                    blur_caption = f"🔒 <b>Paid Content</b>\n\n"
+                    blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+                    blur_caption += "👆 Tap 'Unlock Post' to view full content!"
+                    
+                    # Post blurred image to CHANNEL
+                    logger.info(f"Posting blurred image to channel {channel_id}...")
+                    result = await send_telegram_photo(channel_id, blurred_bytes, blur_caption, bot_token, unlock_button)
+                    
+                    if result and result.get("ok"):
+                        blurred_message_id = result.get("result", {}).get("message_id", 0)
+                        await db.paid_posts.update_one({"id": paid_post_id}, {"$set": {"blurred_message_id": blurred_message_id}})
+                        
+                        # Confirm to admin
+                        success_msg = f"✅ <b>Paid Post Created!</b>\n\n"
+                        success_msg += f"📦 Post ID: <code>{paid_post_id[:8]}</code>\n"
+                        success_msg += f"💰 Price: ₹{int(post_price)}\n"
+                        success_msg += f"📢 Posted to channel!\n\n"
+                        success_msg += "🔒 Original image is safe - only blurred version posted!"
+                        await send_telegram_message(chat_id, success_msg, bot_token)
+                        logger.info(f"Successfully posted blurred image to channel, message_id: {blurred_message_id}")
+                    else:
+                        await send_telegram_message(chat_id, f"❌ Failed to post to channel. Make sure bot is admin in the channel.\n\nError: {result}", bot_token)
+                        logger.error(f"Failed to post to channel: {result}")
+                    
+                except Exception as e:
+                    logger.error(f"Error processing /paid via private message: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    await send_telegram_message(chat_id, f"❌ Error: {str(e)}", bot_token)
+                
+                return {"ok": True}
         
         # Handle screenshot/photo for payment verification with OCR
         if photo and bot_token:
@@ -6421,8 +6552,6 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             else:
                 # No FAQ match - use AI to respond
                 try:
-                    from emergentintegrations.llm.chat import chat, LlmMessage
-                    
                     # Get context about the bot/business
                     plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
                     plan_info = "\n".join([f"- {p['name']}: ₹{p['price']} for {p['duration_days']} days" for p in plans])
@@ -6435,24 +6564,23 @@ Available Plans:
 Commands users can use:
 - /start - View subscription plans
 - /status - Check subscription status
-- /videocall - Book a video call
+- /live - View live sessions
 - /help - Get help
 
 Keep responses short, friendly, and helpful. If user asks about pricing or plans, tell them to use /start command. 
 If they have technical issues, ask them to describe the problem.
 Always be polite and use emojis sparingly."""
 
-                    response = await chat(
+                    llm = LlmChat(
                         api_key=os.environ.get("EMERGENT_LLM_KEY", ""),
-                        messages=[
-                            LlmMessage(role="system", content=system_prompt),
-                            LlmMessage(role="user", content=text)
-                        ],
                         model="gpt-4o-mini"
                     )
+                    llm.add_message("system", system_prompt)
+                    llm.add_message("user", text)
+                    response = await llm.chat()
                     
-                    if response and response.message:
-                        await send_telegram_message(chat_id, response.message, bot_token)
+                    if response:
+                        await send_telegram_message(chat_id, response, bot_token)
                     else:
                         # Fallback response
                         fallback_msg = "🤔 I'm not sure about that.\n\n"
