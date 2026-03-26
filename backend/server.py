@@ -4091,6 +4091,140 @@ async def go_live(session_id: str, data: dict, user = Depends(get_current_user))
     
     return {"message": "Live started", "notified": len(approved_tickets)}
 
+@api_router.post("/live/sessions/{session_id}/start-countdown")
+async def start_countdown_timer(session_id: str, data: dict, user = Depends(get_current_user)):
+    """Post countdown timer to group - 30 mins before live"""
+    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    channel_id = settings.get("telegram_channel_id", "")
+    bot_username = await get_bot_username(bot_token)
+    
+    # Get target group (from session or default channel)
+    target_group = data.get("group_id") or session.get("group_id") or channel_id
+    minutes_remaining = data.get("minutes", 30)
+    
+    # Create countdown message
+    msg = "⏰ <b>LIVE STARTING SOON!</b>\n\n"
+    msg += "━━━━━━━━━━━━━━━\n"
+    msg += f"📺 <b>{session.get('title')}</b>\n\n"
+    msg += f"🕐 <b>Starting in: {minutes_remaining} minutes!</b>\n"
+    msg += "━━━━━━━━━━━━━━━\n\n"
+    
+    if session.get('description'):
+        msg += f"📝 {session['description']}\n\n"
+    
+    msg += f"💰 <b>Ticket Price:</b> ₹{int(session.get('price', 0))}\n"
+    
+    if session.get('superchat_enabled'):
+        msg += f"💬 <b>Superchat:</b> Enabled!\n\n"
+    
+    msg += "👇 <b>Get your ticket now before it starts!</b>"
+    
+    buttons = [
+        [{
+            "text": f"🎫 Buy Ticket - ₹{int(session.get('price', 0))}",
+            "url": f"https://t.me/{bot_username}?start=live_{session_id}"
+        }],
+        [{
+            "text": "🔔 Subscribe for Updates",
+            "url": f"https://t.me/{bot_username}?start=subscribe"
+        }]
+    ]
+    
+    # Post to group
+    result = await send_telegram_message_with_buttons(target_group, msg, buttons, bot_token)
+    
+    # Store message_id so we can update it later
+    if result:
+        await db.live_sessions.update_one(
+            {"id": session_id},
+            {"$set": {
+                "countdown_message_id": result.get("message_id"),
+                "countdown_chat_id": target_group,
+                "countdown_started_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+    
+    return {"message": "Countdown started", "group_id": target_group}
+
+@api_router.post("/live/sessions/{session_id}/update-countdown")
+async def update_countdown_timer(session_id: str, data: dict, user = Depends(get_current_user)):
+    """Update countdown timer message"""
+    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    if not session.get("countdown_message_id"):
+        raise HTTPException(status_code=400, detail="No countdown active")
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    bot_username = await get_bot_username(bot_token)
+    
+    minutes_remaining = data.get("minutes", 10)
+    
+    # Create updated message
+    if minutes_remaining <= 0:
+        msg = "🔴 <b>WE ARE LIVE NOW!</b>\n\n"
+        msg += "━━━━━━━━━━━━━━━\n"
+        msg += f"📺 <b>{session.get('title')}</b>\n"
+        msg += "━━━━━━━━━━━━━━━\n\n"
+        msg += "🎉 <b>Join the stream now!</b>"
+        
+        buttons = [[{
+            "text": "🔴 JOIN LIVE NOW",
+            "url": session.get('stream_link') or f"https://t.me/{bot_username}?start=live_{session_id}"
+        }]]
+    else:
+        msg = "⏰ <b>LIVE STARTING SOON!</b>\n\n"
+        msg += "━━━━━━━━━━━━━━━\n"
+        msg += f"📺 <b>{session.get('title')}</b>\n\n"
+        
+        if minutes_remaining >= 60:
+            hours = minutes_remaining // 60
+            mins = minutes_remaining % 60
+            time_str = f"{hours}h {mins}m" if mins > 0 else f"{hours}h"
+        else:
+            time_str = f"{minutes_remaining} minutes"
+        
+        msg += f"🕐 <b>Starting in: {time_str}!</b>\n"
+        msg += "━━━━━━━━━━━━━━━\n\n"
+        msg += f"💰 Ticket: ₹{int(session.get('price', 0))}\n\n"
+        msg += "👇 <b>Get your ticket!</b>"
+        
+        buttons = [
+            [{
+                "text": f"🎫 Buy Ticket - ₹{int(session.get('price', 0))}",
+                "url": f"https://t.me/{bot_username}?start=live_{session_id}"
+            }],
+            [{
+                "text": "🔔 Subscribe",
+                "url": f"https://t.me/{bot_username}?start=subscribe"
+            }]
+        ]
+    
+    # Edit the countdown message
+    try:
+        async with httpx.AsyncClient() as http_client:
+            await http_client.post(
+                f"https://api.telegram.org/bot{bot_token}/editMessageText",
+                json={
+                    "chat_id": session.get("countdown_chat_id"),
+                    "message_id": session.get("countdown_message_id"),
+                    "text": msg,
+                    "parse_mode": "HTML",
+                    "reply_markup": {"inline_keyboard": buttons}
+                }
+            )
+    except Exception as e:
+        logger.error(f"Failed to update countdown: {e}")
+    
+    return {"message": "Countdown updated"}
+
 @api_router.put("/live/sessions/{session_id}")
 async def update_live_session(session_id: str, data: dict, user = Depends(get_current_user)):
     """Update a live session"""
@@ -7470,8 +7604,93 @@ async def startup():
     scheduler.add_job(send_daily_reminders, 'cron', hour=14, minute=30) # 2:30 PM
     scheduler.add_job(send_daily_reminders, 'cron', hour=20, minute=0)  # 8 PM
     
+    # Check for upcoming live sessions every 5 minutes
+    scheduler.add_job(check_upcoming_live_sessions, 'interval', minutes=5)
+    
     scheduler.start()
     logger.info("Scheduler started with daily reminders")
+
+async def check_upcoming_live_sessions():
+    """Auto-post countdown for live sessions starting in 30 mins"""
+    try:
+        settings = await get_bot_settings()
+        bot_token = settings.get("telegram_bot_token", "")
+        channel_id = settings.get("telegram_channel_id", "")
+        
+        if not bot_token:
+            return
+        
+        from datetime import timedelta
+        now = datetime.now(timezone.utc)
+        
+        # Get scheduled sessions
+        sessions = await db.live_sessions.find({
+            "status": "scheduled",
+            "countdown_started": {"$ne": True}
+        }, {"_id": 0}).to_list(100)
+        
+        for session in sessions:
+            try:
+                # Parse scheduled date and time
+                scheduled_date = session.get("scheduled_date", "")
+                scheduled_time = session.get("scheduled_time", "")
+                
+                if not scheduled_date or not scheduled_time:
+                    continue
+                
+                # Try to parse datetime
+                try:
+                    scheduled_dt = datetime.strptime(f"{scheduled_date} {scheduled_time}", "%Y-%m-%d %H:%M")
+                    scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
+                except:
+                    continue
+                
+                # Check if session is starting in 25-35 minutes
+                time_until = (scheduled_dt - now).total_seconds() / 60
+                
+                if 25 <= time_until <= 35:
+                    # Auto-post countdown
+                    logger.info(f"Auto-posting countdown for session: {session.get('title')}")
+                    
+                    bot_username = await get_bot_username(bot_token)
+                    target_group = session.get("group_id") or channel_id
+                    
+                    msg = "⏰ <b>LIVE STARTING IN 30 MINUTES!</b>\n\n"
+                    msg += "━━━━━━━━━━━━━━━\n"
+                    msg += f"📺 <b>{session.get('title')}</b>\n\n"
+                    msg += f"🕐 <b>Time: {scheduled_time}</b>\n"
+                    msg += "━━━━━━━━━━━━━━━\n\n"
+                    msg += f"💰 <b>Ticket:</b> ₹{int(session.get('price', 0))}\n\n"
+                    msg += "👇 <b>Get your ticket NOW!</b>"
+                    
+                    buttons = [
+                        [{
+                            "text": f"🎫 Buy Ticket - ₹{int(session.get('price', 0))}",
+                            "url": f"https://t.me/{bot_username}?start=live_{session.get('id')}"
+                        }],
+                        [{
+                            "text": "🔔 Subscribe",
+                            "url": f"https://t.me/{bot_username}?start=subscribe"
+                        }]
+                    ]
+                    
+                    result = await send_telegram_message_with_buttons(target_group, msg, buttons, bot_token)
+                    
+                    # Mark as countdown started
+                    await db.live_sessions.update_one(
+                        {"id": session.get("id")},
+                        {"$set": {
+                            "countdown_started": True,
+                            "countdown_message_id": result.get("message_id") if result else None,
+                            "countdown_chat_id": target_group
+                        }}
+                    )
+                    
+            except Exception as e:
+                logger.error(f"Error processing session countdown: {e}")
+                
+    except Exception as e:
+        logger.error(f"Error in check_upcoming_live_sessions: {e}")
 
 @app.on_event("shutdown")
 async def shutdown():
