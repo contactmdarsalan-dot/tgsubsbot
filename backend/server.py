@@ -6218,6 +6218,301 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 else:
                     await send_telegram_message(chat_id, "❌ Session not found or not live.", bot_token)
             
+            # ============== LIVE SETUP WIZARD CALLBACKS ==============
+            
+            # Live Setup - New
+            elif callback_data == "live_setup_new":
+                msg = "🆕 <b>Setup New Live Stream</b>\n\n"
+                msg += "━━━━━━━━━━━━━━━\n"
+                msg += "Send me the live details in this format:\n\n"
+                msg += "<code>/newlive Title | Price | Time</code>\n\n"
+                msg += "<b>Example:</b>\n"
+                msg += "<code>/newlive Friday Night Party | 299 | 8:00 PM</code>\n\n"
+                msg += "━━━━━━━━━━━━━━━\n"
+                msg += "Or use quick setup buttons below:"
+                
+                buttons = [
+                    [{"text": "🎉 Free Live (₹0)", "callback_data": "live_quick_free"}],
+                    [{"text": "💰 Paid Live (₹99)", "callback_data": "live_quick_99"}],
+                    [{"text": "💎 Premium Live (₹299)", "callback_data": "live_quick_299"}],
+                    [{"text": "⬅️ Back", "callback_data": "live_menu"}]
+                ]
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            # Quick Live Setup
+            elif callback_data.startswith("live_quick_"):
+                price = int(callback_data.replace("live_quick_", "").replace("free", "0"))
+                
+                # Create session with default values
+                session_id = str(uuid.uuid4())
+                now = datetime.now(timezone.utc)
+                
+                # Store pending live setup
+                await db.pending_live_setup.update_one(
+                    {"telegram_user_id": chat_id},
+                    {"$set": {
+                        "telegram_user_id": chat_id,
+                        "telegram_username": username,
+                        "session_id": session_id,
+                        "price": price,
+                        "step": "title",
+                        "created_at": now.isoformat()
+                    }},
+                    upsert=True
+                )
+                
+                price_text = "FREE" if price == 0 else f"₹{price}"
+                msg = f"🎬 <b>Quick Live Setup ({price_text})</b>\n\n"
+                msg += "What's the title of your live stream?\n\n"
+                msg += "<i>Just type the title and send...</i>"
+                
+                await send_telegram_message(chat_id, msg, bot_token)
+            
+            # My Scheduled Lives
+            elif callback_data == "live_my_scheduled":
+                my_sessions = await db.live_sessions.find({
+                    "status": "scheduled"
+                }, {"_id": 0}).sort("scheduled_date", -1).to_list(10)
+                
+                if not my_sessions:
+                    msg = "📋 <b>No Scheduled Lives</b>\n\n"
+                    msg += "You don't have any scheduled live streams.\n"
+                    msg += "Create one using the Setup option!"
+                    
+                    buttons = [[{"text": "🆕 Setup New Live", "callback_data": "live_setup_new"}]]
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                else:
+                    msg = "📋 <b>Your Scheduled Lives</b>\n\n"
+                    buttons = []
+                    
+                    for session in my_sessions:
+                        msg += f"📺 <b>{session.get('title')}</b>\n"
+                        msg += f"   💰 ₹{int(session.get('price', 0))} | 🎟 {session.get('tickets_sold', 0)} sold\n"
+                        msg += f"   📅 {session.get('scheduled_date')} {session.get('scheduled_time')}\n\n"
+                        
+                        buttons.append([
+                            {"text": f"⚙️ {session.get('title')[:15]}...", "callback_data": f"live_manage_{session.get('id')}"},
+                            {"text": "🔴 GO LIVE", "callback_data": f"admin_golive_{session.get('id')}"}
+                        ])
+                    
+                    buttons.append([{"text": "⬅️ Back", "callback_data": "live_menu"}])
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            # Live Menu (Back button)
+            elif callback_data == "live_menu":
+                msg = "📺 <b>Live Stream Manager</b>\n\n"
+                msg += "━━━━━━━━━━━━━━━\n"
+                msg += "What would you like to do?\n"
+                msg += "━━━━━━━━━━━━━━━"
+                
+                buttons = [
+                    [{"text": "🆕 Setup New Live", "callback_data": "live_setup_new"}],
+                    [{"text": "📋 My Scheduled Lives", "callback_data": "live_my_scheduled"}],
+                    [{"text": "🔴 Go Live Now", "callback_data": "live_go_now"}],
+                    [{"text": "📊 Live Analytics", "callback_data": "live_analytics"}],
+                    [{"text": "❌ Close", "callback_data": "cancel_action"}]
+                ]
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            # Go Live Now - Show scheduled sessions
+            elif callback_data == "live_go_now":
+                scheduled = await db.live_sessions.find({"status": "scheduled"}, {"_id": 0}).to_list(10)
+                
+                if not scheduled:
+                    msg = "📺 <b>No Sessions to Start</b>\n\n"
+                    msg += "Create a live session first!"
+                    buttons = [[{"text": "🆕 Setup New Live", "callback_data": "live_setup_new"}]]
+                else:
+                    msg = "🔴 <b>Select Session to Go LIVE</b>\n\n"
+                    buttons = []
+                    
+                    for session in scheduled:
+                        buttons.append([{
+                            "text": f"🔴 {session.get('title')[:30]} - ₹{int(session.get('price', 0))}",
+                            "callback_data": f"admin_golive_{session.get('id')}"
+                        }])
+                    
+                    buttons.append([{"text": "⬅️ Back", "callback_data": "live_menu"}])
+                
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            # Live Analytics
+            elif callback_data == "live_analytics":
+                # Get stats
+                total_sessions = await db.live_sessions.count_documents({})
+                live_sessions = await db.live_sessions.count_documents({"status": "live"})
+                total_tickets = await db.live_tickets.count_documents({})
+                
+                # Calculate revenue
+                revenue_result = await db.live_tickets.aggregate([
+                    {"$match": {"status": "approved"}},
+                    {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+                ]).to_list(1)
+                total_revenue = revenue_result[0]["total"] if revenue_result else 0
+                
+                superchat_result = await db.live_superchats.aggregate([
+                    {"$match": {"status": "approved"}},
+                    {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+                ]).to_list(1)
+                total_superchat = superchat_result[0]["total"] if superchat_result else 0
+                
+                msg = "📊 <b>Live Stream Analytics</b>\n\n"
+                msg += "━━━━━━━━━━━━━━━\n"
+                msg += f"📺 Total Sessions: <b>{total_sessions}</b>\n"
+                msg += f"🔴 Currently Live: <b>{live_sessions}</b>\n"
+                msg += f"🎟 Tickets Sold: <b>{total_tickets}</b>\n"
+                msg += "━━━━━━━━━━━━━━━\n"
+                msg += f"💰 Ticket Revenue: <b>₹{int(total_revenue)}</b>\n"
+                msg += f"💬 Superchat Revenue: <b>₹{int(total_superchat)}</b>\n"
+                msg += f"📈 <b>Total: ₹{int(total_revenue + total_superchat)}</b>\n"
+                msg += "━━━━━━━━━━━━━━━"
+                
+                buttons = [[{"text": "⬅️ Back", "callback_data": "live_menu"}]]
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            # Manage specific live session
+            elif callback_data.startswith("live_manage_"):
+                session_id = callback_data.replace("live_manage_", "")
+                session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session:
+                    msg = f"⚙️ <b>Manage: {session.get('title')}</b>\n\n"
+                    msg += "━━━━━━━━━━━━━━━\n"
+                    msg += f"💰 Price: ₹{int(session.get('price', 0))}\n"
+                    msg += f"🎟 Tickets: {session.get('tickets_sold', 0)}\n"
+                    msg += f"💬 Superchat: {'✅ ON' if session.get('superchat_enabled') else '❌ OFF'}\n"
+                    msg += f"📅 Scheduled: {session.get('scheduled_date')} {session.get('scheduled_time')}\n"
+                    msg += "━━━━━━━━━━━━━━━"
+                    
+                    buttons = [
+                        [{"text": "🔴 GO LIVE NOW", "callback_data": f"admin_golive_{session_id}"}],
+                        [{"text": "📢 Announce", "callback_data": f"live_announce_{session_id}"}],
+                        [{"text": "⏰ Start Countdown", "callback_data": f"live_countdown_{session_id}"}],
+                        [
+                            {"text": "✏️ Edit", "callback_data": f"live_edit_{session_id}"},
+                            {"text": "🗑 Delete", "callback_data": f"live_delete_{session_id}"}
+                        ],
+                        [{"text": "⬅️ Back", "callback_data": "live_my_scheduled"}]
+                    ]
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found", bot_token)
+            
+            # Announce live session
+            elif callback_data.startswith("live_announce_"):
+                session_id = callback_data.replace("live_announce_", "")
+                session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session:
+                    channel_id = settings.get("telegram_channel_id", "")
+                    bot_username = await get_bot_username(bot_token)
+                    
+                    announce_msg = "🔴 <b>LIVE STREAM ANNOUNCEMENT!</b>\n\n"
+                    announce_msg += f"📺 <b>{session.get('title')}</b>\n\n"
+                    if session.get('description'):
+                        announce_msg += f"📝 {session['description']}\n\n"
+                    announce_msg += f"📅 <b>Date:</b> {session.get('scheduled_date')}\n"
+                    announce_msg += f"🕐 <b>Time:</b> {session.get('scheduled_time')}\n"
+                    announce_msg += f"💰 <b>Ticket:</b> ₹{int(session.get('price', 0))}\n\n"
+                    announce_msg += "👇 <b>Get Your Ticket Now!</b>"
+                    
+                    announce_buttons = [[{
+                        "text": f"🎫 Buy Ticket - ₹{int(session.get('price', 0))}",
+                        "url": f"https://t.me/{bot_username}?start=live_{session_id}"
+                    }]]
+                    
+                    await send_telegram_message_with_buttons(channel_id, announce_msg, announce_buttons, bot_token)
+                    await send_telegram_message(chat_id, "✅ Announcement posted to channel!", bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found", bot_token)
+            
+            # Start countdown
+            elif callback_data.startswith("live_countdown_"):
+                session_id = callback_data.replace("live_countdown_", "")
+                session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+                
+                if session:
+                    channel_id = settings.get("telegram_channel_id", "") 
+                    group_id = session.get("group_id") or channel_id
+                    bot_username = await get_bot_username(bot_token)
+                    
+                    countdown_msg = "⏰ <b>LIVE STARTING SOON!</b>\n\n"
+                    countdown_msg += "━━━━━━━━━━━━━━━\n"
+                    countdown_msg += f"📺 <b>{session.get('title')}</b>\n\n"
+                    countdown_msg += "🕐 <b>Starting in 30 minutes!</b>\n"
+                    countdown_msg += "━━━━━━━━━━━━━━━\n\n"
+                    countdown_msg += f"💰 Ticket: ₹{int(session.get('price', 0))}\n\n"
+                    countdown_msg += "👇 <b>Get your ticket NOW!</b>"
+                    
+                    countdown_buttons = [
+                        [{"text": f"🎫 Buy Ticket - ₹{int(session.get('price', 0))}", "url": f"https://t.me/{bot_username}?start=live_{session_id}"}],
+                        [{"text": "🔔 Subscribe", "url": f"https://t.me/{bot_username}?start=subscribe"}]
+                    ]
+                    
+                    await send_telegram_message_with_buttons(group_id, countdown_msg, countdown_buttons, bot_token)
+                    
+                    await db.live_sessions.update_one(
+                        {"id": session_id},
+                        {"$set": {"countdown_started": True}}
+                    )
+                    
+                    await send_telegram_message(chat_id, "✅ Countdown posted!", bot_token)
+                else:
+                    await send_telegram_message(chat_id, "❌ Session not found", bot_token)
+            
+            # Delete live session
+            elif callback_data.startswith("live_delete_"):
+                session_id = callback_data.replace("live_delete_", "")
+                await db.live_sessions.delete_one({"id": session_id})
+                await send_telegram_message(chat_id, "✅ Live session deleted!", bot_token)
+            
+            # Superchat enable/disable in setup
+            elif callback_data == "live_superchat_on":
+                await db.pending_live_setup.update_one(
+                    {"telegram_user_id": chat_id},
+                    {"$set": {"superchat_enabled": True, "step": "superchat_min"}}
+                )
+                
+                msg = "✅ <b>Superchat Enabled!</b>\n\n"
+                msg += "What's the minimum superchat amount?\n\n"
+                msg += "Choose below or type a custom amount:"
+                
+                buttons = [
+                    [
+                        {"text": "₹10", "callback_data": "live_scmin_10"},
+                        {"text": "₹29", "callback_data": "live_scmin_29"},
+                        {"text": "₹49", "callback_data": "live_scmin_49"}
+                    ],
+                    [
+                        {"text": "₹99", "callback_data": "live_scmin_99"},
+                        {"text": "₹199", "callback_data": "live_scmin_199"}
+                    ]
+                ]
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            
+            elif callback_data == "live_superchat_off":
+                await db.pending_live_setup.update_one(
+                    {"telegram_user_id": chat_id},
+                    {"$set": {"superchat_enabled": False, "step": "stream_link"}}
+                )
+                
+                msg = "✅ <b>Superchat Disabled</b>\n\n"
+                msg += "Send the stream link (YouTube/Telegram):\n\n"
+                msg += "(or type 'skip' if you'll add it later)"
+                await send_telegram_message(chat_id, msg, bot_token)
+            
+            elif callback_data.startswith("live_scmin_"):
+                min_amount = int(callback_data.replace("live_scmin_", ""))
+                await db.pending_live_setup.update_one(
+                    {"telegram_user_id": chat_id},
+                    {"$set": {"superchat_min": min_amount, "step": "stream_link"}}
+                )
+                
+                msg = f"✅ <b>Min Superchat: ₹{min_amount}</b>\n\n"
+                msg += "Send the stream link (YouTube/Telegram):\n\n"
+                msg += "(or type 'skip' if you'll add it later)"
+                await send_telegram_message(chat_id, msg, bot_token)
+            
             # Super chat session selection
             elif callback_data.startswith("superchat_select_"):
                 session_id = callback_data.replace("superchat_select_", "")
@@ -7520,6 +7815,101 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 buttons.append([{"text": "❌ Cancel", "callback_data": "cancel_action"}])
                 await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
         
+        # Handle /live command - Complete Live Stream Setup Wizard
+        elif text and (text == "/live" or text.startswith("/livestream")):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            # Check if user is admin or creator
+            has_access = await is_admin_or_creator(chat_id, username)
+            
+            if not has_access:
+                await send_telegram_message(chat_id, "❌ <b>Access Denied</b>\n\nOnly admins and creators can manage live streams.", bot_token)
+            else:
+                # Show Live Stream Menu
+                msg = "📺 <b>Live Stream Manager</b>\n\n"
+                msg += "━━━━━━━━━━━━━━━\n"
+                msg += "What would you like to do?\n"
+                msg += "━━━━━━━━━━━━━━━"
+                
+                buttons = [
+                    [{"text": "🆕 Setup New Live", "callback_data": "live_setup_new"}],
+                    [{"text": "📋 My Scheduled Lives", "callback_data": "live_my_scheduled"}],
+                    [{"text": "🔴 Go Live Now", "callback_data": "live_go_now"}],
+                    [{"text": "📊 Live Analytics", "callback_data": "live_analytics"}],
+                    [{"text": "❌ Close", "callback_data": "cancel_action"}]
+                ]
+                
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+        
+        # Handle /newlive command - Quick one-liner live setup
+        elif text and text.startswith("/newlive"):
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            # Check if user is admin or creator
+            has_access = await is_admin_or_creator(chat_id, username)
+            
+            if not has_access:
+                await send_telegram_message(chat_id, "❌ <b>Access Denied</b>\n\nOnly admins and creators can create live streams.", bot_token)
+            else:
+                # Parse: /newlive Title | Price | Time
+                parts = text.replace("/newlive", "").strip()
+                
+                if not parts or "|" not in parts:
+                    msg = "📺 <b>Quick Live Setup</b>\n\n"
+                    msg += "Format: <code>/newlive Title | Price | Time</code>\n\n"
+                    msg += "<b>Examples:</b>\n"
+                    msg += "• <code>/newlive Friday Party | 99 | 8PM</code>\n"
+                    msg += "• <code>/newlive Free Q&A | 0 | Now</code>\n"
+                    msg += "• <code>/newlive Premium Show | 499 | 10PM</code>"
+                    await send_telegram_message(chat_id, msg, bot_token)
+                else:
+                    try:
+                        split_parts = [p.strip() for p in parts.split("|")]
+                        title = split_parts[0] if len(split_parts) > 0 else "Live Stream"
+                        price = int(split_parts[1]) if len(split_parts) > 1 and split_parts[1].isdigit() else 0
+                        time = split_parts[2] if len(split_parts) > 2 else "Now"
+                        
+                        # Create session
+                        now = datetime.now(timezone.utc)
+                        session_id = str(uuid.uuid4())
+                        session = {
+                            "id": session_id,
+                            "title": title,
+                            "description": "",
+                            "scheduled_date": now.strftime("%Y-%m-%d"),
+                            "scheduled_time": time,
+                            "price": price,
+                            "max_viewers": 100,
+                            "stream_link": "",
+                            "superchat_enabled": True,
+                            "superchat_min_amount": 10,
+                            "status": "scheduled",
+                            "tickets_sold": 0,
+                            "created_by": username or chat_id,
+                            "created_at": now.isoformat()
+                        }
+                        await db.live_sessions.insert_one(session)
+                        
+                        price_text = "FREE" if price == 0 else f"₹{price}"
+                        msg = "🎉 <b>Live Created!</b>\n\n"
+                        msg += f"📺 <b>{title}</b>\n"
+                        msg += f"💰 {price_text} | 🕐 {time}\n"
+                        msg += "💬 Superchat: ✅ ON\n\n"
+                        msg += "What's next?"
+                        
+                        buttons = [
+                            [{"text": "🔴 GO LIVE NOW", "callback_data": f"admin_golive_{session_id}"}],
+                            [{"text": "📢 Announce", "callback_data": f"live_announce_{session_id}"}],
+                            [{"text": "⚙️ Manage", "callback_data": f"live_manage_{session_id}"}]
+                        ]
+                        await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                        
+                    except Exception as e:
+                        logger.error(f"Error creating quick live: {e}")
+                        await send_telegram_message(chat_id, "❌ Error. Use format: /newlive Title | Price | Time", bot_token)
+        
         # Handle /golive command - Admin/Creator starts live from Telegram
         elif text and text.startswith("/golive"):
             settings = await get_bot_settings()
@@ -7647,6 +8037,113 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         elif text and not text.startswith("/"):
             settings = await get_bot_settings()
             bot_token = settings.get("telegram_bot_token", "")
+            
+            # ============== LIVE SETUP WIZARD - Text Input Handlers ==============
+            # Check if user is in live setup flow
+            pending_live = await db.pending_live_setup.find_one({
+                "telegram_user_id": chat_id
+            }, {"_id": 0})
+            
+            if pending_live:
+                step = pending_live.get("step", "")
+                session_data = pending_live
+                
+                if step == "title":
+                    # Got title, ask for description
+                    await db.pending_live_setup.update_one(
+                        {"telegram_user_id": chat_id},
+                        {"$set": {"title": text, "step": "description"}}
+                    )
+                    
+                    msg = "✅ <b>Title Set!</b>\n\n"
+                    msg += f"📺 Title: <b>{text}</b>\n\n"
+                    msg += "Now send a short description (or type 'skip'):"
+                    await send_telegram_message(chat_id, msg, bot_token)
+                
+                elif step == "description":
+                    # Got description, ask for time
+                    desc = "" if text.lower() == "skip" else text
+                    await db.pending_live_setup.update_one(
+                        {"telegram_user_id": chat_id},
+                        {"$set": {"description": desc, "step": "time"}}
+                    )
+                    
+                    msg = "✅ <b>Description Set!</b>\n\n"
+                    msg += "When will you go live?\n\n"
+                    msg += "Send time like: <code>8:00 PM</code> or <code>Today 9PM</code>\n"
+                    msg += "(or type 'now' to go live immediately)"
+                    await send_telegram_message(chat_id, msg, bot_token)
+                
+                elif step == "time":
+                    # Got time, ask for superchat settings
+                    await db.pending_live_setup.update_one(
+                        {"telegram_user_id": chat_id},
+                        {"$set": {"scheduled_time": text, "step": "superchat"}}
+                    )
+                    
+                    msg = "✅ <b>Time Set!</b>\n\n"
+                    msg += "Enable Superchat for this live?\n"
+                    msg += "(Viewers can pay to highlight their messages)"
+                    
+                    buttons = [
+                        [
+                            {"text": "✅ Enable Superchat", "callback_data": "live_superchat_on"},
+                            {"text": "❌ Disable", "callback_data": "live_superchat_off"}
+                        ]
+                    ]
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                
+                elif step == "stream_link":
+                    # Got stream link, create the session
+                    stream_link = "" if text.lower() == "skip" else text
+                    
+                    # Create the live session
+                    now = datetime.now(timezone.utc)
+                    session = {
+                        "id": session_data.get("session_id", str(uuid.uuid4())),
+                        "title": session_data.get("title", "Live Stream"),
+                        "description": session_data.get("description", ""),
+                        "scheduled_date": now.strftime("%Y-%m-%d"),
+                        "scheduled_time": session_data.get("scheduled_time", "Now"),
+                        "price": session_data.get("price", 0),
+                        "max_viewers": 100,
+                        "stream_link": stream_link,
+                        "group_id": "",
+                        "superchat_enabled": session_data.get("superchat_enabled", True),
+                        "superchat_min_amount": session_data.get("superchat_min", 10),
+                        "status": "scheduled",
+                        "tickets_sold": 0,
+                        "superchat_total": 0,
+                        "created_by": username or chat_id,
+                        "created_at": now.isoformat()
+                    }
+                    
+                    await db.live_sessions.insert_one(session)
+                    
+                    # Clear pending setup
+                    await db.pending_live_setup.delete_one({"telegram_user_id": chat_id})
+                    
+                    # Show success with options
+                    price_text = "FREE" if session["price"] == 0 else f"₹{session['price']}"
+                    msg = "🎉 <b>Live Stream Created!</b>\n\n"
+                    msg += "━━━━━━━━━━━━━━━\n"
+                    msg += f"📺 <b>{session['title']}</b>\n"
+                    msg += f"💰 Ticket: {price_text}\n"
+                    msg += f"🕐 Time: {session['scheduled_time']}\n"
+                    msg += f"💬 Superchat: {'✅ ON' if session['superchat_enabled'] else '❌ OFF'}\n"
+                    msg += "━━━━━━━━━━━━━━━\n\n"
+                    msg += "What would you like to do?"
+                    
+                    bot_username = await get_bot_username(bot_token)
+                    buttons = [
+                        [{"text": "🔴 GO LIVE NOW", "callback_data": f"admin_golive_{session['id']}"}],
+                        [{"text": "📢 Announce to Channel", "callback_data": f"live_announce_{session['id']}"}],
+                        [{"text": "⏰ Start Countdown", "callback_data": f"live_countdown_{session['id']}"}],
+                        [{"text": "📋 View All Lives", "callback_data": "live_my_scheduled"}]
+                    ]
+                    await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+                
+                return {"ok": True}
             
             # Check if waiting for superchat message
             pending = await db.pending_screenshots.find_one({
