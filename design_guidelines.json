@@ -1,156 +1,141 @@
 {
-  "identity": {
-    "persona": "E1: The Anti-AI Designer",
-    "principles": [
-      "Fusion over Imitation: Mix disparate disciplines.",
-      "Emotion First: Design for 'Control' and 'Growth'.",
-      "Content is King: Data is the story.",
-      "Zoom In: Big, bold numbers for KPIs.",
-      "Negative Space: Breathing room between dense data.",
-      "Contrast: High contrast for readability and impact."
-    ],
-    "anti_patterns": [
-      "Purple/Teal for CTAs (Use Electric Blue instead).",
-      "Inter everywhere (Use Barlow Condensed for Headings).",
-      "Center-Everything (Use Asymmetry).",
-      "Gradient Overload (Use solid colors + texture)."
-    ]
+  "theme_and_archetype": {
+    "domain": "Adult Content / Romance Dashboard",
+    "theme": "Dark",
+    "archetype": "Archetype 5 (Jewel & Luxury)",
+    "description": "A premium, romantic, and sensual admin dashboard for adult content creators. It utilizes deep reds, rose gold accents, soft pinks, and warm dark backgrounds. The vibe is expensive, cinematic, and moody with a focus on 'Soft UI Evolution'."
   },
   "typography": {
-    "headings": {
-      "font_family": "Barlow Condensed, sans-serif",
-      "weights": ["700", "900"],
-      "usage": "Page titles, Card headers, Big KPI numbers",
-      "letter_spacing": "tracking-tight"
+    "imports": [
+      "@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Poppins:wght@300;400;500;600&display=swap');"
+    ],
+    "font_families": {
+      "heading": "'Playfair Display', serif",
+      "body": "'Poppins', sans-serif",
+      "mono": "'JetBrains Mono', monospace"
     },
-    "body": {
-      "font_family": "Inter, sans-serif",
-      "weights": ["400", "500"],
-      "usage": "General text, labels, table data"
-    },
-    "mono": {
-      "font_family": "JetBrains Mono, monospace",
-      "weights": ["500"],
-      "usage": "Financial data, IDs, Dates, Code snippets"
-    },
-    "installation": "Import from Google Fonts: https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;900&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap"
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-serif font-semibold tracking-tight text-foreground",
+      "h2": "text-2xl sm:text-3xl font-serif font-medium tracking-tight text-foreground",
+      "h3": "text-xl sm:text-2xl font-serif font-medium text-foreground",
+      "h4": "text-lg sm:text-xl font-sans font-medium text-foreground",
+      "body": "text-sm sm:text-base font-sans font-normal text-muted-foreground",
+      "small_accent": "text-xs font-sans font-medium tracking-[0.1em] uppercase text-accent"
+    }
   },
   "colors": {
-    "theme": "Performance Pro (Light Variant)",
-    "palette": {
-      "background": "#FFFFFF",
-      "foreground": "#0F172A",
-      "card": "#FFFFFF",
-      "card_foreground": "#0F172A",
-      "popover": "#FFFFFF",
-      "popover_foreground": "#0F172A",
-      "primary": "#2563EB",
-      "primary_foreground": "#FFFFFF",
-      "secondary": "#F1F5F9",
-      "secondary_foreground": "#0F172A",
-      "muted": "#F8FAFC",
-      "muted_foreground": "#64748B",
-      "accent": "#F1F5F9",
-      "accent_foreground": "#0F172A",
-      "destructive": "#EF4444",
-      "destructive_foreground": "#FFFFFF",
-      "border": "#E2E8F0",
-      "input": "#E2E8F0",
-      "ring": "#2563EB",
-      "success": "#10B981",
-      "warning": "#F59E0B"
+    "css_variables": {
+      "light": {
+        "--background": "0 0% 100%",
+        "--foreground": "340 50% 10%",
+        "--card": "340 20% 98%",
+        "--card-foreground": "340 50% 10%",
+        "--popover": "340 20% 98%",
+        "--popover-foreground": "340 50% 10%",
+        "--primary": "346 80% 50%",
+        "--primary-foreground": "0 0% 100%",
+        "--secondary": "340 30% 90%",
+        "--secondary-foreground": "340 50% 20%",
+        "--muted": "340 20% 92%",
+        "--muted-foreground": "340 10% 40%",
+        "--accent": "350 80% 70%",
+        "--accent-foreground": "340 50% 10%",
+        "--destructive": "0 84.2% 60.2%",
+        "--destructive-foreground": "0 0% 100%",
+        "--border": "340 20% 85%",
+        "--input": "340 20% 85%",
+        "--ring": "346 80% 50%",
+        "--radius": "1rem"
+      },
+      "dark": {
+        "--background": "340 50% 4%",
+        "--foreground": "340 30% 96%",
+        "--card": "340 40% 7%",
+        "--card-foreground": "340 30% 96%",
+        "--popover": "340 40% 7%",
+        "--popover-foreground": "340 30% 96%",
+        "--primary": "346 80% 50%",
+        "--primary-foreground": "0 0% 100%",
+        "--secondary": "340 40% 15%",
+        "--secondary-foreground": "340 30% 90%",
+        "--muted": "340 30% 12%",
+        "--muted-foreground": "340 20% 65%",
+        "--accent": "350 80% 75%",
+        "--accent-foreground": "340 50% 10%",
+        "--destructive": "0 62.8% 30.6%",
+        "--destructive-foreground": "340 30% 96%",
+        "--border": "340 40% 15%",
+        "--input": "340 40% 15%",
+        "--ring": "346 80% 50%",
+        "--radius": "1rem"
+      }
     },
-    "rules": [
-      "Never use pure #000000. Use #0F172A (Slate 900).",
-      "Primary color (Electric Blue) ONLY for main CTAs.",
-      "Use 'Success Green' for Revenue and Active status.",
-      "Use 'Destructive Red' for Expired/Failed status."
-    ]
+    "description": "The palette revolves around extremely dark burgundy/wine (#0A0406) backgrounds, deeply saturated but soft crimson reds for actions (#E11D48), and rose gold/pink accents. The tone is strictly warm. No harsh cold grays; all grays must have a red/pink tint."
   },
-  "layout": {
-    "grid_system": "Bento Grid Mode B (High Density)",
-    "spacing": {
-      "container_padding": "p-6 md:p-8 lg:p-12",
-      "gap": "gap-4 md:gap-6",
-      "internal_padding": "p-6"
-    },
-    "strategies": {
-      "dashboard": "Grid with 'Grid Borders' style (exposed skeleton).",
-      "marketing_login": "Split screen: 50% Image (Left) / 50% Form (Right).",
-      "lists": "Full width tables with sticky headers."
-    }
+  "layout_and_spacing": {
+    "container": "Use generous padding: p-6 to p-10 inside cards. Use gap-6 or gap-8 between widgets.",
+    "dashboard_grid": "Bento-style grids with slight asymmetry where possible. Instead of a rigid 3-column equal grid, use a 4-column base with span-2 and span-1 variations to create visual tension.",
+    "borders_and_radius": "Use rounded-2xl or rounded-3xl for a softer, organic feel. Hard edges should be avoided. Borders should be 1px and very subtle (border-white/5 in dark mode)."
   },
-  "components": {
-    "buttons": {
-      "style": "Sharp edges or small radius (rounded-md).",
-      "hover": "translate-y-[-1px] shadow-md transition-all duration-200"
+  "surfaces_and_materials": {
+    "glassmorphism": {
+      "usage": "Headers, floating navigation, modals, and sticky action bars.",
+      "classes": "bg-background/60 backdrop-blur-2xl border border-white/5 shadow-[0_8px_32px_rgba(225,29,72,0.05)]"
     },
     "cards": {
-      "style": "Flat background, 1px border (border-border), no shadow by default.",
-      "hover": "border-primary/50 transition-colors duration-200"
+      "usage": "Data widgets, subscriber lists, revenue charts.",
+      "classes": "bg-card border border-border/50 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300"
     },
-    "inputs": {
-      "style": "bg-muted/50 border-transparent focus:border-primary focus:bg-background transition-all"
-    },
-    "navigation": {
-      "sidebar": "Fixed left, bg-muted/30 border-r border-border.",
-      "header": "Sticky top, glassmorphism (bg-white/80 backdrop-blur-xl border-b border-border/50)."
-    },
-    "visual_enhancers": {
-      "tracing_beam": "Use for 'Subscription Plans' cards. A glowing gradient border that traces the edge.",
-      "glassmorphism": "Use for Header and Toasts.",
-      "grid_borders": "Use for Dashboard KPI section."
+    "buttons_primary": {
+      "usage": "Main CTAs like 'Go Live', 'Save Plan', 'Verify Payment'.",
+      "classes": "bg-gradient-to-r from-rose-600 to-red-600 text-white rounded-xl shadow-[0_0_15px_rgba(225,29,72,0.2)] hover:shadow-[0_0_20px_rgba(225,29,72,0.4)] hover:-translate-y-0.5 transition-all duration-300 border-none"
     }
   },
-  "images": {
-    "login_background": {
-      "url": "https://images.unsplash.com/photo-1759270463243-414a287681be?crop=entropy&cs=srgb&fm=jpg&q=85",
-      "alt": "Abstract white and blue geometric shapes",
-      "usage": "Login page left panel background, cover"
+  "animations_and_interactions": {
+    "hover_states": "All interactive elements must shift visually. Cards should have a slight border color shift to a deep red, and a very subtle y-axis lift (-translate-y-1).",
+    "transitions": "Use 300ms duration for layout shifts and 200ms for color/opacity changes. Avoid snappy/abrupt animations. Sensual means smooth and deliberate.",
+    "loading": "Use slow pulsating opacities or soft sweeping gradient lines rather than fast spinning loaders."
+  },
+  "components": {
+    "icons": {
+      "library": "lucide-react",
+      "style": "Use stroke-width 1.5 for a delicate, premium feel. Avoid chunky icons."
     },
-    "empty_state": {
-      "style": "Use Lucide Icons (e.g., Box, Ghost) with large size (w-12 h-12) and muted colors.",
-      "fallback_text": "No data available"
+    "shadcn_overrides": {
+      "Card": "Override default borders to be softer. Use rounded-2xl.",
+      "Button": "Use rounded-xl, avoid default Vercel stark look.",
+      "Input": "Soft dark backgrounds (bg-muted/50), 1px subtle border, focus-visible:ring-primary/50, rounded-xl.",
+      "Tabs": "Use pill-shaped indicators rather than underline for a softer feel. bg-muted/50 for the tab list."
     }
   },
-  "icons": {
-    "library": "lucide-react",
-    "style": "Stroke width 1.5px or 2px. Color: muted-foreground (default), primary (active)."
+  "media": {
+    "image_urls": [
+      {
+        "url": "https://images.pexels.com/photos/4722583/pexels-photo-4722583.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "background",
+        "description": "Deep red velvet theater curtain, perfect for the login page background or an elegant hero section behind a glassmorphism card."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1651651441982-b69f52985ff6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwyfHxzZW5zdWFsJTIwcG9ydHJhaXQlMjBkYXJrfGVufDB8fHx8MTc3NDU2NTQ1Nnww&ixlib=rb-4.1.0&q=85",
+        "category": "avatar_creator",
+        "description": "Sensual portrait of a woman with red hair, suitable for creator profile pictures or 'Top Creator' showcase widgets."
+      },
+      {
+        "url": "https://images.pexels.com/photos/7738064/pexels-photo-7738064.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "content_placeholder",
+        "description": "Alluring dark studio photo, excellent for showcasing 'blurred paid posts' or premium video call previews."
+      }
+    ]
   },
-  "motion": {
-    "transitions": "transition-all duration-200 ease-out",
-    "hover_effects": "Lift up (-1px) and shadow increase.",
-    "page_load": "Staggered fade-in for grid items."
-  },
-  "accessibility": {
-    "contrast": "Ensure text is Slate 900 on White, or White on Blue 600.",
-    "focus_states": "Visible ring-2 ring-primary ring-offset-2.",
-    "testing": "All interactive elements must have data-testid attributes."
-  },
-  "tech_stack": {
-    "framework": "React",
-    "styling": "Tailwind CSS",
-    "ui_library": "Shadcn/UI (Customized)",
-    "icons": "Lucide React",
-    "charts": "Recharts (via Shadcn Charts)",
-    "notifications": "Sonner"
+  "testing": {
+    "requirements": "All interactive elements (buttons, nav links, form inputs, table rows) must include `data-testid` attributes using kebab-case role-based naming (e.g., `data-testid=\"go-live-button\"`)."
   },
   "instructions_to_main_agent": [
-    "1. Install fonts: Barlow Condensed, Inter, JetBrains Mono.",
-    "2. Update tailwind.config.js with the 'Performance Pro' colors.",
-    "3. Create a 'Layout' component with Sidebar and Header.",
-    "4. Build the Dashboard using the Bento Grid Mode B.",
-    "5. Implement the 'Tracing Beam' effect for the Plans page.",
-    "6. Ensure all forms use Shadcn Form components.",
-    "7. Use 'sonner' for all notifications.",
-    "8. STRICTLY follow the 'Anti-AI' design principles: No generic gradients, no 'Inter' for headings.",
-    "9. Add data-testid to all interactive elements."
-  ],
-  "universal_guidelines": [
-    "Avoid 'AI slop' aesthetics (generic centered layouts, purple gradients).",
-    "Use 2-3x more spacing than typical.",
-    "Every interaction needs a micro-animation.",
-    "Do not use 'transition: all'.",
-    "Do not center align the app container."
+    "1. Replace font imports in index.css with Playfair Display and Poppins.",
+    "2. Apply the custom colors defined in this JSON to the Tailwind base layer.",
+    "3. Build the sidebar/navigation using glassmorphism if it floats, or a very dark solid background if fixed.",
+    "4. Use generous border radiuses (rounded-2xl/3xl) to achieve the 'Soft UI' look.",
+    "5. When displaying stats or revenue, use serif fonts for the numbers (Playfair Display) to convey luxury and wealth.",
+    "6. Do not use generic blue or purple gradients. Stick to the red/rose/burgundy palette."
   ]
 }

@@ -29,7 +29,7 @@ const getAuthHeaders = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
 });
 
-const COLORS = ["#2563EB", "#10B981", "#F59E0B", "#EF4444"];
+const COLORS = ["#E11D48", "#F43F5E", "#FB7185", "#FDA4AF"];
 
 export default function Dashboard() {
   const [analytics, setAnalytics] = useState(null);
@@ -61,7 +61,7 @@ export default function Dashboard() {
   const statusData = [
     { name: "Active", value: analytics?.active_subscribers || 0, color: "#10B981" },
     { name: "Grace", value: analytics?.grace_subscribers || 0, color: "#F59E0B" },
-    { name: "Expired", value: analytics?.expired_subscribers || 0, color: "#EF4444" },
+    { name: "Expired", value: analytics?.expired_subscribers || 0, color: "#E11D48" },
   ].filter((d) => d.value > 0);
 
   const planData = analytics?.plan_stats || [];
@@ -69,82 +69,90 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="font-heading text-4xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">
-          Overview of your subscription business
+      <div className="space-y-1">
+        <h1 className="font-serif text-4xl font-semibold tracking-tight">Dashboard</h1>
+        <p className="text-muted-foreground">
+          Overview of your premium subscription business
         </p>
       </div>
 
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {/* Total Subscribers */}
-        <Card className="card-hover border animate-fade-in-up stagger-1" data-testid="kpi-total-subscribers">
+        <Card className="romance-card border-none animate-fade-in-up stagger-1" data-testid="kpi-total-subscribers">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Subscribers
             </CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Users className="h-5 w-5 text-primary" strokeWidth={1.5} />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="font-heading text-4xl font-bold tracking-tight">
+            <div className="font-serif text-4xl font-semibold tracking-tight stat-number">
               {analytics?.total_subscribers || 0}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              <span className="text-green-500">+{analytics?.active_subscribers || 0}</span> active
+            <p className="text-xs text-muted-foreground mt-2">
+              <span className="text-emerald-500 font-medium">+{analytics?.active_subscribers || 0}</span> currently active
             </p>
           </CardContent>
         </Card>
 
         {/* Active Subscribers */}
-        <Card className="card-hover border animate-fade-in-up stagger-2" data-testid="kpi-active-subscribers">
+        <Card className="romance-card border-none animate-fade-in-up stagger-2" data-testid="kpi-active-subscribers">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Active
             </CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-500" />
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+              <TrendingUp className="h-5 w-5 text-emerald-500" strokeWidth={1.5} />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="font-heading text-4xl font-bold tracking-tight text-green-500">
+            <div className="font-serif text-4xl font-semibold tracking-tight text-emerald-500 stat-number">
               {analytics?.active_subscribers || 0}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-2">
               Currently subscribed
             </p>
           </CardContent>
         </Card>
 
         {/* Total Revenue */}
-        <Card className="card-hover border animate-fade-in-up stagger-3" data-testid="kpi-total-revenue">
+        <Card className="romance-card border-none animate-fade-in-up stagger-3" data-testid="kpi-total-revenue">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Revenue
             </CardTitle>
-            <IndianRupee className="h-4 w-4 text-muted-foreground" />
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+              <IndianRupee className="h-5 w-5 text-amber-500" strokeWidth={1.5} />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="font-heading text-4xl font-bold tracking-tight font-mono">
+            <div className="font-serif text-4xl font-semibold tracking-tight stat-number">
               ₹{(analytics?.total_revenue || 0).toLocaleString("en-IN")}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-2">
               Lifetime earnings
             </p>
           </CardContent>
         </Card>
 
         {/* Monthly Revenue */}
-        <Card className="card-hover border animate-fade-in-up stagger-4" data-testid="kpi-monthly-revenue">
+        <Card className="romance-card border-none animate-fade-in-up stagger-4 glow-rose" data-testid="kpi-monthly-revenue">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               This Month
             </CardTitle>
-            <IndianRupee className="h-4 w-4 text-primary" />
+            <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
+              <IndianRupee className="h-5 w-5 text-primary" strokeWidth={1.5} />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="font-heading text-4xl font-bold tracking-tight text-primary font-mono">
+            <div className="font-serif text-4xl font-semibold tracking-tight text-primary stat-number">
               ₹{(analytics?.monthly_revenue || 0).toLocaleString("en-IN")}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-2">
               Current month revenue
             </p>
           </CardContent>
@@ -154,9 +162,9 @@ export default function Dashboard() {
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Subscriber Status Chart */}
-        <Card className="card-hover border" data-testid="chart-subscriber-status">
+        <Card className="romance-card border-none" data-testid="chart-subscriber-status">
           <CardHeader>
-            <CardTitle className="font-heading text-lg font-bold">
+            <CardTitle className="font-serif text-xl font-semibold">
               Subscriber Status
             </CardTitle>
           </CardHeader>
@@ -204,9 +212,9 @@ export default function Dashboard() {
         </Card>
 
         {/* Plan Distribution */}
-        <Card className="card-hover border" data-testid="chart-plan-distribution">
+        <Card className="romance-card border-none" data-testid="chart-plan-distribution">
           <CardHeader>
-            <CardTitle className="font-heading text-lg font-bold">
+            <CardTitle className="font-serif text-xl font-semibold">
               Subscribers by Plan
             </CardTitle>
           </CardHeader>
@@ -215,11 +223,17 @@ export default function Dashboard() {
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={planData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                    <XAxis dataKey="name" stroke="#64748B" fontSize={12} />
-                    <YAxis stroke="#64748B" fontSize={12} />
-                    <Tooltip />
-                    <Bar dataKey="count" fill="#2563EB" radius={[4, 4, 0, 0]} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(340 30% 15%)" />
+                    <XAxis dataKey="name" stroke="hsl(340 20% 50%)" fontSize={12} />
+                    <YAxis stroke="hsl(340 20% 50%)" fontSize={12} />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(340 40% 7%)', 
+                        border: '1px solid hsl(340 40% 20%)',
+                        borderRadius: '0.75rem'
+                      }} 
+                    />
+                    <Bar dataKey="count" fill="hsl(346 80% 50%)" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -235,10 +249,10 @@ export default function Dashboard() {
       {/* Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Subscribers */}
-        <Card className="card-hover border" data-testid="recent-subscribers">
+        <Card className="romance-card border-none" data-testid="recent-subscribers">
           <CardHeader>
-            <CardTitle className="font-heading text-lg font-bold flex items-center gap-2">
-              <UserPlus className="w-5 h-5" />
+            <CardTitle className="font-serif text-xl font-semibold flex items-center gap-2">
+              <UserPlus className="w-5 h-5 text-primary" strokeWidth={1.5} />
               Recent Subscribers
             </CardTitle>
           </CardHeader>
@@ -279,44 +293,44 @@ export default function Dashboard() {
         </Card>
 
         {/* Recent Payments */}
-        <Card className="card-hover border" data-testid="recent-payments">
+        <Card className="romance-card border-none" data-testid="recent-payments">
           <CardHeader>
-            <CardTitle className="font-heading text-lg font-bold flex items-center gap-2">
-              <CreditCard className="w-5 h-5" />
+            <CardTitle className="font-serif text-xl font-semibold flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-primary" strokeWidth={1.5} />
               Recent Payments
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <div className="space-y-3">
               {analytics?.recent_payments?.length > 0 ? (
                 analytics.recent_payments.map((payment) => (
                   <div
                     key={payment.id}
-                    className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                    className="flex items-center justify-between p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
                   >
                     <div>
-                      <p className="font-medium font-mono text-sm">
+                      <p className="font-serif font-semibold text-lg">
                         ₹{payment.amount.toLocaleString("en-IN")}
                       </p>
                       <p className="text-xs text-muted-foreground capitalize">
                         {payment.payment_method}
                       </p>
                     </div>
-                    <Badge
-                      className={`${
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-medium ${
                         payment.status === "verified"
-                          ? "bg-green-100 text-green-700"
+                          ? "status-active"
                           : payment.status === "pending"
-                          ? "bg-yellow-100 text-yellow-700"
-                          : "bg-red-100 text-red-700"
+                          ? "status-pending"
+                          : "status-expired"
                       }`}
                     >
                       {payment.status}
-                    </Badge>
+                    </span>
                   </div>
                 ))
               ) : (
-                <p className="text-muted-foreground text-center py-4">
+                <p className="text-muted-foreground text-center py-8">
                   No recent payments
                 </p>
               )}

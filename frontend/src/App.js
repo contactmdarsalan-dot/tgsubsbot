@@ -26,6 +26,7 @@ import LiveStream from "./pages/LiveStream";
 import PaidPosts from "./pages/PaidPosts";
 import UserManagement from "./pages/UserManagement";
 import Creators from "./pages/Creators";
+import LandingPage from "./pages/LandingPage";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -83,7 +84,7 @@ function AuthCallback() {
         const isAdmin = localStorage.getItem('isFirstUser') === 'true';
         
         if (isAdmin || user.dashboard_subscription_status === 'active') {
-          window.location.href = '/';
+          window.location.href = '/dashboard';
         } else {
           window.location.href = '/pricing';
         }
@@ -114,12 +115,13 @@ function AppRouter() {
 
   return (
     <Routes>
+      <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<Login />} />
       <Route path="/pricing" element={<PricingRoute />} />
       <Route path="/renew" element={<RenewSubscription />} />
       <Route path="/bot-checkout" element={<BotCheckout />} />
       <Route
-        path="/"
+        path="/dashboard"
         element={
           <ProtectedRoute>
             <Layout />
@@ -211,7 +213,7 @@ const PricingRoute = () => {
   
   // If already subscribed or admin or super_admin, go to dashboard
   if (subStatus === "active" || isAdmin || isSuperAdmin) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
   
   return <Pricing />;
