@@ -6399,12 +6399,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     await send_telegram_message(chat_id, "❌ Session not found", bot_token)
             
             # Announce live session - Show channel selection menu
-            elif callback_data.startswith("live_announce_") and "_to_" not in callback_data:
+            elif callback_data.startswith("live_announce_") and "_to_" not in callback_data and not callback_data.startswith("live_announce_manual_"):
                 session_id = callback_data.replace("live_announce_", "")
                 session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
                 
                 if session:
-                    # Get all channels/groups from database
+                    # Get settings and channels/groups
+                    settings = await get_bot_settings()
+                    bot_token = settings.get("telegram_bot_token", "")
                     groups = await db.groups.find({"is_active": True}, {"_id": 0}).to_list(50)
                     default_channel = settings.get("telegram_channel_id", "")
                     
