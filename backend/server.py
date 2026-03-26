@@ -4484,6 +4484,8 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
                 qr_url = settings.get("qr_code_url", "")
                 
+                logger.info(f"QR Request - plan_id: {plan_id}, plan: {plan}, qr_url: {qr_url[:50] if qr_url else 'EMPTY'}...")
+                
                 # Calculate discounted price if applicable
                 original_price = plan["price"] if plan else 0
                 discount_pct = plan.get('discount_percentage', 0) if plan else 0
@@ -4514,9 +4516,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 
                 if qr_url:
                     try:
+                        logger.info(f"Sending QR to {chat_id}...")
                         async with httpx.AsyncClient() as http_client:
                             url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-                            await http_client.post(url, json={
+                            response = await http_client.post(url, json={
                                 "chat_id": chat_id,
                                 "photo": qr_url,
                                 "caption": f"📱 <b>Scan & Pay {price_display}</b>\n\n"
@@ -4525,9 +4528,12 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                           f"⏳ Waiting for your screenshot...",
                                 "parse_mode": "HTML"
                             })
+                            logger.info(f"QR send response: {response.status_code} - {response.text[:200]}")
                     except Exception as e:
                         logger.error(f"Failed to send QR: {e}")
                         await send_telegram_message(chat_id, f"QR Code: {qr_url}\n\n📸 Screenshot bhejo!", bot_token)
+                else:
+                    logger.warning(f"QR URL is empty! Cannot send QR code.")
                 
                 # Send reminder message
                 reminder_msg = f"👆 @{username if username else 'User'}\n\n"
@@ -5139,10 +5145,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 post_id = callback_data.replace("unlock_qr_", "")
                 paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True}, {"_id": 0})
                 
+                logger.info(f"unlock_qr_ - post_id: {post_id}, paid_post: {paid_post}")
+                
                 if paid_post:
                     settings = await get_bot_settings()
                     qr_code_url = settings.get("qr_code_url", "")
                     post_price = paid_post.get("price", 99)
+                    
+                    logger.info(f"unlock_qr_ - qr_code_url: {qr_code_url[:50] if qr_code_url else 'EMPTY'}...")
                     
                     if qr_code_url:
                         # Save pending unlock request so bot knows to expect screenshot
@@ -5165,10 +5175,13 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         qr_msg += "👉 Payment screenshot yahan bhejo\n"
                         qr_msg += "👉 Auto-verify hoke content unlock ho jayega!\n"
                         qr_msg += "━━━━━━━━━━━━━━━"
-                        await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token)
+                        result = await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token)
+                        logger.info(f"unlock_qr_ - send_telegram_photo result: {result}")
                     else:
+                        logger.warning("unlock_qr_ - QR Code URL is EMPTY!")
                         await send_telegram_message(chat_id, "❌ QR Code not configured. Contact admin.", bot_token)
                 else:
+                    logger.warning(f"unlock_qr_ - paid_post not found for id: {post_id}")
                     await send_telegram_message(chat_id, "❌ Post not found or expired.", bot_token)
             
             elif callback_data.startswith("unlock_paid_"):
