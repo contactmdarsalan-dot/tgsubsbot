@@ -28,32 +28,32 @@ import {
 import { Button } from "./ui/button";
 
 const navItems = [
-  { path: "/", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/plans", label: "Plans", icon: Package },
-  { path: "/subscribers", label: "Subscribers", icon: Users },
-  { path: "/payments", label: "Payments", icon: CreditCard },
-  { path: "/paid-posts", label: "Paid Posts", icon: Lock },
-  { path: "/live-stream", label: "Live", icon: Radio },
-  { path: "/creators", label: "Creators", icon: Sparkles },
-  { path: "/chat-groups", label: "Groups", icon: MessagesSquare },
-  { path: "/broadcast", label: "Broadcast", icon: Radio },
-  { path: "/coupons", label: "Coupons", icon: Ticket },
-  { path: "/referrals", label: "Referrals", icon: Share2 },
-  { path: "/faqs", label: "FAQs", icon: HelpCircle },
-  { path: "/video-calls", label: "Video Calls", icon: Video },
-  { path: "/analytics", label: "Analytics", icon: BarChart3 },
-  { path: "/automation", label: "Automation", icon: Bell },
-  { path: "/settings", label: "Settings", icon: Settings },
-  { path: "/support", label: "Support", icon: MessageSquare },
+  { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { path: "/dashboard/plans", label: "Plans", icon: Package },
+  { path: "/dashboard/subscribers", label: "Subscribers", icon: Users },
+  { path: "/dashboard/payments", label: "Payments", icon: CreditCard },
+  { path: "/dashboard/paid-posts", label: "Paid Posts", icon: Lock },
+  { path: "/dashboard/live-stream", label: "Live", icon: Radio },
+  { path: "/dashboard/creators", label: "Creators", icon: Sparkles },
+  { path: "/dashboard/chat-groups", label: "Groups", icon: MessagesSquare },
+  { path: "/dashboard/broadcast", label: "Broadcast", icon: Radio },
+  { path: "/dashboard/coupons", label: "Coupons", icon: Ticket },
+  { path: "/dashboard/referrals", label: "Referrals", icon: Share2 },
+  { path: "/dashboard/faqs", label: "FAQs", icon: HelpCircle },
+  { path: "/dashboard/video-calls", label: "Video Calls", icon: Video },
+  { path: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
+  { path: "/dashboard/automation", label: "Automation", icon: Bell },
+  { path: "/dashboard/settings", label: "Settings", icon: Settings },
+  { path: "/dashboard/support", label: "Support", icon: MessageSquare },
 ];
 
 const adminNavItems = [
-  { path: "/admin-subs", label: "SaaS Subs", icon: Crown, adminOnly: true },
+  { path: "/dashboard/admin-subs", label: "SaaS Subs", icon: Crown, adminOnly: true },
 ];
 
 const superAdminNavItems = [
-  { path: "/super-admin", label: "Admin Support", icon: Shield, superAdminOnly: true },
-  { path: "/user-management", label: "User Management", icon: Users, superAdminOnly: true },
+  { path: "/dashboard/super-admin", label: "Admin Support", icon: Shield, superAdminOnly: true },
+  { path: "/dashboard/user-management", label: "User Management", icon: Users, superAdminOnly: true },
 ];
 
 export default function Layout() {

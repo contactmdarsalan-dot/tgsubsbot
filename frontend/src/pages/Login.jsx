@@ -58,7 +58,7 @@ export default function Login() {
         
         const isSuperAdmin = user.role === "super_admin";
         if (isAdmin || isSuperAdmin || user.dashboard_subscription_status === "active") {
-          window.location.href = "/";
+          window.location.href = "/dashboard";
         } else {
           window.location.href = "/pricing";
         }
@@ -69,7 +69,7 @@ export default function Login() {
         
         const isSuperAdmin = user.role === "super_admin";
         if (isSuperAdmin || user.dashboard_subscription_status === "active") {
-          window.location.href = "/";
+          window.location.href = "/dashboard";
         } else {
           window.location.href = "/pricing";
         }
@@ -131,7 +131,7 @@ export default function Login() {
       toast.success("Login successful!");
       
       if (user.dashboard_subscription_status === "active") {
-        window.location.href = "/";
+        window.location.href = "/dashboard";
       } else {
         window.location.href = "/pricing";
       }
