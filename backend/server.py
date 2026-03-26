@@ -25,6 +25,7 @@ from PIL import Image
 from io import BytesIO
 import re
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+import json
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -33,6 +34,46 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+# ============== REDIS CACHE (Optional - for high traffic) ==============
+redis_client = None
+try:
+    import redis
+    redis_url = os.environ.get('REDIS_URL', '')
+    if redis_url:
+        redis_client = redis.from_url(redis_url, decode_responses=True)
+        logger_temp = logging.getLogger("server")
+        logger_temp.info("Redis connected!")
+except Exception as e:
+    pass  # Redis is optional
+
+async def cache_get(key: str, default=None):
+    """Get value from Redis cache"""
+    if not redis_client:
+        return default
+    try:
+        value = redis_client.get(key)
+        return json.loads(value) if value else default
+    except:
+        return default
+
+async def cache_set(key: str, value, ttl: int = 300):
+    """Set value in Redis cache (default 5 min TTL)"""
+    if not redis_client:
+        return
+    try:
+        redis_client.setex(key, ttl, json.dumps(value))
+    except:
+        pass
+
+async def cache_delete(key: str):
+    """Delete key from cache"""
+    if not redis_client:
+        return
+    try:
+        redis_client.delete(key)
+    except:
+        pass
 
 # Razorpay client (optional - only if keys provided)
 razorpay_client = None
@@ -424,7 +465,12 @@ TELEGRAM_MIN_INTERVAL = 0.05  # 50ms between messages per chat
 _bot_username_cache = {}
 
 async def get_bot_settings():
-    """Get bot settings from database, with environment variable fallback"""
+    """Get bot settings from database, with Redis cache and environment variable fallback"""
+    # Try Redis cache first
+    cached = await cache_get("bot_settings")
+    if cached:
+        return cached
+    
     settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0})
     settings = settings or {}
     
@@ -434,6 +480,9 @@ async def get_bot_settings():
         if env_token:
             settings["telegram_bot_token"] = env_token
             logger.info("Using TELEGRAM_BOT_TOKEN from environment variable")
+    
+    # Cache for 60 seconds
+    await cache_set("bot_settings", settings, ttl=60)
     
     return settings
 
@@ -2210,10 +2259,23 @@ async def get_plans(user = Depends(get_current_user)):
 
 @api_router.get("/plans/active", response_model=List[SubscriptionPlan])
 async def get_active_plans():
+    # Try cache first
+    cached = await cache_get("active_plans")
+    if cached:
+        for plan in cached:
+            if isinstance(plan.get('created_at'), str):
+                plan['created_at'] = datetime.fromisoformat(plan['created_at'])
+        return cached
+    
     plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(100)
     for plan in plans:
         if isinstance(plan.get('created_at'), str):
             plan['created_at'] = datetime.fromisoformat(plan['created_at'])
+    
+    # Cache plans for 5 minutes
+    plans_for_cache = [{**p, 'created_at': p['created_at'].isoformat() if hasattr(p.get('created_at'), 'isoformat') else p.get('created_at')} for p in plans]
+    await cache_set("active_plans", plans_for_cache, ttl=300)
+    
     return plans
 
 @api_router.post("/plans", response_model=SubscriptionPlan)
