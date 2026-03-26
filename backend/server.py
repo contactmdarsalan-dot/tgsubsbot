@@ -490,17 +490,34 @@ async def download_telegram_photo(file_id: str, bot_token: str) -> bytes:
         async with httpx.AsyncClient(timeout=30.0) as http_client:
             # First get file path
             file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+            logger.info(f"Getting file info for: {file_id[:20]}...")
             response = await http_client.get(file_info_url)
+            
             if response.status_code == 200:
-                file_path = response.json().get("result", {}).get("file_path")
+                result = response.json()
+                if not result.get("ok"):
+                    logger.error(f"Telegram API error: {result}")
+                    return None
+                    
+                file_path = result.get("result", {}).get("file_path")
                 if file_path:
                     # Download the actual file
                     download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+                    logger.info(f"Downloading from: {download_url[:50]}...")
                     file_response = await http_client.get(download_url)
                     if file_response.status_code == 200:
+                        logger.info(f"Downloaded {len(file_response.content)} bytes")
                         return file_response.content
+                    else:
+                        logger.error(f"Download failed with status: {file_response.status_code}")
+                else:
+                    logger.error(f"No file_path in response: {result}")
+            else:
+                logger.error(f"getFile failed with status: {response.status_code}, response: {response.text}")
     except Exception as e:
         logger.error(f"Error downloading photo: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
     return None
 
 def detect_payment_screenshot(image_bytes: bytes) -> dict:
@@ -563,10 +580,10 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
 
 # ============== IMAGE BLUR FOR PAID POSTS ==============
 
-def create_blurred_image(image_bytes: bytes, blur_radius: int = 15) -> bytes:
+def create_blurred_image(image_bytes: bytes, blur_radius: int = 8) -> bytes:
     """
     Create a lightly blurred version of an image for paid post preview.
-    Shows enough to tease but not enough to see clearly.
+    17% blur - shows enough to tease but not enough to see clearly.
     """
     from PIL import ImageFilter
     
@@ -575,16 +592,14 @@ def create_blurred_image(image_bytes: bytes, blur_radius: int = 15) -> bytes:
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
         
-        # Apply light blur (15 instead of 30 for less blur)
+        # Apply 17% blur (radius 8)
         blurred = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
         
-        # Add very light semi-transparent overlay
-        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 50))
+        # Add very light semi-transparent overlay (reduced)
+        overlay = Image.new('RGBA', blurred.size, (0, 0, 0, 30))
         blurred = blurred.convert('RGBA')
         blurred = Image.alpha_composite(blurred, overlay)
         blurred = blurred.convert('RGB')
-        
-        # No text overlay - cleaner look
         
         # Convert back to bytes
         output = BytesIO()
@@ -593,6 +608,8 @@ def create_blurred_image(image_bytes: bytes, blur_radius: int = 15) -> bytes:
         
     except Exception as e:
         logger.error(f"Error creating blurred image: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return None
 
 
@@ -4087,11 +4104,31 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             is_forwarded = channel_post.get("forward_from_chat") or channel_post.get("forward_origin")
             
             # Check if this is a PAID POST (has /paid command in caption)
-            is_paid_post = caption.lower().startswith("/paid") or " /paid" in caption.lower()
+            # Support formats: /paid, /paid-99, /paid 99, /paid99
+            caption_lower = caption.lower()
+            is_paid_post = (
+                caption_lower.startswith("/paid") or 
+                " /paid" in caption_lower or
+                caption_lower.startswith("/paid-") or
+                caption_lower.startswith("/paid_")
+            )
+            
+            logger.info(f"Channel post - caption: {caption[:50] if caption else 'None'}, is_paid: {is_paid_post}, has_photo: {bool(channel_post.get('photo'))}")
             
             if is_paid_post and message_id and not is_forwarded:
                 # Process as a PAID POST
                 logger.info(f"Processing PAID POST in channel {post_chat_id}")
+                
+                # Ensure we have bot token
+                if not bot_token:
+                    settings = await get_bot_settings()
+                    bot_token = settings.get("telegram_bot_token", "")
+                    if not bot_token:
+                        bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+                
+                if not bot_token:
+                    logger.error("No bot token available for paid post processing")
+                    return {"ok": False, "error": "No bot token"}
                 
                 try:
                     # Get content type and file_id FIRST (before deleting)
@@ -4103,6 +4140,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     if photo:
                         # Get largest photo
                         original_file_id = photo[-1].get("file_id", "")
+                        logger.info(f"Got photo file_id: {original_file_id[:20]}...")
                     elif video:
                         original_file_id = video.get("file_id", "")
                     
@@ -4110,25 +4148,35 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     image_bytes = None
                     blurred_bytes = None
                     if photo and original_file_id:
+                        logger.info(f"Downloading original photo...")
                         image_bytes = await download_telegram_photo(original_file_id, bot_token)
                         if image_bytes:
+                            logger.info(f"Downloaded {len(image_bytes)} bytes, creating blur...")
                             blurred_bytes = create_blurred_image(image_bytes)
-                            logger.info(f"Created blurred image: {len(blurred_bytes) if blurred_bytes else 0} bytes")
+                            if blurred_bytes:
+                                logger.info(f"Created blurred image: {len(blurred_bytes)} bytes")
+                            else:
+                                logger.error("Failed to create blurred image - blurred_bytes is None")
+                        else:
+                            logger.error("Failed to download original photo - image_bytes is None")
                     
                     # NOW delete original message
-                    await delete_telegram_message(post_chat_id, message_id, bot_token)
-                    logger.info(f"Deleted original message {message_id}")
+                    delete_result = await delete_telegram_message(post_chat_id, message_id, bot_token)
+                    logger.info(f"Deleted original message {message_id}: {delete_result}")
                     
-                    # Clean caption (remove /paid command)
-                    clean_caption = caption.replace("/paid", "").replace("/Paid", "").replace("/PAID", "").strip()
+                    # Clean caption (remove /paid command and variations)
+                    clean_caption = re.sub(r'^/paid[-_]?\s*', '', caption, flags=re.IGNORECASE).strip()
                     
-                    # Extract price if mentioned (e.g., /paid 99 or /paid ₹99 or /paid -99)
-                    price_match = re.search(r'^[₹\-]?(\d+)\s*', clean_caption)
+                    # Extract price if mentioned (e.g., /paid-999, /paid 99, /paid₹99, 999 at start)
+                    price_match = re.search(r'^[₹]?(\d+)[-_\s]*', clean_caption)
                     post_price = float(price_match.group(1)) if price_match else 0
+                    logger.info(f"Extracted price: {post_price} from caption: {clean_caption[:30]}")
                     
                     # Remove price from caption if found at the beginning
                     if price_match:
                         clean_caption = clean_caption[price_match.end():].strip()
+                        # Also remove leading - or _ if present
+                        clean_caption = re.sub(r'^[-_\s]+', '', clean_caption)
                     
                     # If no price specified, get default from settings or plans
                     if post_price <= 0:
@@ -4177,13 +4225,35 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     
                     if photo and blurred_bytes:
                         # Send blurred photo
+                        logger.info(f"Posting blurred image to channel {post_chat_id}...")
                         result = await send_telegram_photo(post_chat_id, blurred_bytes, blur_caption, bot_token, unlock_button)
+                        logger.info(f"Send photo result: {result}")
                         if result and result.get("result"):
                             blurred_message_id = result["result"].get("message_id", 0)
                             await db.paid_posts.update_one({"id": paid_post_id}, {"$set": {"blurred_message_id": blurred_message_id}})
                             logger.info(f"Posted blurred image with message_id: {blurred_message_id}")
                         else:
                             logger.error(f"Failed to post blurred image: {result}")
+                            # Try posting as text message with unlock button as fallback
+                            fallback_msg = f"🔒 <b>Paid Content</b>\n\n{blur_caption}\n\n⚠️ Image could not be processed. Contact admin."
+                            await send_telegram_message_with_buttons(post_chat_id, fallback_msg, [[{
+                                "text": f"🔓 Unlock Post - ₹{int(post_price)}",
+                                "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
+                            }]], bot_token)
+                    
+                    elif photo and not blurred_bytes:
+                        # Photo exists but blur failed - post text message
+                        logger.warning("Blurred bytes is None, posting text fallback")
+                        fallback_msg = f"🔒 <b>Paid Content</b>\n\n"
+                        if clean_caption:
+                            fallback_msg += f"{clean_caption}\n\n"
+                        fallback_msg += f"💰 Price: <b>{price_text}</b>\n\n"
+                        fallback_msg += "👆 Tap 'Unlock Post' to view full content!"
+                        
+                        await send_telegram_message_with_buttons(post_chat_id, fallback_msg, [[{
+                            "text": f"🔓 Unlock Post - ₹{int(post_price)}",
+                            "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
+                        }]], bot_token)
                     
                     elif video and original_file_id:
                         # For videos, send a text message with unlock button
