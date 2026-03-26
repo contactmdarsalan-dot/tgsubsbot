@@ -1,134 +1,155 @@
 <analysis>**original_problem_statement:**
-The user's primary goal was to fix a failing production deployment on their Coolify-managed VPS. The frontend build was failing due to ESLint errors, and the backend had a series of dependency and configuration issues.
+The user initially requested fixes for the Paid Posts feature (blur delay, pricing bugs, auto-unlock for subscribers). As the session progressed, the user requested several major feature additions: 
+1. A User Management dashboard for Super Admins.
+2. Plan-specific, customizable discounts (replacing a hardcoded 20% discount).
+3. A complete replacement of the Video Call feature with a Live Stream feature, including ticketing and paid Superchats.
+4. UI improvements (showing full payment screenshots in the admin panel, adding a navbar to the pricing page).
+Throughout the session, the user experienced constant discrepancies because they were testing on their Coolify production server while the latest code was only on the preview server.
 
-Once the deployment was fixed, the user requested a list of new features to be implemented in the Telegram bot:
-1.  Ensure a Subscribe Now button appears under every channel post.
-2.  Add a Paid Posts feature to the bot.
-3.  Activate a Video Call booking feature.
-4.  Send an automatic welcome DM with plan details to new subscribers.
-5.  Change the payment reminder logic to show a discount after 8-9 messages instead of 15.
-6.  Add an automatic AI chat feature to handle user queries.
-7.  Train an AI to automatically post content (videos/photos) in groups.
+**User's preferred language**: Hinglish (Hindi written in Roman script). INSTRUCT NEXT AGENT: You MUST respond in Hinglish.
 
-**User's preferred language**: Hinglish (Hindi written in Roman script). The next agent MUST respond in Hinglish.
-
-**what currently exists?**
-The full-stack application (React frontend, FastAPI backend, MongoDB) is now successfully deployed and running on the user's Coolify VPS. The agent successfully diagnosed and guided the user to fix a series of complex deployment issues, including backend dependencies (, ), Coolify build pack misconfigurations (Nixpacks vs. Dockerfile), incorrect Dockerfile paths, port conflicts, and a critical  mismatch.
+**what currently exists?** 
+A full-stack React + FastAPI + MongoDB Telegram subscription bot. It handles automated plan subscriptions, Paid Posts (blurred images requiring payment), Live Stream ticketing, Superchats, and uses AI (GPT-4o Vision) to verify UPI payment screenshots. The preview environment code is up-to-date, but the user's production Coolify environment is highly unstable and frequently throws  errors.
 
 **Last working item**:
--   **Last item agent was working:** Implementing a batch of new features requested by the user after the deployment was fixed. The agent started with the Video Call feature, creating backend models, APIs, and bot commands, as well as the corresponding frontend page, route, and settings. The agent also began implementing an AI Chat feature by modifying the webhook handler to reply to non-command messages.
--   **Status:** IN PROGRESS
--   **Agent Testing Done:** N
--   **Which testing method agent to use?** both (frontend and backend testing agents are recommended after this large batch of features is complete).
--   **User Testing Done:** N
+- **Last item agent was working:** Debugging why the  command is failing to blur images on the user's live bot. The agent discovered that the Telegram webhook is pointing to the production URL, which is currently returning a  error, meaning the bot cannot process the commands.
+- **Status:** BLOCKED (Pending production server stabilization / deployment)
+- **Agent Testing Done:** Y (Verified webhook status and error via bash)
+- **Which testing method agent to use?** backend testing via bash/curl to check webhook status, followed by manual bot testing once the server is up.
+- **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1 (P0):** Fix Python linting errors.
-    -   **Attempted fixes:** The agent identified 24 linting errors, including bare  clauses and f-strings without placeholders. One critical fix ( import) was applied.
-    -   **Next debug checklist:**
-        1.  Run  again.
-        2.  Use  to fix the remaining critical errors reported by the linter, focusing on the  (bare except) errors first by making the exceptions more specific (e.g., ).
-    -   **Why fix this issue and what will be achieved with the fix?** To improve code quality and prevent potential hidden bugs in production.
-    -   **Status:** IN PROGRESS
-    -   **Is recurring issue?** N
-    -   **Should Test frontend/backend/both after fix?** backend
+- **Issue 1: Production Webhook  (P0)**
+   - **Attempted fixes:** Agent checked the webhook status and found the 502 error. Previous fixes involved temporarily pointing the webhook to the preview environment so the bot stays alive.
+   - **Next debug checklist:**  to check current webhook status. Guide the user to check their Coolify server logs, restart their production containers, and ensure the latest code is deployed via Save to Github. Alternatively, switch the webhook back to the preview environment temporarily so the user can test the latest features.
+   - **Why fix this issue and what will be achieved with the fix?** The bot is completely dead on production. Commands like  are not being processed by the backend.
+   - **Status:** BLOCKED (Requires user action on Coolify)
+   - **Is recurring issue?** Y (Extremely frequent)
+   - **Should Test frontend/backend/both after fix?** Backend (Webhook response)
+   - **Blocked on other issue:** User deploying the latest code to a stable production server.
+
+- **Issue 2: Monolithic Backend File / Tech Debt (P1)**
+   - **Attempted fixes:** None.
+   - **Next debug checklist:** Refactor  into smaller routers (, , , , ).
+   - **Why fix this issue and what will be achieved with the fix?**  is now over 6,700 lines long. It is becoming a massive risk for context limits and maintainability.
+   - **Status:** NOT STARTED
+   - **Is recurring issue?** N
+   - **Should Test frontend/backend/both after fix?** Both (Needs heavy regression testing via Testing Agent).
 
 **In progress Task List**:
--   **Task 1: Complete and Test Video Call Feature (P0)**
-    -   **Where to resume:** The backend models, APIs, bot commands, and frontend UI components have been created. The next step is to ensure the frontend  page correctly fetches and displays bookings, and that the settings page correctly saves video call configurations.
-    -   **What will be achieved with this?** A complete, user-facing feature allowing users to book and admins to manage video calls.
-    -   **Status:** IN PROGRESS
-    -   **Should Test frontend/backend/both after fix?** Both
-    -   **Blocked on something:** None.
-
--   **Task 2: Complete and Test AI Chat Feature (P1)**
-    -   **Where to resume:** The agent added logic to  to handle non-command text messages. The logic attempts to find a matching FAQ and, if none is found, calls a generic  function. This function needs to be fleshed out to actually call the LLM.
-    -   **What will be achieved with this?** The bot will be able to provide helpful, AI-generated responses to user queries that are not commands.
-    -   **Status:** IN PROGRESS
-    -   **Should Test frontend/backend/both after fix?** Backend
-    -   **Blocked on something:** None.
+None. All requested features in the session were implemented, but deployment/production issues are blocking verification.
 
 **Upcoming and Future Tasks**
--   **Upcoming Tasks:**
-    -   (P1) **Paid Posts in Bot:** Implement the logic for creating and delivering paid-only content through the bot.
-    -   (P2) **AI Auto-Posting:** Implement a system where an AI can be trained to automatically post content (videos, photos) to specified groups. This is a complex task and will require careful planning.
--   **Future Tasks:**
-    -   (P3) **Refactor Backend:** Break down the monolithic  (now over 5000 lines) into a modular structure with  and  directories.
+- **Upcoming Tasks:**
+  - (P0) Stabilize Production Environment: Assist user in getting the Coolify deployment stable and synced with the latest codebase.
+- **Future Tasks:**
+  - (P1) Refactor Backend Codebase: Split the 6700+ line  into modular FastAPI routers.
+  - (P2) AI Auto-Posting: Implement a system where AI can be trained to automatically post content to specified groups (carried over from previous handoff).
+  - (P2) Python Linting: Fix remaining non-critical linting errors (mostly f-strings).
 
 **Completed work in this session**
--   **Deployment Fixed:** Successfully troubleshooted and resolved a series of cascading deployment failures on the user's Coolify VPS.
-    -   Fixed  by removing  and adding .
-    -   Guided user to switch Coolify build pack from Nixpacks to Dockerfile.
-    -   Corrected  and  paths for both frontend and backend.
-    -   Resolved a  not found error in the frontend Dockerfile.
-    -   Identified and resolved the critical  by instructing the user to use the correct internal  for the backend service.
--   **Discount Reminder Logic:** Modified  to show the discount button after 8 reminders instead of 15.
--   **Subscribe Now Button Logic:** Improved the logic in  to show the button on any channel post where the bot is an admin, not just a specific promo channel.
+- Paid post blur logic re-architected (Download -> Blur -> Post -> Delete Original) to prevent content leaks.
+- Removed auto-unlock for active subscribers on Paid Posts.
+- Added specific AI rejection titles (Amount Mismatch, Wrong UPI) and Analyzing UI states to both Paid Posts and Subscription flows.
+- AI verification now correctly checks the *discounted* price instead of the original plan price.
+- Added Secure Telegram File serving API () so Admins can view full payment screenshots in the Dashboard.
+- Added  page and APIs for Super Admins to create/manage other admins.
+- Super Admins now bypass subscription route guards.
+- Replaced flat 20% discount with a customizable  field per Plan.
+- Replaced Video Calls with Live Stream feature (,  commands, ticket generation, admin management tab).
+- Added Navbar (Logo + Logout) to the Pricing page.
+- Fixed image loading blob UI bug in Payments dashboard.
 
 **Earlier issues found/mentioned but not fixed**
--   The massive technical debt of the monolithic  file remains and has been made worse with the addition of new features.
+- **Issue 1:**  tech debt.
+  - **Debug checklist:** Break into , , .
+  - **Why to solve this issue and what will be achieved with this?** Prevent context limit issues and make code maintainable.
+  - **Should Test frontend/backend/both after fix:** Both.
+  - **Is recurring issue?** Y (Worsens every session).
 
 **Known issue recurrence from previous fork**
--   **Issue recurrence in previous fork:** Failing Coolify deployments.
--   **Recurrence count:** 3+
--   **Status:** RESOLVED (for now). The agent successfully fixed the deployment issues, but the complexity of the user's setup means future deployment issues are possible.
+- **Issue recurrence in previous fork:** Production deployment failing /  / User testing on outdated production code.
+- **Recurrence count:** High (5+ times this session alone).
+- **Status:** IN PROGRESS / BLOCKED.
+- *Note:* The user constantly reports bugs that were already fixed in the preview environment because they forget to deploy the new code to their Coolify server, or the Coolify server crashes.
 
 **Code Architecture**
 
 
+**Key Technical Concepts**
+- React frontend (Shadcn UI, Tailwind)
+- FastAPI backend (monolithic)
+- MongoDB (Motor async driver)
+- Telegram Bot API (Custom Webhook implementation)
+- LiteLLM / GPT-4o Vision for Payment Verification
+- PyTesseract for OCR fallback
+
 **key DB schema**
--   **video_call_bookings:** 
+- : 
+- :  (discount_percentage is new)
+- , 
+- :  (New)
+- :  (New)
+- :  (New)
+
+**changes in tech stack**
+- None.
 
 **All files of reference**
--   **/app/backend/server.py**: Heavily modified to fix deployment issues and add new features (Video Call, AI Chat, improved buttons/reminders). Now over 5100 lines.
--   **/app/backend/requirements.txt**: Modified to fix deployment.
--   **/app/frontend/Dockerfile**: Modified to fix deployment.
--   **/app/frontend/src/pages/VideoCalls.jsx**: New file created for the video call booking management page.
--   **/app/frontend/src/App.js**: Modified to add the route for the new Video Calls page.
--   **/app/frontend/src/components/Layout.jsx**: Modified to add a navigation link to the Video Calls page.
--   **/app/frontend/src/pages/Settings.jsx**: Modified to include settings for the new Video Call feature.
+- : Contains almost all backend logic. Needs careful handling.
+- : Newly created for Live tickets/superchats.
+- : Newly created for Super Admin controls.
+- : Updated to render Telegram images securely via backend proxy.
+
+**Areas that need refactoring**:
+-  is critically large.
+
+**key api endpoints**
+- : Core bot logic.
+- : New endpoint to serve telegram images securely to the admin panel.
+- : New endpoint for user management.
+- , , : New endpoints for Live feature.
 
 **Critical Info for New Agent**
--   The production deployment is **FIXED** and the application is live. Do not attempt to debug deployment issues unless the user reports a new failure.
--   Your primary focus should be on completing the **In progress** and **Upcoming** feature list. The user is eager for new functionality.
--   The Video Call feature is partially implemented. You need to complete the frontend integration and test the full flow.
--   The AI Chat feature has a placeholder in the backend. You need to implement the actual LLM call.
--   The backend  file is extremely large and difficult to maintain. While full refactoring is a future task, be mindful of this when adding new code. Try to keep new functions clean and self-contained.
+- **Webhook Nightmare:** The user frequently tests the bot on Telegram and complains that features aren't working. **90% of the time, this is because the Telegram webhook is pointing to their broken/outdated Coolify production server instead of the preview server where you are working.** Always check  first.
+- **Production 502:** As of the last message, the user's Coolify webhook () is returning a . You must explain to the user that their Coolify server is down or needs a redeploy via the Save to Github button.
+- **Do not use Video Calls anymore.** This feature was entirely ripped out and replaced with Live Streams based on user request.
+- Remember to reply strictly in **Hinglish**.
 
 **documents and test reports created in this job**
--   None.
+- None.
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Asks to start working on the feature list. (COMPLETED)
-2.  **User:** Reiterates the full feature list. (IN PROGRESS)
-3.  **Agent:** Starts debugging why the Subscribe Now button isn't appearing. (COMPLETED)
-4.  **Agent:** Finds the  is not set. (COMPLETED)
-5.  **Agent:** Improves the code to make the button appear on all channels, not just the promo one. (COMPLETED)
-6.  **Agent:** Starts implementing the Video Call feature. (IN PROGRESS)
-7.  **Agent:** Asks the user for specifics on the video call feature. (PENDING)
-8.  **User:** Reiterates the full feature list again, clarifying it's all for the Telegram bot. (IN PROGRESS)
-9.  **Agent:** Continues implementing the features, starting with the discount reminder fix. (COMPLETED)
-10. **Agent:** Asks the user about the Video Call feature again. (PENDING)
+1. User asked to fix bot sending Channel invites for a Group-only plan. (Completed)
+2. User asked to make discounts specific to each plan instead of a flat 20%. (Completed)
+3. User asked to replace Video Calls with a Live Stream feature featuring Tickets and Superchats. (Completed)
+4. User asked to fix payment screenshots not loading in the admin panel and add a Navbar to the pricing page. (Completed)
+5. User noted Super Admin panel wasn't showing in the sidebar. (Completed)
+6. User reported that posting a  post immediately deletes the image without blurring. (Agent re-ordered logic).
+7. User uploaded screenshots showing the blur wasn't working and subscribers were auto-unlocking. (Agent realized production had outdated code).
+8. User said it still isn't working. (Agent switched webhook to preview, but preview URL failed due to ingress issues, switched back to production).
+9. User asked for 17% blur and complained image was auto-deleting. (Agent fixed blur radius and improved error handling).
+10. User showed a screenshot where  command posted the image completely unblurred. (Pending - Agent identified the production webhook is throwing a 502 Bad Gateway).
 
 **Project Health Check:**
--   **Broken:** None. Deployment is now stable.
--   **Mocked:** None.
+- Broken: Production environment (Coolify) is throwing .
+- Working: Preview environment code is solid, but cannot receive Telegram webhooks directly right now due to standard preview ingress limitations.
 
 **3rd Party Integrations**
--   **OpenAI GPT-4o Vision:** Integrated via  for payment screenshot analysis. Uses the .
+- OpenAI GPT-4o Vision (Payment Screenshot verification) — uses Emergent LLM Key.
 
 **Testing status**
--   **Testing agent used after significant changes:** NO
--   **Troubleshoot agent used after agent stuck in loop:** NO
--   **Test files created:** None
--   **Known regressions:** The webhook status showed a  error, which might be a cached message but should be monitored.
+- Testing agent used after significant changes: NO (Forgot to execute after building Live Streams)
+- Troubleshoot agent used after agent stuck in loop: NO
+- Test files created: None
+- Known regressions: Preview webhook URL randomly started returning 404s, forcing the agent to rely on the unstable production webhook.
 
 **Credentials to test flow:**
--   **Super Admin:**  | Password: 
--   **Bot Token:** 
--   **User's VPS IP:** 
--   **Coolify URL:** 
+- Super Admin 1:  | 
+- Super Admin 2:  | 
+- Production MongoDB Password: 
+- User VPS IP:  (Coolify dashboard on port 8000)
 
 **What agent forgot to execute**
--   The agent created several new frontend and backend features but did not run the testing agent to verify them.
--   The agent did not fully resolve all the Python linting errors.</analysis>
+- The agent built a massive Live Streams feature and User Management feature but **failed to run the Testing Agent** to verify them.
+- Did not refactor the massive 6700-line  file.</analysis>

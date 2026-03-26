@@ -6421,8 +6421,6 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             else:
                 # No FAQ match - use AI to respond
                 try:
-                    from emergentintegrations.llm.chat import chat, LlmMessage
-                    
                     # Get context about the bot/business
                     plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
                     plan_info = "\n".join([f"- {p['name']}: ₹{p['price']} for {p['duration_days']} days" for p in plans])
@@ -6435,24 +6433,23 @@ Available Plans:
 Commands users can use:
 - /start - View subscription plans
 - /status - Check subscription status
-- /videocall - Book a video call
+- /live - View live sessions
 - /help - Get help
 
 Keep responses short, friendly, and helpful. If user asks about pricing or plans, tell them to use /start command. 
 If they have technical issues, ask them to describe the problem.
 Always be polite and use emojis sparingly."""
 
-                    response = await chat(
+                    llm = LlmChat(
                         api_key=os.environ.get("EMERGENT_LLM_KEY", ""),
-                        messages=[
-                            LlmMessage(role="system", content=system_prompt),
-                            LlmMessage(role="user", content=text)
-                        ],
                         model="gpt-4o-mini"
                     )
+                    llm.add_message("system", system_prompt)
+                    llm.add_message("user", text)
+                    response = await llm.chat()
                     
-                    if response and response.message:
-                        await send_telegram_message(chat_id, response.message, bot_token)
+                    if response:
+                        await send_telegram_message(chat_id, response, bot_token)
                     else:
                         # Fallback response
                         fallback_msg = "🤔 I'm not sure about that.\n\n"
