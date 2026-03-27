@@ -2866,18 +2866,49 @@ async def verify_manual_payment(payment_id: str, background_tasks: BackgroundTas
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
     
-    await db.payments.update_one({"id": payment_id}, {"$set": {"status": "verified"}})
+    # Check if already verified
+    if payment.get("status") == "verified":
+        raise HTTPException(status_code=400, detail="Payment already verified")
+    
+    await db.payments.update_one({"id": payment_id}, {"$set": {"status": "verified", "verified_at": datetime.now(timezone.utc).isoformat()}})
     
     # Create subscriber
     plan = await db.plans.find_one({"id": payment["plan_id"]}, {"_id": 0})
     if plan:
-        subscriber_create = SubscriberCreate(
-            telegram_user_id=payment["telegram_user_id"],
-            plan_id=payment["plan_id"],
-            payment_method="manual",
-            payment_id=payment["id"]
-        )
-        await create_subscriber(subscriber_create, background_tasks)
+        # Check if subscriber already exists
+        existing = await db.subscribers.find_one({
+            "telegram_user_id": payment["telegram_user_id"],
+            "plan_id": payment["plan_id"],
+            "status": "active"
+        }, {"_id": 0})
+        
+        if not existing:
+            subscriber_create = SubscriberCreate(
+                telegram_user_id=payment["telegram_user_id"],
+                telegram_username=payment.get("telegram_username"),
+                plan_id=payment["plan_id"],
+                payment_method="manual",
+                payment_id=payment["id"]
+            )
+            # Run subscriber creation in background
+            background_tasks.add_task(create_subscriber_task, subscriber_create, plan)
+        else:
+            # Subscriber exists, just send invite link again
+            settings = await get_bot_settings()
+            plan_channel = plan.get("channel_id", "") or settings.get("telegram_channel_id", "")
+            if plan_channel:
+                background_tasks.add_task(add_to_channel, payment["telegram_user_id"], plan_channel, plan["name"])
+    
+    # Send success message to user
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    if bot_token and payment.get("telegram_user_id"):
+        success_msg = "✅ <b>Payment Verified!</b>\n\n"
+        success_msg += f"📦 Plan: <b>{payment.get('plan_name', 'N/A')}</b>\n"
+        success_msg += f"💰 Amount: ₹{payment.get('amount', 0)}\n\n"
+        success_msg += "🎉 Your subscription is now active!\n"
+        success_msg += "📨 You'll receive the channel invite link shortly."
+        await send_telegram_message(payment["telegram_user_id"], success_msg, bot_token)
     
     return {"message": "Payment verified and subscriber created"}
 
@@ -2933,23 +2964,48 @@ async def bulk_verify_payments(data: dict, background_tasks: BackgroundTasks, us
     if not payment_ids:
         raise HTTPException(status_code=400, detail="No payment IDs provided")
     
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
     verified_count = 0
     for payment_id in payment_ids:
         payment = await db.payments.find_one({"id": payment_id, "status": "pending"}, {"_id": 0})
         if payment:
-            await db.payments.update_one({"id": payment_id}, {"$set": {"status": "verified"}})
+            await db.payments.update_one({"id": payment_id}, {"$set": {"status": "verified", "verified_at": datetime.now(timezone.utc).isoformat()}})
             
             # Create subscriber
             plan = await db.plans.find_one({"id": payment["plan_id"]}, {"_id": 0})
             if plan:
-                subscriber_create = SubscriberCreate(
-                    telegram_user_id=payment["telegram_user_id"],
-                    telegram_username=payment.get("telegram_username"),
-                    plan_id=payment["plan_id"],
-                    payment_method=payment.get("payment_method", "manual"),
-                    payment_id=payment["id"]
-                )
-                background_tasks.add_task(create_subscriber_task, subscriber_create, plan)
+                # Check if subscriber already exists
+                existing = await db.subscribers.find_one({
+                    "telegram_user_id": payment["telegram_user_id"],
+                    "plan_id": payment["plan_id"],
+                    "status": "active"
+                }, {"_id": 0})
+                
+                if not existing:
+                    subscriber_create = SubscriberCreate(
+                        telegram_user_id=payment["telegram_user_id"],
+                        telegram_username=payment.get("telegram_username"),
+                        plan_id=payment["plan_id"],
+                        payment_method=payment.get("payment_method", "manual"),
+                        payment_id=payment["id"]
+                    )
+                    background_tasks.add_task(create_subscriber_task, subscriber_create, plan)
+                else:
+                    # Just send invite link
+                    plan_channel = plan.get("channel_id", "") or settings.get("telegram_channel_id", "")
+                    if plan_channel:
+                        background_tasks.add_task(add_to_channel, payment["telegram_user_id"], plan_channel, plan["name"])
+                
+                # Send success message
+                if bot_token and payment.get("telegram_user_id"):
+                    success_msg = "✅ <b>Payment Verified!</b>\n\n"
+                    success_msg += f"📦 Plan: <b>{payment.get('plan_name', plan.get('name', 'N/A'))}</b>\n"
+                    success_msg += f"💰 Amount: ₹{payment.get('amount', 0)}\n\n"
+                    success_msg += "🎉 Your subscription is now active!"
+                    await send_telegram_message(payment["telegram_user_id"], success_msg, bot_token)
+            
             verified_count += 1
     
     return {"message": f"{verified_count} payments verified", "verified_count": verified_count}
