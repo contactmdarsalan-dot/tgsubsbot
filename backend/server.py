@@ -2326,16 +2326,45 @@ async def delete_plan(plan_id: str, user = Depends(get_current_user)):
 
 # ============== SUBSCRIBERS ROUTES ==============
 
-@api_router.get("/subscribers", response_model=List[Subscriber])
+@api_router.get("/subscribers")
 async def get_subscribers(status: Optional[str] = None, user = Depends(get_current_user)):
     query = {}
     if status:
         query["status"] = status
     subscribers = await db.subscribers.find(query, {"_id": 0}).to_list(1000)
+    
+    # Fetch all plans and groups for enrichment
+    plans = await db.plans.find({}, {"_id": 0}).to_list(100)
+    plans_map = {p["id"]: p for p in plans}
+    
+    groups = await db.chat_groups_pool.find({}, {"_id": 0}).to_list(100)
+    # Map by assigned_to_user_id for quick lookup
+    groups_by_user = {g.get("assigned_to_user_id", ""): g for g in groups if g.get("assigned_to_user_id")}
+    # Also map by group_id
+    groups_by_id = {g.get("group_id", ""): g for g in groups}
+    
     for sub in subscribers:
         for field in ['start_date', 'end_date', 'grace_end_date', 'created_at']:
             if isinstance(sub.get(field), str):
                 sub[field] = datetime.fromisoformat(sub[field])
+        
+        # Enrich with plan's channel_id
+        plan = plans_map.get(sub.get("plan_id", ""), {})
+        sub["channel_id"] = plan.get("channel_id", "")
+        
+        # Enrich with group info - check assigned group or plan's group_id
+        assigned_group = groups_by_user.get(sub.get("telegram_user_id", ""))
+        if assigned_group:
+            sub["group_name"] = assigned_group.get("group_name", assigned_group.get("group_id", ""))
+            sub["group_id"] = assigned_group.get("group_id", "")
+        elif plan.get("group_id"):
+            group = groups_by_id.get(plan["group_id"], {})
+            sub["group_name"] = group.get("group_name", plan.get("group_id", ""))
+            sub["group_id"] = plan.get("group_id", "")
+        else:
+            sub["group_name"] = ""
+            sub["group_id"] = ""
+    
     return subscribers
 
 @api_router.post("/subscribers", response_model=Subscriber)

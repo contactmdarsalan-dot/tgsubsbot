@@ -302,6 +302,9 @@ export default function Subscribers() {
                 <TableHeader>
                   <TableRow className="bg-muted/50">
                     <TableHead className="font-heading font-bold">User</TableHead>
+                    <TableHead className="font-heading font-bold">Telegram ID</TableHead>
+                    <TableHead className="font-heading font-bold">Channel ID</TableHead>
+                    <TableHead className="font-heading font-bold">Group Name</TableHead>
                     <TableHead className="font-heading font-bold">Plan</TableHead>
                     <TableHead className="font-heading font-bold">Status</TableHead>
                     <TableHead className="font-heading font-bold">Start</TableHead>
@@ -318,10 +321,22 @@ export default function Subscribers() {
                           <p className="font-mono text-sm font-medium">
                             {sub.telegram_username ? `@${sub.telegram_username}` : sub.telegram_user_id}
                           </p>
-                          {sub.telegram_username && (
-                            <p className="text-xs text-muted-foreground">{sub.telegram_user_id}</p>
-                          )}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-mono text-sm" data-testid={`subscriber-telegram-id-${sub.id}`}>
+                          {sub.telegram_user_id || "-"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-mono text-xs" data-testid={`subscriber-channel-id-${sub.id}`}>
+                          {sub.channel_id || "-"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm" data-testid={`subscriber-group-name-${sub.id}`}>
+                          {sub.group_name || "-"}
+                        </span>
                       </TableCell>
                       <TableCell>{sub.plan_name}</TableCell>
                       <TableCell>{getStatusBadge(sub.status)}</TableCell>

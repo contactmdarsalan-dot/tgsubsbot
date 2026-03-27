@@ -37,6 +37,13 @@ User requested a Telegram Subscription Bot with:
 
 ## What's Been Implemented
 
+### Mar 27, 2026 - Subscriber Details Enhancement
+- [x] **Subscribers Table Updated** - Added Telegram ID, Channel ID, and Group Name columns
+  - Backend `GET /api/subscribers` enriched with plan's channel_id and assigned group info
+  - Frontend `Subscribers.jsx` updated with 3 new columns in the data table
+  - Group name pulled from `chat_groups_pool` based on user assignment
+  - Channel ID pulled from the subscriber's plan configuration
+
 ### Mar 24, 2026 - Paid Posts Feature (Current Session)
 - [x] **Paid Posts Feature Complete** 🎉
   - Admin posts photo/video with `/paid` in caption → Bot blurs content automatically
