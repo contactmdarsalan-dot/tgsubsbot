@@ -1378,18 +1378,24 @@ async def export_revenue_pdf(user = Depends(get_current_user)):
 @router.get("/branding")
 async def get_branding(user = Depends(get_current_user)):
     """Get white-label branding settings"""
+    defaults = {
+        "brand_name": "TGSubsBot",
+        "tagline": "Premium Subscriptions",
+        "primary_color": "#e11d48",
+        "secondary_color": "#1a1a2e",
+        "logo_url": "",
+        "favicon_url": "",
+        "custom_css": "",
+        "footer_text": "Powered by TGSubsBot"
+    }
     branding = await db.branding.find_one({}, {"_id": 0})
-    if not branding:
-        branding = {
-            "brand_name": "TGSubsBot",
-            "tagline": "Premium Subscriptions",
-            "primary_color": "#e11d48",
-            "secondary_color": "#1a1a2e",
-            "logo_url": "",
-            "favicon_url": "",
-            "custom_css": "",
-            "footer_text": "Powered by TGSubsBot"
-        }
+    if branding:
+        # Merge with defaults
+        for key in defaults:
+            if key not in branding:
+                branding[key] = defaults[key]
+    else:
+        branding = defaults
     return branding
 
 @router.put("/branding")
