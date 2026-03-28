@@ -141,10 +141,20 @@ async def send_daily_reminders():
             if end_date.tzinfo is None:
                 end_date = end_date.replace(tzinfo=timezone.utc)
 
+            now_utc = datetime.now(timezone.utc)
+            days_left = (end_date - now_utc).days
+
+            # Only send "expiring soon" if actually expiring in the future (days_left >= 0)
+            if days_left < 0:
+                # Already expired - skip (handled by expired_subs section above)
+                continue
+
             if end_date <= three_days_later:
-                days_left = (end_date - datetime.now(timezone.utc)).days
                 msg = f"<b>Subscription Expiring Soon!</b>\n\n"
-                msg += f"Your {sub.get('plan_name', 'subscription')} expires in <b>{days_left} days</b>.\n\n"
+                if days_left == 0:
+                    msg += f"Your {sub.get('plan_name', 'subscription')} expires <b>today</b>!\n\n"
+                else:
+                    msg += f"Your {sub.get('plan_name', 'subscription')} expires in <b>{days_left} day{'s' if days_left != 1 else ''}</b>.\n\n"
                 msg += f"<b>Visit:</b> {website_link}\n\n"
                 msg += "<b>Renew now to avoid interruption:</b>\n\n"
 
