@@ -1400,7 +1400,11 @@ async def get_branding(user = Depends(get_current_user)):
 
 @router.put("/branding")
 async def update_branding(data: dict, user = Depends(get_current_user)):
-    """Update white-label branding settings"""
+    """Update white-label branding settings (Super Admin only)"""
+    SUPER_ADMIN_EMAILS = ["gamerxboys8958@gmail.com", "contactmdarsalan@gmail.com"]
+    if user.get("role") != "super_admin" and user.get("email") not in SUPER_ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Only super admins can update branding")
+    
     allowed_fields = ["brand_name", "tagline", "primary_color", "secondary_color", "logo_url", "favicon_url", "custom_css", "footer_text"]
     update_data = {k: v for k, v in data.items() if k in allowed_fields}
     

@@ -46,7 +46,9 @@ export default function Branding() {
     setSaving(true);
     try {
       await axios.put(`${API}/branding`, branding, getAuthHeaders());
-      toast.success("Branding updated!");
+      toast.success("Branding updated! Reloading...");
+      // Reload page to apply branding changes across the dashboard
+      setTimeout(() => window.location.reload(), 800);
     } catch (err) {
       toast.error(err.response?.data?.detail || "Failed to save");
     } finally {

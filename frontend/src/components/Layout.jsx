@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import axios from "axios";
 import {
   LayoutDashboard,
   CreditCard,
@@ -54,7 +55,6 @@ const navItems = [
   { path: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { path: "/dashboard/automation", label: "Automation", icon: Bell },
   { path: "/dashboard/settings", label: "Settings", icon: Settings },
-  { path: "/dashboard/branding", label: "Branding", icon: Palette },
   { path: "/dashboard/bot-language", label: "Bot Language", icon: Languages },
   { path: "/dashboard/support", label: "Support", icon: MessageSquare },
 ];
@@ -64,6 +64,7 @@ const adminNavItems = [
 ];
 
 const superAdminNavItems = [
+  { path: "/dashboard/branding", label: "Branding", icon: Palette, superAdminOnly: true },
   { path: "/dashboard/super-admin", label: "Admin Support", icon: Shield, superAdminOnly: true },
   { path: "/dashboard/user-management", label: "User Management", icon: Users, superAdminOnly: true },
 ];
@@ -73,11 +74,13 @@ export default function Layout() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [branding, setBranding] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const profileRef = useRef(null);
 
+  const API = process.env.REACT_APP_BACKEND_URL + "/api";
   const SUPER_ADMIN_EMAILS = ["gamerxboys8958@gmail.com", "contactmdarsalan@gmail.com"];
 
   useEffect(() => {
@@ -90,6 +93,50 @@ export default function Layout() {
     const superAdminStatus = user.role === "super_admin" || SUPER_ADMIN_EMAILS.includes(user.email);
     setIsSuperAdmin(superAdminStatus);
   }, [user.email, user.role, user.is_admin]);
+
+  // Fetch and apply branding
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    axios.get(`${API}/branding`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => {
+        const b = res.data;
+        setBranding(b);
+        // Apply CSS variables for branding colors
+        const root = document.documentElement;
+        if (b.primary_color) {
+          // Convert hex to HSL for shadcn CSS vars
+          const hex = b.primary_color;
+          const r = parseInt(hex.slice(1,3), 16) / 255;
+          const g = parseInt(hex.slice(3,5), 16) / 255;
+          const bl = parseInt(hex.slice(5,7), 16) / 255;
+          const max = Math.max(r, g, bl), min = Math.min(r, g, bl);
+          let h = 0, s = 0, l = (max + min) / 2;
+          if (max !== min) {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            if (max === r) h = ((g - bl) / d + (g < bl ? 6 : 0)) / 6;
+            else if (max === g) h = ((bl - r) / d + 2) / 6;
+            else h = ((r - g) / d + 4) / 6;
+          }
+          h = Math.round(h * 360);
+          s = Math.round(s * 100);
+          l = Math.round(l * 100);
+          root.style.setProperty('--primary', `${h} ${s}% ${l}%`);
+          root.style.setProperty('--ring', `${h} ${s}% ${l}%`);
+        }
+        // Set favicon
+        if (b.favicon_url) {
+          let link = document.querySelector("link[rel~='icon']");
+          if (link) link.href = b.favicon_url;
+        }
+        // Set page title
+        if (b.brand_name) {
+          document.title = b.brand_name;
+        }
+      })
+      .catch(() => {}); // Ignore errors, use defaults
+  }, [API]);
 
   // Close profile dropdown on outside click
   useEffect(() => {
@@ -137,15 +184,19 @@ export default function Layout() {
           {/* Logo */}
           <div className="p-5 border-b border-border/30 flex-shrink-0">
             <Link to="/dashboard" className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-rose-600 to-red-700 flex items-center justify-center shadow-lg glow-rose">
-                <Heart className="w-4 h-4 text-white" fill="currentColor" />
-              </div>
+              {branding?.logo_url ? (
+                <img src={branding.logo_url} alt={branding.brand_name || "Logo"} className="w-9 h-9 rounded-xl object-cover shadow-lg" />
+              ) : (
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/90 to-primary flex items-center justify-center shadow-lg glow-rose">
+                  <Heart className="w-4 h-4 text-white" fill="currentColor" />
+                </div>
+              )}
               <div>
                 <h1 className="font-serif text-lg font-semibold tracking-tight text-foreground">
-                  TGSubsBot
+                  {branding?.brand_name || "TGSubsBot"}
                 </h1>
                 <p className="text-[10px] text-muted-foreground font-light leading-none">
-                  Premium Subscriptions
+                  {branding?.tagline || "Premium Subscriptions"}
                 </p>
               </div>
             </Link>
@@ -276,6 +327,11 @@ export default function Layout() {
           <div className="max-w-7xl mx-auto pb-8">
             <Outlet />
           </div>
+          {branding?.footer_text && (
+            <div className="text-center py-3 text-xs text-muted-foreground/50 border-t border-border/20">
+              {branding.footer_text}
+            </div>
+          )}
         </div>
       </main>
     </div>
