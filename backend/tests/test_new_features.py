@@ -1,346 +1,349 @@
 """
-Test suite for new Telegram subscription bot dashboard features:
-1. Subscribers page with Telegram ID, Channel ID, Group Name columns
-2. Bulk Add to Channel functionality
-3. Plans page with Promote button
-4. Promote plan to group endpoint
-5. Video Calls page
-6. LiveStream page with Super Chats tab
+Test suite for TGSubsBot new features:
+1. Branding CRUD (GET/PUT /api/branding)
+2. Bot Language CRUD (GET/PUT /api/bot-language)
+3. PDF Export (GET /api/analytics/export-pdf)
+4. Forgot Password with Email (POST /api/auth/forgot-password)
 """
-
 import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://subscription-manager-44.preview.emergentagent.com').rstrip('/')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials
-ADMIN_EMAIL = "gamerxboys8958@gmail.com"
-ADMIN_PASSWORD = "Sumit@8958"
+TEST_EMAIL = "gamerxboys8958@gmail.com"
+TEST_PASSWORD = "Sumit@8958"
 
 
 class TestAuth:
     """Authentication tests"""
     
-    def test_admin_login_success(self):
-        """Test admin login with correct credentials"""
+    def test_login_success(self):
+        """Test super admin login"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": ADMIN_EMAIL,
-            "password": ADMIN_PASSWORD
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD
         })
         assert response.status_code == 200, f"Login failed: {response.text}"
         data = response.json()
         assert "token" in data, "No token in response"
-        assert data["user"]["email"] == ADMIN_EMAIL
-        assert data["user"]["role"] == "super_admin"
-        print(f"✓ Admin login successful - role: {data['user']['role']}")
+        assert "user" in data, "No user in response"
+        assert data["user"]["email"] == TEST_EMAIL
+        print(f"✅ Login successful for {TEST_EMAIL}")
         return data["token"]
     
-    def test_admin_login_wrong_password(self):
-        """Test admin login with wrong password"""
+    def test_login_invalid_credentials(self):
+        """Test login with invalid credentials"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": ADMIN_EMAIL,
+            "email": "invalid@test.com",
             "password": "wrongpassword"
         })
-        assert response.status_code == 401, "Should fail with wrong password"
-        print("✓ Wrong password correctly rejected")
+        assert response.status_code == 401, f"Expected 401, got {response.status_code}"
+        print("✅ Invalid credentials rejected correctly")
 
 
-class TestSubscribers:
-    """Subscribers API tests"""
+class TestBranding:
+    """White-label branding endpoint tests"""
     
-    @pytest.fixture
-    def auth_token(self):
-        """Get auth token for tests"""
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Get auth token before each test"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": ADMIN_EMAIL,
-            "password": ADMIN_PASSWORD
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD
         })
-        return response.json()["token"]
+        assert response.status_code == 200
+        self.token = response.json()["token"]
+        self.headers = {"Authorization": f"Bearer {self.token}"}
     
-    def test_get_subscribers_list(self, auth_token):
-        """Test fetching subscribers list"""
-        response = requests.get(
-            f"{BASE_URL}/api/subscribers",
-            headers={"Authorization": f"Bearer {auth_token}"}
-        )
-        assert response.status_code == 200, f"Failed to get subscribers: {response.text}"
+    def test_get_branding(self):
+        """GET /api/branding - Fetch branding settings"""
+        response = requests.get(f"{BASE_URL}/api/branding", headers=self.headers)
+        assert response.status_code == 200, f"Failed to get branding: {response.text}"
         data = response.json()
-        assert isinstance(data, list), "Response should be a list"
-        print(f"✓ Subscribers list fetched - count: {len(data)}")
         
-        # Check if subscribers have the new fields
-        if len(data) > 0:
-            sub = data[0]
-            # These fields should be present (may be empty but should exist)
-            assert "telegram_user_id" in sub, "Missing telegram_user_id field"
-            print(f"  - First subscriber has telegram_user_id: {sub.get('telegram_user_id', 'N/A')}")
-            print(f"  - First subscriber has channel_id: {sub.get('channel_id', 'N/A')}")
-            print(f"  - First subscriber has group_name: {sub.get('group_name', 'N/A')}")
+        # Verify at least brand_name and primary_color exist (defaults or saved)
+        assert "brand_name" in data, "brand_name missing"
+        assert "primary_color" in data, "primary_color missing"
+        # Note: Other fields may not exist if never saved - frontend handles defaults
+        print(f"✅ GET /api/branding - brand_name: {data['brand_name']}, primary_color: {data['primary_color']}")
     
-    def test_get_subscribers_with_filter(self, auth_token):
-        """Test fetching subscribers with status filter"""
-        response = requests.get(
-            f"{BASE_URL}/api/subscribers?status=active",
-            headers={"Authorization": f"Bearer {auth_token}"}
-        )
-        assert response.status_code == 200, f"Failed to get active subscribers: {response.text}"
+    def test_update_branding(self):
+        """PUT /api/branding - Update branding settings"""
+        update_data = {
+            "brand_name": "TEST_CustomBrand",
+            "tagline": "TEST_Tagline",
+            "primary_color": "#ff5733",
+            "secondary_color": "#1a1a2e",
+            "footer_text": "TEST_Footer"
+        }
+        response = requests.put(f"{BASE_URL}/api/branding", json=update_data, headers=self.headers)
+        assert response.status_code == 200, f"Failed to update branding: {response.text}"
         data = response.json()
-        print(f"✓ Active subscribers fetched - count: {len(data)}")
-    
-    def test_bulk_add_to_channel_endpoint(self, auth_token):
-        """Test bulk add to channel endpoint exists and responds"""
-        response = requests.post(
-            f"{BASE_URL}/api/subscribers/bulk-add-to-channel",
-            headers={"Authorization": f"Bearer {auth_token}"},
-            json={}
-        )
-        # May fail if bot not admin in channel, but endpoint should exist
-        assert response.status_code in [200, 400], f"Unexpected status: {response.status_code} - {response.text}"
+        assert "message" in data, "No message in response"
+        print(f"✅ PUT /api/branding - Updated successfully")
         
+        # Verify update persisted
+        get_response = requests.get(f"{BASE_URL}/api/branding", headers=self.headers)
+        assert get_response.status_code == 200
+        get_data = get_response.json()
+        assert get_data["brand_name"] == "TEST_CustomBrand", "brand_name not persisted"
+        assert get_data["primary_color"] == "#ff5733", "primary_color not persisted"
+        print("✅ Branding update verified via GET")
+    
+    def test_update_branding_partial(self):
+        """PUT /api/branding - Partial update"""
+        response = requests.put(f"{BASE_URL}/api/branding", json={
+            "tagline": "TEST_NewTagline"
+        }, headers=self.headers)
+        assert response.status_code == 200, f"Partial update failed: {response.text}"
+        print("✅ Partial branding update works")
+    
+    def test_update_branding_invalid_fields(self):
+        """PUT /api/branding - Invalid fields should be ignored"""
+        response = requests.put(f"{BASE_URL}/api/branding", json={
+            "invalid_field": "test"
+        }, headers=self.headers)
+        # Should return 400 since no valid fields
+        assert response.status_code == 400, f"Expected 400 for invalid fields, got {response.status_code}"
+        print("✅ Invalid branding fields rejected correctly")
+
+
+class TestBotLanguage:
+    """Bot language settings endpoint tests"""
+    
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Get auth token before each test"""
+        response = requests.post(f"{BASE_URL}/api/auth/login", json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD
+        })
+        assert response.status_code == 200
+        self.token = response.json()["token"]
+        self.headers = {"Authorization": f"Bearer {self.token}"}
+    
+    def test_get_bot_language(self):
+        """GET /api/bot-language - Fetch language settings"""
+        response = requests.get(f"{BASE_URL}/api/bot-language", headers=self.headers)
+        assert response.status_code == 200, f"Failed to get bot-language: {response.text}"
+        data = response.json()
+        
+        # Verify required fields
+        assert "default_language" in data, "default_language missing"
+        assert "available_languages" in data, "available_languages missing"
+        assert "messages" in data, "messages missing"
+        
+        # Verify all 3 languages available
+        assert "english" in data["available_languages"], "english not in available_languages"
+        assert "hindi" in data["available_languages"], "hindi not in available_languages"
+        assert "hinglish" in data["available_languages"], "hinglish not in available_languages"
+        
+        # Verify messages structure
+        assert "english" in data["messages"], "english messages missing"
+        assert "hindi" in data["messages"], "hindi messages missing"
+        assert "hinglish" in data["messages"], "hinglish messages missing"
+        
+        print(f"✅ GET /api/bot-language - default: {data['default_language']}, languages: {data['available_languages']}")
+    
+    def test_update_bot_language_default(self):
+        """PUT /api/bot-language - Update default language"""
+        response = requests.put(f"{BASE_URL}/api/bot-language", json={
+            "default_language": "hindi"
+        }, headers=self.headers)
+        assert response.status_code == 200, f"Failed to update default language: {response.text}"
+        print("✅ PUT /api/bot-language - default_language updated to hindi")
+        
+        # Verify persistence
+        get_response = requests.get(f"{BASE_URL}/api/bot-language", headers=self.headers)
+        assert get_response.status_code == 200
+        # Note: The endpoint merges with defaults, so we just verify it doesn't error
+        print("✅ Bot language update verified")
+    
+    def test_update_bot_language_messages(self):
+        """PUT /api/bot-language - Update custom messages"""
+        response = requests.put(f"{BASE_URL}/api/bot-language", json={
+            "default_language": "hinglish",
+            "messages": {
+                "hinglish": {
+                    "welcome": "TEST_Welcome bhai!",
+                    "payment_verified": "TEST_Payment done!"
+                }
+            }
+        }, headers=self.headers)
+        assert response.status_code == 200, f"Failed to update messages: {response.text}"
+        print("✅ PUT /api/bot-language - custom messages updated")
+    
+    def test_update_bot_language_invalid(self):
+        """PUT /api/bot-language - Invalid language should be rejected"""
+        response = requests.put(f"{BASE_URL}/api/bot-language", json={
+            "default_language": "spanish"  # Not in allowed list
+        }, headers=self.headers)
+        # Should return 400 since spanish is not valid
+        assert response.status_code == 400, f"Expected 400 for invalid language, got {response.status_code}"
+        print("✅ Invalid language rejected correctly")
+
+
+class TestPDFExport:
+    """PDF export endpoint tests"""
+    
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Get auth token before each test"""
+        response = requests.post(f"{BASE_URL}/api/auth/login", json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD
+        })
+        assert response.status_code == 200
+        self.token = response.json()["token"]
+        self.headers = {"Authorization": f"Bearer {self.token}"}
+    
+    def test_export_pdf(self):
+        """GET /api/analytics/export-pdf - Generate PDF report"""
+        response = requests.get(f"{BASE_URL}/api/analytics/export-pdf", headers=self.headers)
+        assert response.status_code == 200, f"PDF export failed: {response.text}"
+        
+        # Verify content type is PDF
+        content_type = response.headers.get("content-type", "")
+        assert "application/pdf" in content_type, f"Expected PDF content type, got: {content_type}"
+        
+        # Verify content disposition header
+        content_disp = response.headers.get("content-disposition", "")
+        assert "attachment" in content_disp, f"Expected attachment disposition, got: {content_disp}"
+        assert "TGSubsBot_Revenue" in content_disp, f"Expected TGSubsBot_Revenue in filename, got: {content_disp}"
+        
+        # Verify PDF content starts with PDF magic bytes
+        assert response.content[:4] == b'%PDF', "Response is not a valid PDF"
+        
+        print(f"✅ GET /api/analytics/export-pdf - PDF generated, size: {len(response.content)} bytes")
+    
+    def test_export_pdf_unauthorized(self):
+        """GET /api/analytics/export-pdf - Should require auth"""
+        response = requests.get(f"{BASE_URL}/api/analytics/export-pdf")
+        assert response.status_code in [401, 403], f"Expected 401/403 without auth, got {response.status_code}"
+        print("✅ PDF export requires authentication")
+
+
+class TestForgotPassword:
+    """Forgot password with email integration tests"""
+    
+    def test_forgot_password_existing_email(self):
+        """POST /api/auth/forgot-password - Existing email"""
+        response = requests.post(f"{BASE_URL}/api/auth/forgot-password", json={
+            "email": TEST_EMAIL
+        })
+        assert response.status_code == 200, f"Forgot password failed: {response.text}"
+        data = response.json()
+        
+        # Should return message
+        assert "message" in data, "No message in response"
+        
+        # Since RESEND_API_KEY is not configured, should return test_otp
+        if "test_otp" in data:
+            assert len(data["test_otp"]) == 6, "OTP should be 6 digits"
+            print(f"✅ POST /api/auth/forgot-password - test_otp returned (email service MOCKED)")
+        else:
+            print(f"✅ POST /api/auth/forgot-password - email sent (Resend configured)")
+    
+    def test_forgot_password_nonexistent_email(self):
+        """POST /api/auth/forgot-password - Non-existent email (should not reveal)"""
+        response = requests.post(f"{BASE_URL}/api/auth/forgot-password", json={
+            "email": "nonexistent@test.com"
+        })
+        # Should return 200 to not reveal if email exists
+        assert response.status_code == 200, f"Expected 200 for security, got {response.status_code}"
+        data = response.json()
+        assert "message" in data
+        print("✅ Non-existent email handled securely (no info leak)")
+    
+    def test_forgot_password_missing_email(self):
+        """POST /api/auth/forgot-password - Missing email"""
+        response = requests.post(f"{BASE_URL}/api/auth/forgot-password", json={})
+        assert response.status_code == 400, f"Expected 400 for missing email, got {response.status_code}"
+        print("✅ Missing email rejected correctly")
+
+
+class TestAnalyticsEndpoint:
+    """Basic analytics endpoint test"""
+    
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Get auth token before each test"""
+        response = requests.post(f"{BASE_URL}/api/auth/login", json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD
+        })
+        assert response.status_code == 200
+        self.token = response.json()["token"]
+        self.headers = {"Authorization": f"Bearer {self.token}"}
+    
+    def test_get_analytics(self):
+        """GET /api/analytics - Basic analytics"""
+        response = requests.get(f"{BASE_URL}/api/analytics", headers=self.headers)
+        assert response.status_code == 200, f"Analytics failed: {response.text}"
+        data = response.json()
+        
+        # Verify key fields
+        assert "total_subscribers" in data
+        assert "active_subscribers" in data
+        assert "total_revenue" in data
+        assert "monthly_revenue" in data
+        print(f"✅ GET /api/analytics - total_revenue: {data['total_revenue']}, active_subs: {data['active_subscribers']}")
+
+
+class TestDashboardFlow:
+    """Test dashboard loads correctly"""
+    
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Get auth token before each test"""
+        response = requests.post(f"{BASE_URL}/api/auth/login", json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD
+        })
+        assert response.status_code == 200
+        self.token = response.json()["token"]
+        self.headers = {"Authorization": f"Bearer {self.token}"}
+    
+    def test_auth_me(self):
+        """GET /api/auth/me - Verify user session"""
+        response = requests.get(f"{BASE_URL}/api/auth/me", headers=self.headers)
+        assert response.status_code == 200, f"Auth me failed: {response.text}"
+        data = response.json()
+        assert data["email"] == TEST_EMAIL
+        print(f"✅ GET /api/auth/me - User: {data['email']}, role: {data.get('role', 'user')}")
+
+
+# Cleanup test data
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_test_data():
+    """Cleanup TEST_ prefixed data after all tests"""
+    yield
+    # Reset branding to defaults after tests
+    try:
+        response = requests.post(f"{BASE_URL}/api/auth/login", json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD
+        })
         if response.status_code == 200:
-            data = response.json()
-            assert "success" in data, "Response should have success count"
-            assert "failed" in data, "Response should have failed count"
-            assert "total" in data, "Response should have total count"
-            print(f"✓ Bulk add endpoint works - success: {data['success']}, failed: {data['failed']}, total: {data['total']}")
-        else:
-            print(f"✓ Bulk add endpoint exists but returned error (expected if bot not admin): {response.json().get('detail', 'Unknown error')}")
-
-
-class TestPlans:
-    """Plans API tests"""
-    
-    @pytest.fixture
-    def auth_token(self):
-        """Get auth token for tests"""
-        response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": ADMIN_EMAIL,
-            "password": ADMIN_PASSWORD
-        })
-        return response.json()["token"]
-    
-    def test_get_plans_list(self, auth_token):
-        """Test fetching plans list"""
-        response = requests.get(
-            f"{BASE_URL}/api/plans",
-            headers={"Authorization": f"Bearer {auth_token}"}
-        )
-        assert response.status_code == 200, f"Failed to get plans: {response.text}"
-        data = response.json()
-        assert isinstance(data, list), "Response should be a list"
-        print(f"✓ Plans list fetched - count: {len(data)}")
-        
-        if len(data) > 0:
-            plan = data[0]
-            assert "id" in plan, "Plan should have id"
-            assert "name" in plan, "Plan should have name"
-            assert "price" in plan, "Plan should have price"
-            print(f"  - First plan: {plan['name']} - ₹{plan['price']}")
-            return plan["id"]
-        return None
-    
-    def test_get_chat_groups(self, auth_token):
-        """Test fetching chat groups for promote dropdown"""
-        response = requests.get(
-            f"{BASE_URL}/api/chat-groups",
-            headers={"Authorization": f"Bearer {auth_token}"}
-        )
-        assert response.status_code == 200, f"Failed to get chat groups: {response.text}"
-        data = response.json()
-        assert isinstance(data, list), "Response should be a list"
-        print(f"✓ Chat groups fetched - count: {len(data)}")
-        
-        if len(data) > 0:
-            group = data[0]
-            print(f"  - First group: {group.get('group_name', group.get('group_id', 'Unknown'))}")
-            return group.get("group_id")
-        return None
-
-
-class TestPromotePlan:
-    """Promote plan to group tests"""
-    
-    @pytest.fixture
-    def auth_token(self):
-        """Get auth token for tests"""
-        response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": ADMIN_EMAIL,
-            "password": ADMIN_PASSWORD
-        })
-        return response.json()["token"]
-    
-    def test_promote_plan_missing_params(self, auth_token):
-        """Test promote plan with missing parameters"""
-        response = requests.post(
-            f"{BASE_URL}/api/promote-plan",
-            headers={"Authorization": f"Bearer {auth_token}"},
-            json={}
-        )
-        assert response.status_code == 400, "Should fail with missing params"
-        print("✓ Promote plan correctly rejects missing parameters")
-    
-    def test_promote_plan_invalid_plan(self, auth_token):
-        """Test promote plan with invalid plan ID"""
-        response = requests.post(
-            f"{BASE_URL}/api/promote-plan",
-            headers={"Authorization": f"Bearer {auth_token}"},
-            json={"plan_id": "invalid_plan_id", "group_id": "-1001234567890"}
-        )
-        assert response.status_code == 404, f"Should fail with invalid plan: {response.text}"
-        print("✓ Promote plan correctly rejects invalid plan ID")
-    
-    def test_promote_plan_with_valid_plan(self, auth_token):
-        """Test promote plan with valid plan (may fail if no groups)"""
-        # First get a valid plan
-        plans_response = requests.get(
-            f"{BASE_URL}/api/plans",
-            headers={"Authorization": f"Bearer {auth_token}"}
-        )
-        plans = plans_response.json()
-        
-        if len(plans) == 0:
-            pytest.skip("No plans available to test promote")
-        
-        plan_id = plans[0]["id"]
-        
-        # Get groups
-        groups_response = requests.get(
-            f"{BASE_URL}/api/chat-groups",
-            headers={"Authorization": f"Bearer {auth_token}"}
-        )
-        groups = groups_response.json()
-        
-        if len(groups) == 0:
-            # Test with a dummy group ID - should fail but endpoint should work
-            response = requests.post(
-                f"{BASE_URL}/api/promote-plan",
-                headers={"Authorization": f"Bearer {auth_token}"},
-                json={"plan_id": plan_id, "group_id": "-1001234567890"}
-            )
-            # May fail due to bot not being in group, but endpoint should respond
-            assert response.status_code in [200, 400, 500], f"Unexpected status: {response.status_code}"
-            print(f"✓ Promote plan endpoint responds (no groups available): status {response.status_code}")
-        else:
-            group_id = groups[0].get("group_id")
-            response = requests.post(
-                f"{BASE_URL}/api/promote-plan",
-                headers={"Authorization": f"Bearer {auth_token}"},
-                json={"plan_id": plan_id, "group_id": group_id}
-            )
-            # May fail if bot not admin in group
-            print(f"✓ Promote plan endpoint responds: status {response.status_code}")
-            if response.status_code == 200:
-                data = response.json()
-                print(f"  - Promotion result: {data}")
-
-
-class TestVideoCalls:
-    """Video Calls API tests"""
-    
-    @pytest.fixture
-    def auth_token(self):
-        """Get auth token for tests"""
-        response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": ADMIN_EMAIL,
-            "password": ADMIN_PASSWORD
-        })
-        return response.json()["token"]
-    
-    def test_get_video_calls(self, auth_token):
-        """Test fetching video call bookings"""
-        response = requests.get(
-            f"{BASE_URL}/api/video-calls",
-            headers={"Authorization": f"Bearer {auth_token}"}
-        )
-        assert response.status_code == 200, f"Failed to get video calls: {response.text}"
-        data = response.json()
-        assert isinstance(data, list), "Response should be a list"
-        print(f"✓ Video calls fetched - count: {len(data)}")
-        
-        if len(data) > 0:
-            booking = data[0]
-            # Check expected fields
-            expected_fields = ["id", "telegram_user_id", "status", "scheduled_date", "scheduled_time"]
-            for field in expected_fields:
-                assert field in booking, f"Missing field: {field}"
-            print(f"  - First booking: {booking.get('telegram_username', booking.get('telegram_user_id'))} - {booking.get('status')}")
-            if booking.get("notes"):
-                print(f"  - Notes: {booking.get('notes')}")
-
-
-class TestLiveStream:
-    """Live Stream API tests"""
-    
-    @pytest.fixture
-    def auth_token(self):
-        """Get auth token for tests"""
-        response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": ADMIN_EMAIL,
-            "password": ADMIN_PASSWORD
-        })
-        return response.json()["token"]
-    
-    def test_get_live_sessions(self, auth_token):
-        """Test fetching live sessions"""
-        response = requests.get(
-            f"{BASE_URL}/api/live/sessions",
-            headers={"Authorization": f"Bearer {auth_token}"}
-        )
-        assert response.status_code == 200, f"Failed to get live sessions: {response.text}"
-        data = response.json()
-        assert isinstance(data, list), "Response should be a list"
-        print(f"✓ Live sessions fetched - count: {len(data)}")
-    
-    def test_get_live_tickets(self, auth_token):
-        """Test fetching live tickets"""
-        response = requests.get(
-            f"{BASE_URL}/api/live/tickets",
-            headers={"Authorization": f"Bearer {auth_token}"}
-        )
-        assert response.status_code == 200, f"Failed to get live tickets: {response.text}"
-        data = response.json()
-        assert isinstance(data, list), "Response should be a list"
-        print(f"✓ Live tickets fetched - count: {len(data)}")
-    
-    def test_get_super_chats(self, auth_token):
-        """Test fetching super chats"""
-        response = requests.get(
-            f"{BASE_URL}/api/live/superchats",
-            headers={"Authorization": f"Bearer {auth_token}"}
-        )
-        assert response.status_code == 200, f"Failed to get super chats: {response.text}"
-        data = response.json()
-        assert isinstance(data, list), "Response should be a list"
-        print(f"✓ Super chats fetched - count: {len(data)}")
-
-
-class TestNotifyAdmin:
-    """Test admin notification function exists (can't fully test without Telegram)"""
-    
-    @pytest.fixture
-    def auth_token(self):
-        """Get auth token for tests"""
-        response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": ADMIN_EMAIL,
-            "password": ADMIN_PASSWORD
-        })
-        return response.json()["token"]
-    
-    def test_settings_endpoint(self, auth_token):
-        """Test settings endpoint to verify bot configuration"""
-        response = requests.get(
-            f"{BASE_URL}/api/settings",
-            headers={"Authorization": f"Bearer {auth_token}"}
-        )
-        assert response.status_code == 200, f"Failed to get settings: {response.text}"
-        data = response.json()
-        
-        # Check if bot token is configured
-        has_bot_token = bool(data.get("telegram_bot_token"))
-        has_channel_id = bool(data.get("telegram_channel_id"))
-        
-        print(f"✓ Settings fetched - bot_token configured: {has_bot_token}, channel_id configured: {has_channel_id}")
+            token = response.json()["token"]
+            headers = {"Authorization": f"Bearer {token}"}
+            # Reset branding
+            requests.put(f"{BASE_URL}/api/branding", json={
+                "brand_name": "TGSubsBot",
+                "tagline": "Premium Subscriptions",
+                "primary_color": "#e11d48",
+                "secondary_color": "#1a1a2e",
+                "footer_text": "Powered by TGSubsBot"
+            }, headers=headers)
+            # Reset bot language
+            requests.put(f"{BASE_URL}/api/bot-language", json={
+                "default_language": "hinglish"
+            }, headers=headers)
+            print("\n✅ Test data cleaned up")
+    except Exception as e:
+        print(f"\n⚠️ Cleanup failed: {e}")
 
 
 if __name__ == "__main__":

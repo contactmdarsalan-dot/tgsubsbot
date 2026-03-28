@@ -31,6 +31,8 @@ import LandingPage from "./pages/LandingPage";
 import RevenueDashboard from "./pages/RevenueDashboard";
 import TelegramAdmins from "./pages/TelegramAdmins";
 import BotActivityLogs from "./pages/BotActivityLogs";
+import Branding from "./pages/Branding";
+import BotLanguage from "./pages/BotLanguage";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -155,6 +157,8 @@ function AppRouter() {
         <Route path="paid-posts" element={<PaidPosts />} />
         <Route path="user-management" element={<UserManagement />} />
         <Route path="creators" element={<Creators />} />
+        <Route path="branding" element={<Branding />} />
+        <Route path="bot-language" element={<BotLanguage />} />
         <Route path="profile" element={<Profile />} />
       </Route>
     </Routes>

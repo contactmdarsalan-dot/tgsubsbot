@@ -408,7 +408,28 @@ async def forgot_password(request: Request, data: dict):
         upsert=True
     )
     logger.info(f"Password reset OTP for {email}: {otp}")
-    return {"message": "If the email exists, a reset code has been sent", "test_otp": otp}
+    
+    # Send OTP via email
+    from services.email_service import send_email
+    email_html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #1a1a2e; color: #eee; padding: 30px; border-radius: 12px;">
+        <h1 style="color: #e11d48; text-align: center;">TGSubsBot</h1>
+        <h2 style="text-align: center;">Password Reset Code</h2>
+        <p>Your password reset OTP is:</p>
+        <div style="background: #16213e; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 32px; letter-spacing: 8px; color: #e11d48; font-weight: bold;">{otp}</span>
+        </div>
+        <p style="color: #aaa;">This code expires in 15 minutes. If you didn't request this, ignore this email.</p>
+        <p style="color: #666; margin-top: 30px; text-align: center;">TGSubsBot Team</p>
+    </div>
+    """
+    email_result = await send_email(email, "Password Reset - TGSubsBot", email_html)
+    
+    response = {"message": "If the email exists, a reset code has been sent"}
+    if email_result.get("status") == "skipped":
+        # Email not configured, return OTP for testing
+        response["test_otp"] = otp
+    return response
 
 
 @router.post("/auth/reset-password")

@@ -203,10 +203,37 @@ export default function RevenueDashboard() {
             Track your business performance and optimize for growth
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleExportCSV} data-testid="export-revenue-csv">
-          <ArrowUpRight className="w-4 h-4 mr-1.5" />
-          Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleExportCSV} data-testid="export-revenue-csv">
+            <ArrowUpRight className="w-4 h-4 mr-1.5" />
+            Export CSV
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              const link = document.createElement("a");
+              link.href = `${API}/analytics/export-pdf`;
+              link.target = "_blank";
+              const token = localStorage.getItem("token");
+              fetch(`${API}/analytics/export-pdf`, {
+                headers: { Authorization: `Bearer ${token}` },
+              })
+                .then((res) => res.blob())
+                .then((blob) => {
+                  const url = window.URL.createObjectURL(blob);
+                  link.href = url;
+                  link.download = `TGSubsBot_Revenue_${new Date().toISOString().slice(0, 10)}.pdf`;
+                  link.click();
+                  window.URL.revokeObjectURL(url);
+                })
+                .catch(() => {});
+            }}
+            data-testid="export-revenue-pdf"
+          >
+            <ArrowUpRight className="w-4 h-4 mr-1.5" />
+            Export PDF
+          </Button>
+        </div>
       </motion.div>
 
       {/* Top Metrics */}

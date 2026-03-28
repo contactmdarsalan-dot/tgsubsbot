@@ -29,6 +29,8 @@ import {
   Activity,
   User,
   ChevronDown,
+  Palette,
+  Languages,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -52,6 +54,8 @@ const navItems = [
   { path: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { path: "/dashboard/automation", label: "Automation", icon: Bell },
   { path: "/dashboard/settings", label: "Settings", icon: Settings },
+  { path: "/dashboard/branding", label: "Branding", icon: Palette },
+  { path: "/dashboard/bot-language", label: "Bot Language", icon: Languages },
   { path: "/dashboard/support", label: "Support", icon: MessageSquare },
 ];
 
