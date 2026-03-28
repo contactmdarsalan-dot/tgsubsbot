@@ -6962,6 +6962,53 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 msg += "(or type 'skip' if you'll add it later)"
                 await send_telegram_message(chat_id, msg, bot_token)
             
+
+            # Admin panel callback buttons
+            elif callback_data == "admin_stats":
+                is_admin = await is_admin_or_creator(chat_id, username)
+                if not is_admin:
+                    return {"ok": True}
+                
+                active_subs = await db.subscribers.count_documents({"status": "active"})
+                total_subs = await db.subscribers.count_documents({})
+                pending_payments = await db.payments.count_documents({"status": "pending"})
+                payments = await db.payments.find({"status": "verified"}, {"_id": 0, "amount": 1}).to_list(100000)
+                total_revenue = sum(p.get("amount", 0) for p in payments)
+                
+                stats_msg = "📊 <b>Quick Stats</b>\n━━━━━━━━━━━━━━━\n"
+                stats_msg += f"👥 Active: <b>{active_subs}</b> / {total_subs} total\n"
+                stats_msg += f"💳 Pending: <b>{pending_payments}</b>\n"
+                stats_msg += f"💰 Revenue: <b>₹{int(total_revenue):,}</b>"
+                
+                await send_telegram_message(chat_id, stats_msg, bot_token)
+            
+            elif callback_data == "admin_pending":
+                is_admin = await is_admin_or_creator(chat_id, username)
+                if not is_admin:
+                    return {"ok": True}
+                
+                pending = await db.payments.find({"status": "pending"}, {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
+                if not pending:
+                    await send_telegram_message(chat_id, "✅ No pending payments!", bot_token)
+                else:
+                    msg = f"💳 <b>Pending ({len(pending)})</b>\n\n"
+                    for p in pending:
+                        msg += f"• <code>{p.get('telegram_user_id','')}</code> - {p.get('plan_name','N/A')} - ₹{p.get('amount',0)}\n"
+                    msg += "\nVerify from dashboard."
+                    await send_telegram_message(chat_id, msg, bot_token)
+            
+            elif callback_data == "admin_broadcast":
+                is_admin = await is_admin_or_creator(chat_id, username)
+                if not is_admin:
+                    return {"ok": True}
+                
+                msg = "📢 <b>Send Broadcast</b>\n\n"
+                msg += "To send a broadcast, use:\n"
+                msg += "<code>/broadcast Your message here</code>\n\n"
+                msg += "This will be sent to ALL bot users."
+                await send_telegram_message(chat_id, msg, bot_token)
+            
+
             # Super chat session selection
             elif callback_data.startswith("superchat_select_"):
                 session_id = callback_data.replace("superchat_select_", "")
@@ -8187,6 +8234,133 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             help_msg += "/help - Show this help message\n\n"
             help_msg += "💬 You can also ask me any questions!"
             await send_telegram_message(chat_id, help_msg)
+        
+        # Handle /admin command - show admin panel for authorized users
+        elif text == "/admin":
+            is_admin = await is_admin_or_creator(chat_id, username)
+            
+            if not is_admin:
+                await send_telegram_message(chat_id, "❌ You don't have admin access. Contact the bot owner to get admin permissions.")
+                return {"ok": True}
+            
+            # Get admin's permissions
+            tg_admin = await db.telegram_admins.find_one({"telegram_user_id": str(chat_id), "is_active": True}, {"_id": 0})
+            creator = await db.creators.find_one({"telegram_user_id": str(chat_id), "is_active": True}, {"_id": 0})
+            
+            permissions = []
+            role = "Admin"
+            if tg_admin:
+                permissions = tg_admin.get("permissions", [])
+                role = tg_admin.get("role", "admin").title()
+            elif creator:
+                permissions = creator.get("permissions", [])
+                role = "Creator"
+            else:
+                permissions = ["manage_bot", "verify_payments", "broadcast", "live_manage", "superchat_view", "add_subscribers"]
+                role = "Super Admin"
+            
+            # Get quick stats
+            active_subs = await db.subscribers.count_documents({"status": "active"})
+            pending_payments = await db.payments.count_documents({"status": "pending"})
+            total_revenue = 0
+            payments = await db.payments.find({"status": "verified"}, {"_id": 0, "amount": 1}).to_list(100000)
+            total_revenue = sum(p.get("amount", 0) for p in payments)
+            
+            admin_msg = f"👑 <b>Admin Panel</b>\n"
+            admin_msg += f"━━━━━━━━━━━━━━━\n"
+            admin_msg += f"🔑 Role: <b>{role}</b>\n\n"
+            
+            admin_msg += f"📊 <b>Quick Stats:</b>\n"
+            admin_msg += f"  👥 Active Subscribers: <b>{active_subs}</b>\n"
+            admin_msg += f"  💳 Pending Payments: <b>{pending_payments}</b>\n"
+            admin_msg += f"  💰 Total Revenue: <b>₹{int(total_revenue):,}</b>\n\n"
+            
+            admin_msg += "🛠 <b>Admin Commands:</b>\n"
+            
+            if "manage_bot" in permissions or role == "Super Admin":
+                admin_msg += "/stats - Detailed bot statistics\n"
+                admin_msg += "/users - List recent bot users\n"
+            
+            if "verify_payments" in permissions or role == "Super Admin":
+                admin_msg += "/pending - View pending payments\n"
+            
+            if "broadcast" in permissions or role == "Super Admin":
+                admin_msg += "/broadcast <message> - Send to all users\n"
+            
+            if "live_manage" in permissions or role == "Super Admin":
+                admin_msg += "/newlive - Create new live session\n"
+                admin_msg += "/endlive - End current live session\n"
+            
+            if "add_subscribers" in permissions or role == "Super Admin":
+                admin_msg += "/adduser <user_id> <plan_id> - Add subscriber\n"
+            
+            admin_msg += "\n💡 <i>Use the dashboard for full management</i>"
+            
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+            
+            buttons = [
+                [{"text": "📊 View Stats", "callback_data": "admin_stats"}],
+                [{"text": "💳 Pending Payments", "callback_data": "admin_pending"}],
+                [{"text": "📢 New Broadcast", "callback_data": "admin_broadcast"}],
+            ]
+            
+            await send_telegram_message_with_buttons(chat_id, admin_msg, buttons, bot_token)
+        
+        # Handle /stats command for admins
+        elif text == "/stats":
+            is_admin = await is_admin_or_creator(chat_id, username)
+            if not is_admin:
+                await send_telegram_message(chat_id, "❌ Admin access required.")
+                return {"ok": True}
+            
+            total_subs = await db.subscribers.count_documents({})
+            active_subs = await db.subscribers.count_documents({"status": "active"})
+            expired_subs = await db.subscribers.count_documents({"status": "expired"})
+            grace_subs = await db.subscribers.count_documents({"status": "grace"})
+            pending_payments = await db.payments.count_documents({"status": "pending"})
+            verified_payments = await db.payments.count_documents({"status": "verified"})
+            payments = await db.payments.find({"status": "verified"}, {"_id": 0, "amount": 1}).to_list(100000)
+            total_revenue = sum(p.get("amount", 0) for p in payments)
+            total_plans = await db.plans.count_documents({"is_active": True})
+            
+            stats_msg = "📊 <b>Bot Statistics</b>\n"
+            stats_msg += "━━━━━━━━━━━━━━━\n\n"
+            stats_msg += f"👥 <b>Subscribers:</b>\n"
+            stats_msg += f"  Total: <b>{total_subs}</b>\n"
+            stats_msg += f"  Active: <b>{active_subs}</b> 🟢\n"
+            stats_msg += f"  Grace: <b>{grace_subs}</b> 🟡\n"
+            stats_msg += f"  Expired: <b>{expired_subs}</b> 🔴\n\n"
+            stats_msg += f"💳 <b>Payments:</b>\n"
+            stats_msg += f"  Verified: <b>{verified_payments}</b>\n"
+            stats_msg += f"  Pending: <b>{pending_payments}</b>\n\n"
+            stats_msg += f"💰 <b>Revenue: ₹{int(total_revenue):,}</b>\n"
+            stats_msg += f"📦 <b>Active Plans: {total_plans}</b>"
+            
+            await send_telegram_message(chat_id, stats_msg)
+        
+        # Handle /pending command for admins
+        elif text == "/pending":
+            is_admin = await is_admin_or_creator(chat_id, username)
+            if not is_admin:
+                await send_telegram_message(chat_id, "❌ Admin access required.")
+                return {"ok": True}
+            
+            pending = await db.payments.find({"status": "pending"}, {"_id": 0}).sort("created_at", -1).limit(10).to_list(10)
+            
+            if not pending:
+                await send_telegram_message(chat_id, "✅ No pending payments!")
+                return {"ok": True}
+            
+            msg = f"💳 <b>Pending Payments ({len(pending)})</b>\n━━━━━━━━━━━━━━━\n\n"
+            for p in pending:
+                msg += f"👤 User: <code>{p.get('telegram_user_id', '')}</code>\n"
+                msg += f"📦 Plan: {p.get('plan_name', p.get('plan_id', 'N/A'))}\n"
+                msg += f"💰 Amount: ₹{p.get('amount', 0)}\n"
+                msg += f"🕐 {str(p.get('created_at', ''))[:16]}\n\n"
+            
+            msg += "Use the dashboard to verify payments."
+            await send_telegram_message(chat_id, msg)
         
         # Handle /plan command - share specific plan
         elif text.startswith("/plan"):
