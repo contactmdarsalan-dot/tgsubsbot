@@ -125,11 +125,11 @@ export default function Layout() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 sidebar-romance transform transition-transform duration-300 ease-out ${
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 sidebar-romance transform transition-transform duration-300 ease-out flex-shrink-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-screen overflow-hidden">
           {/* Logo */}
           <div className="p-5 border-b border-border/30 flex-shrink-0">
             <Link to="/dashboard" className="flex items-center gap-3">
@@ -178,9 +178,9 @@ export default function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         {/* Header with Profile */}
-        <header className="sticky top-0 z-30 glass border-b border-border/30">
+        <header className="sticky top-0 z-30 glass border-b border-border/30 flex-shrink-0">
           <div className="flex items-center justify-between px-4 md:px-6 py-3">
             <div className="flex items-center gap-3">
               <Button
@@ -267,9 +267,9 @@ export default function Layout() {
           </div>
         </header>
 
-        {/* Page content */}
+        {/* Page content - ONLY this scrolls */}
         <div className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto">
-          <div className="max-w-7xl mx-auto">
+          <div className="max-w-7xl mx-auto pb-8">
             <Outlet />
           </div>
         </div>

@@ -481,18 +481,11 @@ async def get_payments(status: Optional[str] = None, user = Depends(get_current_
         if isinstance(p.get('created_at'), str):
             p['created_at'] = datetime.fromisoformat(p['created_at'])
         
-        # Resolve screenshot download URL
-        if p.get('screenshot_file_id') and bot_token:
-            try:
-                async with httpx.AsyncClient(timeout=5.0) as http_client:
-                    file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={p['screenshot_file_id']}"
-                    response = await http_client.get(file_info_url)
-                    if response.status_code == 200:
-                        file_path = response.json().get("result", {}).get("file_path")
-                        if file_path:
-                            p['screenshot_url'] = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
-            except Exception:
-                p['screenshot_url'] = None
+        # Keep screenshot_file_id for lazy loading via /api/telegram/file/{file_id}
+        if p.get('screenshot_file_id'):
+            p['has_screenshot'] = True
+        else:
+            p['has_screenshot'] = False
     
     return payments
 
