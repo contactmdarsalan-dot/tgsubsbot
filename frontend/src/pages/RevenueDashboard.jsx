@@ -33,6 +33,7 @@ import {
   RadialBar,
 } from "recharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Button } from "../components/ui/button";
 import {
   BentoGrid,
   BentoItem,
@@ -132,6 +133,21 @@ export default function RevenueDashboard() {
     }
   };
 
+  const handleExportCSV = async () => {
+    try {
+      const response = await axios.get(`${API}/export/revenue-report`, getAuthHeaders());
+      const csvData = response.data.csv_data;
+      const blob = new Blob([csvData], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `revenue-report-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+    } catch (error) {
+      console.error("Export failed:", error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -176,15 +192,21 @@ export default function RevenueDashboard() {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="space-y-1"
+        className="flex items-center justify-between"
       >
-        <div className="flex items-center gap-3">
-          <h1 className="font-serif text-4xl font-semibold tracking-tight">Revenue Analytics</h1>
-          <PulseDot color="emerald" />
+        <div className="space-y-1">
+          <div className="flex items-center gap-3">
+            <h1 className="font-serif text-4xl font-semibold tracking-tight">Revenue Analytics</h1>
+            <PulseDot color="emerald" />
+          </div>
+          <p className="text-muted-foreground">
+            Track your business performance and optimize for growth
+          </p>
         </div>
-        <p className="text-muted-foreground">
-          Track your business performance and optimize for growth
-        </p>
+        <Button variant="outline" size="sm" onClick={handleExportCSV} data-testid="export-revenue-csv">
+          <ArrowUpRight className="w-4 h-4 mr-1.5" />
+          Export CSV
+        </Button>
       </motion.div>
 
       {/* Top Metrics */}

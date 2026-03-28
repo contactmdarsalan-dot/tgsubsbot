@@ -50,6 +50,14 @@ Build a market-ready SaaS product for Telegram subscription management. Features
 - [x] Added Telegram ID, Channel ID, Group Name columns to Subscribers table
 - [x] Backend GET /api/subscribers enriched with plan and group data
 
+### Mar 28, 2026 - SaaS Infrastructure (Batch 2)
+- [x] **Bot Activity Logs** — Real-time dashboard with 24h stats, search, filter by event type, Export CSV, Auto-Refresh (5s)
+  - Activity logged for commands, button clicks, messages, payment screenshots
+  - Stats: events 24h, active users 24h, commands, payments
+- [x] **API Rate Limiting** — slowapi integrated: Login 10/min, Register 5/min, Webhook 300/min
+- [x] **Revenue Export CSV** — Download full revenue report from Revenue Dashboard
+- [x] **Enhanced Export API** — `/api/export/revenue-report` with CSV data + summary
+
 ### Mar 28, 2026 - Telegram Admin Management
 - [x] **Telegram Admins page** — Full CRUD for managing bot admins from dashboard
   - Add admin with Telegram User ID, Username, Role (Admin/Moderator), granular permissions

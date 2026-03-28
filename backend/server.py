@@ -43,9 +43,18 @@ from models import (
     ChatGroupPool, ActiveChatSession, PaidPost, PaidPostUnlock, ChatMessage
 )
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
+
+# Rate Limiter
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Scheduler
 scheduler = AsyncIOScheduler()
@@ -891,7 +900,8 @@ async def check_expired_chat_sessions():
 # ============== AUTH ROUTES ==============
 
 @api_router.post("/auth/register")
-async def register(user: UserCreate):
+@limiter.limit("5/minute")
+async def register(request: Request, user: UserCreate):
     existing = await db.users.find_one({"email": user.email})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -920,7 +930,8 @@ async def register(user: UserCreate):
     }
 
 @api_router.post("/auth/login")
-async def login(user: UserLogin):
+@limiter.limit("10/minute")
+async def login(request: Request, user: UserLogin):
     existing = await db.users.find_one({"email": user.email}, {"_id": 0})
     if not existing or not verify_password(user.password, existing.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -4818,6 +4829,93 @@ async def get_user_chat_history(user_id: str, user = Depends(get_current_user)):
     return messages
 
 
+# ============== BOT ACTIVITY LOGS ==============
+
+async def log_bot_activity(event_type: str, user_id: str = "", username: str = "", details: str = "", metadata: dict = None):
+    """Log bot activity for admin dashboard"""
+    try:
+        log_entry = {
+            "id": str(uuid.uuid4()),
+            "event_type": event_type,
+            "telegram_user_id": user_id,
+            "telegram_username": username,
+            "details": details,
+            "metadata": metadata or {},
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.bot_activity_logs.insert_one(log_entry)
+    except Exception as e:
+        logger.error(f"Failed to log activity: {e}")
+
+@api_router.get("/bot-activity")
+async def get_bot_activity(user = Depends(get_current_user), limit: int = 100, event_type: str = None):
+    """Get bot activity logs"""
+    query = {}
+    if event_type:
+        query["event_type"] = event_type
+    
+    logs = await db.bot_activity_logs.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return logs
+
+@api_router.get("/bot-activity/stats")
+async def get_bot_activity_stats(user = Depends(get_current_user)):
+    """Get bot activity stats for last 24 hours"""
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    today = datetime.now(timezone.utc).isoformat()
+    
+    total_24h = await db.bot_activity_logs.count_documents({"created_at": {"$gte": yesterday}})
+    
+    # Count by event type
+    event_types = ["command", "payment_screenshot", "callback", "message", "payment_verified", "new_subscriber"]
+    type_counts = {}
+    for et in event_types:
+        type_counts[et] = await db.bot_activity_logs.count_documents({
+            "event_type": et,
+            "created_at": {"$gte": yesterday}
+        })
+    
+    # Unique active users in 24h
+    active_users_24h = len(await db.bot_activity_logs.distinct("telegram_user_id", {"created_at": {"$gte": yesterday}}))
+    
+    # Total all time
+    total_all = await db.bot_activity_logs.count_documents({})
+    
+    return {
+        "total_24h": total_24h,
+        "total_all": total_all,
+        "active_users_24h": active_users_24h,
+        "by_type": type_counts
+    }
+
+# ============== ENHANCED EXPORT ==============
+
+@api_router.get("/export/revenue-report")
+async def export_revenue_report(user = Depends(get_current_user)):
+    """Export full revenue report as CSV"""
+    payments = await db.payments.find({"status": "verified"}, {"_id": 0}).to_list(100000)
+    subscribers = await db.subscribers.find({}, {"_id": 0}).to_list(100000)
+    
+    # Revenue CSV
+    revenue_csv = "Date,User ID,Username,Plan,Amount,Payment Method,Status\n"
+    for p in sorted(payments, key=lambda x: x.get("created_at", ""), reverse=True):
+        revenue_csv += f"{str(p.get('created_at',''))[:10]},{p.get('telegram_user_id','')},{p.get('telegram_username','')},{p.get('plan_name','')},{p.get('amount',0)},{p.get('payment_method','')},{p.get('status','')}\n"
+    
+    # Summary
+    total_revenue = sum(p.get("amount", 0) for p in payments)
+    active_count = len([s for s in subscribers if s.get("status") == "active"])
+    
+    summary = {
+        "total_revenue": total_revenue,
+        "total_payments": len(payments),
+        "active_subscribers": active_count,
+        "total_subscribers": len(subscribers),
+        "generated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    return {"csv_data": revenue_csv, "summary": summary}
+
+
+
 # ============== TELEGRAM WEBHOOK ==============
 
 async def send_telegram_message_with_buttons(chat_id: str, message: str, buttons: list = None, bot_token: str = None, retries: int = 3):
@@ -5125,6 +5223,7 @@ async def get_telegram_file(file_id: str):
     return Response(content=image_bytes, media_type="image/jpeg")
 
 @api_router.post("/telegram/webhook")
+@limiter.limit("300/minute")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
         data = await request.json()
@@ -5487,6 +5586,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             callback_data = callback_query.get("data", "")
             chat_id = str(callback_query.get("from", {}).get("id", ""))
             username = callback_query.get("from", {}).get("username", "")
+            
+            # Log callback activity
+            asyncio.create_task(log_bot_activity("callback", chat_id, username, f"Button: {callback_data}"))
             
             settings = await get_bot_settings()
             bot_token = settings.get("telegram_bot_token", "")
@@ -6943,6 +7045,12 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         
         if not chat_id:
             return {"ok": True}
+        
+        # Log bot activity
+        event_type = "command" if text and text.startswith("/") else "message"
+        if photo:
+            event_type = "payment_screenshot" if chat_type == "private" else "photo"
+        asyncio.create_task(log_bot_activity(event_type, chat_id, username, text[:100] if text else event_type))
         
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")

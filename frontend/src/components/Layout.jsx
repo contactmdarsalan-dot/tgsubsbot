@@ -26,6 +26,7 @@ import {
   Heart,
   IndianRupee,
   ShieldCheck,
+  Activity,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -36,6 +37,7 @@ const navItems = [
   { path: "/dashboard/payments", label: "Payments", icon: CreditCard },
   { path: "/dashboard/revenue", label: "Revenue", icon: IndianRupee },
   { path: "/dashboard/telegram-admins", label: "TG Admins", icon: ShieldCheck },
+  { path: "/dashboard/bot-activity", label: "Bot Activity", icon: Activity },
   { path: "/dashboard/paid-posts", label: "Paid Posts", icon: Lock },
   { path: "/dashboard/live-stream", label: "Live", icon: Radio },
   { path: "/dashboard/creators", label: "Creators", icon: Sparkles },
