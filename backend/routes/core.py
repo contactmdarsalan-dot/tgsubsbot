@@ -1050,11 +1050,13 @@ async def create_subscriber_task(subscriber_create: SubscriberCreate, plan: dict
                     logger.error(f"Error creating group invite: {e}")
         
         # Notify admin
-        await notify_admin_new_payment(
+        from services.telegram import notify_admin_new_payment as _notify_admin
+        await _notify_admin(
             subscriber_create.telegram_user_id,
             subscriber_create.telegram_username or "",
             plan["name"],
-            plan.get("price", 0)
+            plan.get("price", 0),
+            payment_status="verified"
         )
         
         # Send welcome message
@@ -1065,42 +1067,6 @@ async def create_subscriber_task(subscriber_create: SubscriberCreate, plan: dict
             await send_telegram_message(subscriber_create.telegram_user_id, full_msg, bot_token)
     except Exception as e:
         logger.error(f"Error in create_subscriber_task: {e}")
-
-
-async def notify_admin_new_payment(user_id: str, username: str, plan_name: str, amount: float):
-    """Send Telegram notification to admin when a new payment is received"""
-    try:
-        settings = await get_bot_settings()
-        bot_token = settings.get("telegram_bot_token", "")
-        if not bot_token:
-            return
-        
-        # Get admin users
-        admins = await db.users.find({"role": {"$in": ["super_admin", "admin"]}}, {"_id": 0}).to_list(10)
-        
-        msg = "🔔 <b>New Payment Received!</b>\n\n"
-        msg += f"👤 User: <b>@{username}</b> (<code>{user_id}</code>)\n" if username else f"👤 User: <code>{user_id}</code>\n"
-        msg += f"📦 Plan: <b>{plan_name}</b>\n"
-        msg += f"💰 Amount: <b>₹{amount}</b>\n"
-        msg += f"🕐 Time: <b>{datetime.now(timezone.utc).strftime('%d %b %Y %I:%M %p')} UTC</b>"
-        
-        # Send to all admins who have telegram_user_id linked
-        for admin in admins:
-            admin_tg_id = admin.get("telegram_user_id", "")
-            if admin_tg_id:
-                await send_telegram_message(admin_tg_id, msg, bot_token)
-        
-        # Also send to the default bot owner (first admin with telegram_user_id)
-        # If no admin has telegram_user_id, try sending to the creator/owner
-        creators = await db.creators.find({}, {"_id": 0}).to_list(5)
-        for creator in creators:
-            creator_tg_id = creator.get("telegram_user_id", "")
-            if creator_tg_id:
-                already_sent = any(a.get("telegram_user_id") == creator_tg_id for a in admins if a.get("telegram_user_id"))
-                if not already_sent:
-                    await send_telegram_message(creator_tg_id, msg, bot_token)
-    except Exception as e:
-        logger.error(f"Error notifying admin: {e}")
 
 
 

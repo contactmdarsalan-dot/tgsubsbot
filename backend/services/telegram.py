@@ -2,6 +2,7 @@
 import os
 import asyncio
 import httpx
+from datetime import datetime, timezone
 from database import db, cache_get, cache_set
 from config import logger, TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL_ID
 
@@ -585,8 +586,8 @@ async def is_admin_or_creator(telegram_user_id: str, telegram_username: str = ""
     return admin_user is not None
 
 
-async def notify_admin_new_payment(user_id: str, username: str, plan_name: str, amount: float, screenshot_file_id: str = None):
-    """Notify admin about new payment via Telegram with screenshot"""
+async def notify_admin_new_payment(user_id: str, username: str, plan_name: str, amount: float, screenshot_file_id: str = None, payment_id: str = None, payment_status: str = "pending"):
+    """Notify admin about new payment via Telegram with screenshot and Approve/Reject buttons"""
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
 
@@ -604,20 +605,50 @@ async def notify_admin_new_payment(user_id: str, username: str, plan_name: str, 
     if not admin_ids:
         return
 
-    msg = "<b>New Payment Verified!</b>\n\n"
-    msg += f"User: @{username} (<code>{user_id}</code>)\n"
-    msg += f"Plan: <b>{plan_name}</b>\n"
-    msg += f"Amount: <b>Rs.{amount}</b>\n\n"
-    msg += "Check dashboard for details."
+    if payment_status == "verified":
+        msg = "✅ <b>Payment Auto-Verified!</b>\n\n"
+    else:
+        msg = "🔔 <b>New Payment - Admin Review Required!</b>\n\n"
+    
+    msg += f"👤 User: @{username} (<code>{user_id}</code>)\n" if username else f"👤 User: <code>{user_id}</code>\n"
+    msg += f"📦 Plan: <b>{plan_name}</b>\n"
+    msg += f"💰 Amount: <b>Rs.{amount}</b>\n"
+    msg += f"🕐 Time: <b>{datetime.now(timezone.utc).strftime('%d %b %Y %I:%M %p')} UTC</b>\n"
+    
+    if payment_id:
+        msg += f"🆔 Payment: <code>{payment_id[:8]}...</code>\n"
+
+    # Build inline keyboard for Approve/Reject
+    reply_markup = None
+    if payment_id:
+        if payment_status == "verified":
+            reply_markup = {"inline_keyboard": [
+                [{"text": "✅ Auto-Verified", "callback_data": "noop"}],
+                [{"text": "❌ Revoke & Reject", "callback_data": f"admin_reject_{payment_id}"}]
+            ]}
+        else:
+            reply_markup = {"inline_keyboard": [
+                [
+                    {"text": "✅ Approve", "callback_data": f"admin_approve_{payment_id}"},
+                    {"text": "❌ Reject", "callback_data": f"admin_reject_{payment_id}"}
+                ]
+            ]}
 
     for admin_id in admin_ids:
         try:
-            # Send screenshot if available
             if screenshot_file_id and bot_token:
                 await send_telegram_photo(
                     admin_id,
                     screenshot_file_id,
                     msg,
+                    bot_token,
+                    reply_markup
+                )
+            elif reply_markup:
+                await send_telegram_message_with_buttons(
+                    admin_id,
+                    msg,
+                    reply_markup["inline_keyboard"],
                     bot_token
                 )
             else:

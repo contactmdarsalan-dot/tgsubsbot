@@ -820,6 +820,15 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             await add_to_channel(chat_id, plan_channel, plan["name"])
                     
                     logger.info(f"Payment verified for user {chat_id}, plan {plan['name']}")
+                    
+                    # Notify admin about verified payment
+                    await notify_admin_new_payment(
+                        chat_id, username or pending.get("telegram_username", ""),
+                        plan['name'], final_amount,
+                        screenshot_file_id=photo_file_id,
+                        payment_id=payment_obj["id"],
+                        payment_status="verified"
+                    )
                 else:
                     await send_telegram_message(chat_id, "❌ Error. /start se dobara try karo.", bot_token)
             
@@ -1106,6 +1115,187 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             
             elif callback_data == "cancel_action":
                 await send_telegram_message(chat_id, "❌ Action cancelled.\n\nUse /start to see plans or /help for commands.", bot_token)
+            
+            # ========== ADMIN APPROVE/REJECT PAYMENT CALLBACKS ==========
+            
+            elif callback_data == "noop":
+                # Do nothing - just acknowledge the callback
+                pass
+            
+            elif callback_data.startswith("admin_approve_"):
+                payment_id = callback_data.replace("admin_approve_", "")
+                
+                # Verify the clicking user is an admin
+                is_admin = await is_admin_or_creator(chat_id, username)
+                if not is_admin:
+                    await send_telegram_message(chat_id, "❌ Only admins can approve payments.", bot_token)
+                else:
+                    payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+                    
+                    if not payment:
+                        await send_telegram_message(chat_id, "❌ Payment not found.", bot_token)
+                    elif payment.get("status") == "verified":
+                        await send_telegram_message(chat_id, "✅ This payment is already verified.", bot_token)
+                    else:
+                        # Update payment status to verified
+                        await db.payments.update_one(
+                            {"id": payment_id},
+                            {"$set": {
+                                "status": "verified",
+                                "admin_verified": True,
+                                "verified_by": chat_id,
+                                "verified_at": datetime.now(timezone.utc).isoformat()
+                            }}
+                        )
+                        
+                        user_tg_id = payment.get("telegram_user_id", "")
+                        plan_id = payment.get("plan_id", "")
+                        plan = await db.plans.find_one({"id": plan_id}, {"_id": 0}) if plan_id else None
+                        
+                        if plan:
+                            # Create subscriber
+                            grace_days = settings.get("grace_period_days", 2)
+                            end_date = datetime.now(timezone.utc) + timedelta(days=plan.get("duration_days", 30))
+                            grace_end = end_date + timedelta(days=grace_days)
+                            
+                            subscriber_obj = {
+                                "id": str(uuid.uuid4()),
+                                "telegram_user_id": user_tg_id,
+                                "telegram_username": payment.get("telegram_username", ""),
+                                "plan_id": plan["id"],
+                                "plan_name": plan["name"],
+                                "payment_method": payment.get("payment_method", "manual"),
+                                "payment_id": payment_id,
+                                "status": "active",
+                                "start_date": datetime.now(timezone.utc).isoformat(),
+                                "end_date": end_date.isoformat(),
+                                "grace_end_date": grace_end.isoformat(),
+                                "reminder_sent": False,
+                                "created_at": datetime.now(timezone.utc).isoformat()
+                            }
+                            await db.subscribers.insert_one(subscriber_obj)
+                            
+                            # Add user to channel
+                            plan_channel = plan.get("channel_id", "")
+                            await add_to_channel(user_tg_id, plan_channel, plan['name'], use_default=True)
+                            
+                            # Notify user
+                            user_msg = "✅ <b>Payment Approved!</b>\n\n"
+                            user_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
+                            user_msg += f"💰 Amount: <b>₹{payment.get('amount', 0)}</b>\n"
+                            user_msg += f"⏱ Valid till: <b>{end_date.strftime('%d %b %Y')}</b>\n\n"
+                            user_msg += "🎉 <b>Subscription Activated!</b>\n"
+                            user_msg += "Channel access mil gaya hai!"
+                            await send_telegram_message(user_tg_id, user_msg, bot_token)
+                        else:
+                            # No plan found, just notify user
+                            user_msg = "✅ <b>Payment Approved by Admin!</b>\n\nAdmin se contact karo for access."
+                            await send_telegram_message(user_tg_id, user_msg, bot_token)
+                        
+                        # Edit the admin message to show approved status
+                        callback_msg = callback_query.get("message", {})
+                        msg_id = callback_msg.get("message_id")
+                        admin_confirm = f"✅ <b>APPROVED</b> by Admin\n\n"
+                        admin_confirm += f"👤 User: <code>{user_tg_id}</code>\n"
+                        admin_confirm += f"📦 Plan: <b>{payment.get('plan_name', 'N/A')}</b>\n"
+                        admin_confirm += f"💰 Amount: <b>₹{payment.get('amount', 0)}</b>"
+                        
+                        try:
+                            # Try editMessageCaption first (for photo messages)
+                            async with httpx.AsyncClient(timeout=10.0) as http_client:
+                                resp = await http_client.post(
+                                    f"https://api.telegram.org/bot{bot_token}/editMessageCaption",
+                                    json={
+                                        "chat_id": chat_id,
+                                        "message_id": msg_id,
+                                        "caption": admin_confirm,
+                                        "parse_mode": "HTML"
+                                    }
+                                )
+                                if resp.status_code != 200:
+                                    # Fallback to editMessageText (for text-only messages)
+                                    await edit_telegram_message(chat_id, msg_id, admin_confirm, bot_token=bot_token)
+                        except Exception:
+                            await send_telegram_message(chat_id, admin_confirm, bot_token)
+                        
+                        logger.info(f"Admin {chat_id} approved payment {payment_id}")
+            
+            elif callback_data.startswith("admin_reject_"):
+                payment_id = callback_data.replace("admin_reject_", "")
+                
+                # Verify the clicking user is an admin
+                is_admin = await is_admin_or_creator(chat_id, username)
+                if not is_admin:
+                    await send_telegram_message(chat_id, "❌ Only admins can reject payments.", bot_token)
+                else:
+                    payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+                    
+                    if not payment:
+                        await send_telegram_message(chat_id, "❌ Payment not found.", bot_token)
+                    elif payment.get("status") == "rejected":
+                        await send_telegram_message(chat_id, "❌ This payment is already rejected.", bot_token)
+                    else:
+                        was_verified = payment.get("status") == "verified"
+                        
+                        # Update payment status to rejected
+                        await db.payments.update_one(
+                            {"id": payment_id},
+                            {"$set": {
+                                "status": "rejected",
+                                "rejected_by": chat_id,
+                                "rejected_at": datetime.now(timezone.utc).isoformat()
+                            }}
+                        )
+                        
+                        user_tg_id = payment.get("telegram_user_id", "")
+                        
+                        # If was verified, also deactivate subscriber and remove from channel
+                        if was_verified:
+                            await db.subscribers.update_one(
+                                {"payment_id": payment_id},
+                                {"$set": {"status": "expired"}}
+                            )
+                            plan_id = payment.get("plan_id", "")
+                            plan = await db.plans.find_one({"id": plan_id}, {"_id": 0}) if plan_id else None
+                            if plan:
+                                plan_channel = plan.get("channel_id", "")
+                                await remove_from_channel(user_tg_id, plan_channel, plan['name'])
+                        
+                        # Notify user
+                        user_msg = "❌ <b>Payment Rejected!</b>\n\n"
+                        user_msg += f"📦 Plan: <b>{payment.get('plan_name', 'N/A')}</b>\n"
+                        user_msg += f"💰 Amount: <b>₹{payment.get('amount', 0)}</b>\n\n"
+                        user_msg += "Admin ne payment reject kar diya.\n"
+                        user_msg += "Sahi payment screenshot bhejo ya /start se dobara try karo."
+                        await send_telegram_message(user_tg_id, user_msg, bot_token)
+                        
+                        # Edit the admin message to show rejected status
+                        callback_msg = callback_query.get("message", {})
+                        msg_id = callback_msg.get("message_id")
+                        admin_confirm = f"❌ <b>REJECTED</b> by Admin\n\n"
+                        admin_confirm += f"👤 User: <code>{user_tg_id}</code>\n"
+                        admin_confirm += f"📦 Plan: <b>{payment.get('plan_name', 'N/A')}</b>\n"
+                        admin_confirm += f"💰 Amount: <b>₹{payment.get('amount', 0)}</b>"
+                        
+                        try:
+                            # Try editMessageCaption first (for photo messages)
+                            async with httpx.AsyncClient(timeout=10.0) as http_client:
+                                resp = await http_client.post(
+                                    f"https://api.telegram.org/bot{bot_token}/editMessageCaption",
+                                    json={
+                                        "chat_id": chat_id,
+                                        "message_id": msg_id,
+                                        "caption": admin_confirm,
+                                        "parse_mode": "HTML"
+                                    }
+                                )
+                                if resp.status_code != 200:
+                                    # Fallback to editMessageText (for text-only messages)
+                                    await edit_telegram_message(chat_id, msg_id, admin_confirm, bot_token=bot_token)
+                        except Exception:
+                            await send_telegram_message(chat_id, admin_confirm, bot_token)
+                        
+                        logger.info(f"Admin {chat_id} rejected payment {payment_id}")
             
             elif callback_data == "check_status":
                 subscriber = await db.subscribers.find_one({"telegram_user_id": chat_id}, {"_id": 0})
@@ -2617,7 +2807,12 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 await add_to_channel(chat_id, plan_channel, plan['name'], use_default=True)
                                 
                                 # Notify admin about new payment
-                                await notify_admin_new_payment(chat_id, username, plan['name'], final_price)
+                                await notify_admin_new_payment(
+                                    chat_id, username, plan['name'], final_price,
+                                    screenshot_file_id=photo_file_id,
+                                    payment_id=payment_record["id"],
+                                    payment_status="verified"
+                                )
                             
                         else:
                             # AI/OCR couldn't auto-verify - check if AI explicitly rejected
@@ -2787,6 +2982,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 }
                                 await db.payments.insert_one(payment_pending)
                                 
+                                # Notify admin with Approve/Reject buttons
+                                await notify_admin_new_payment(
+                                    chat_id, username, plan['name'], plan.get('price', 0),
+                                    screenshot_file_id=photo_file_id,
+                                    payment_id=payment_pending["id"],
+                                    payment_status="pending"
+                                )
+                                
                                 await send_telegram_message(chat_id, pending_msg, bot_token)
                     else:
                         # Could not download image - save for admin review
@@ -2805,6 +3008,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             "created_at": datetime.now(timezone.utc).isoformat()
                         }
                         await db.payments.insert_one(payment_pending)
+                        
+                        # Notify admin with Approve/Reject buttons
+                        await notify_admin_new_payment(
+                            chat_id, username, plan['name'], plan.get('price', 0),
+                            screenshot_file_id=photo_file_id,
+                            payment_id=payment_pending["id"],
+                            payment_status="pending"
+                        )
                         
                         fallback_msg = "📸 <b>Screenshot Received!</b>\n\n"
                         fallback_msg += "⏳ <b>Admin verification pending...</b>\n\n"

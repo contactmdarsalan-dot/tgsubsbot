@@ -6,6 +6,7 @@ from config import logger, RAZORPAY_KEY_ID, razorpay_client, DASHBOARD_PLANS
 from models import User
 from datetime import datetime, timezone, timedelta
 import uuid
+import bcrypt
 
 router = APIRouter()
 
