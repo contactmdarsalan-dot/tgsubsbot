@@ -26,6 +26,7 @@ import LiveStream from "./pages/LiveStream";
 import PaidPosts from "./pages/PaidPosts";
 import UserManagement from "./pages/UserManagement";
 import Creators from "./pages/Creators";
+import Profile from "./pages/Profile";
 import LandingPage from "./pages/LandingPage";
 import RevenueDashboard from "./pages/RevenueDashboard";
 import TelegramAdmins from "./pages/TelegramAdmins";
@@ -154,6 +155,7 @@ function AppRouter() {
         <Route path="paid-posts" element={<PaidPosts />} />
         <Route path="user-management" element={<UserManagement />} />
         <Route path="creators" element={<Creators />} />
+        <Route path="profile" element={<Profile />} />
       </Route>
     </Routes>
   );

@@ -336,6 +336,112 @@ async def verify_otp(data: dict):
         }
     }
 
+# ============== PROFILE & PASSWORD ROUTES ==============
+
+@router.put("/auth/profile")
+async def update_profile(data: dict, user = Depends(get_current_user)):
+    """Update user profile"""
+    update_data = {}
+    if "name" in data and data["name"].strip():
+        update_data["name"] = data["name"].strip()
+    if "phone" in data:
+        update_data["phone"] = data["phone"].strip()
+
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No data to update")
+
+    await db.users.update_one({"id": user["id"]}, {"$set": update_data})
+    updated = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password": 0})
+    return updated
+
+
+@router.put("/auth/change-password")
+async def change_password(data: dict, user = Depends(get_current_user)):
+    """Change password for logged-in user"""
+    current_password = data.get("current_password", "")
+    new_password = data.get("new_password", "")
+
+    if not current_password or not new_password:
+        raise HTTPException(status_code=400, detail="Both current and new password required")
+
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+
+    full_user = await db.users.find_one({"id": user["id"]})
+    if not full_user:
+        raise HTTPException(status_code=400, detail="User not found")
+
+    pw_field = "password_hash" if "password_hash" in full_user else "password"
+    if not full_user.get(pw_field):
+        raise HTTPException(status_code=400, detail="Password not set for this account")
+
+    if not verify_password(current_password, full_user[pw_field]):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    hashed = hash_password(new_password)
+    await db.users.update_one({"id": user["id"]}, {"$set": {pw_field: hashed}})
+    return {"message": "Password changed successfully"}
+
+
+@router.post("/auth/forgot-password")
+@limiter.limit("3/minute")
+async def forgot_password(request: Request, data: dict):
+    """Send password reset OTP to email"""
+    email = data.get("email", "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        return {"message": "If the email exists, a reset code has been sent"}
+
+    otp = str(random.randint(100000, 999999))
+    await db.password_resets.update_one(
+        {"email": email},
+        {"$set": {
+            "email": email,
+            "otp": otp,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+            "used": False
+        }},
+        upsert=True
+    )
+    logger.info(f"Password reset OTP for {email}: {otp}")
+    return {"message": "If the email exists, a reset code has been sent", "test_otp": otp}
+
+
+@router.post("/auth/reset-password")
+@limiter.limit("5/minute")
+async def reset_password(request: Request, data: dict):
+    """Reset password using OTP"""
+    email = data.get("email", "").strip().lower()
+    otp = data.get("otp", "").strip()
+    new_password = data.get("new_password", "")
+
+    if not email or not otp or not new_password:
+        raise HTTPException(status_code=400, detail="Email, OTP and new password are required")
+
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    reset_record = await db.password_resets.find_one({"email": email, "otp": otp, "used": False}, {"_id": 0})
+    if not reset_record:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+
+    expires_at = datetime.fromisoformat(reset_record["expires_at"])
+    if datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(status_code=400, detail="Reset code has expired")
+
+    hashed = hash_password(new_password)
+    # Support both password field names
+    existing_user = await db.users.find_one({"email": email})
+    pw_field = "password_hash" if existing_user and "password_hash" in existing_user else "password"
+    await db.users.update_one({"email": email}, {"$set": {pw_field: hashed}})
+    await db.password_resets.update_one({"email": email, "otp": otp}, {"$set": {"used": True}})
+    return {"message": "Password reset successfully"}
+
+
 # ============== SUPPORT TICKET ROUTES (Chat-style) ==============
 
 @router.post("/support/tickets")

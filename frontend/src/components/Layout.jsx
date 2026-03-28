@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -27,6 +27,8 @@ import {
   IndianRupee,
   ShieldCheck,
   Activity,
+  User,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -64,11 +66,13 @@ const superAdminNavItems = [
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const profileRef = useRef(null);
 
   const SUPER_ADMIN_EMAILS = ["gamerxboys8958@gmail.com", "contactmdarsalan@gmail.com"];
 
@@ -82,6 +86,17 @@ export default function Layout() {
     const superAdminStatus = user.role === "super_admin" || SUPER_ADMIN_EMAILS.includes(user.email);
     setIsSuperAdmin(superAdminStatus);
   }, [user.email, user.role, user.is_admin]);
+
+  // Close profile dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -108,33 +123,33 @@ export default function Layout() {
         />
       )}
 
-      {/* Sidebar - Romance Theme */}
+      {/* Sidebar */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 sidebar-romance transform transition-transform duration-300 ease-out ${
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 sidebar-romance transform transition-transform duration-300 ease-out ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="p-6 border-b border-border/30">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-rose-600 to-red-700 flex items-center justify-center shadow-lg glow-rose">
-                <Heart className="w-5 h-5 text-white" fill="currentColor" />
+          <div className="p-5 border-b border-border/30 flex-shrink-0">
+            <Link to="/dashboard" className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-rose-600 to-red-700 flex items-center justify-center shadow-lg glow-rose">
+                <Heart className="w-4 h-4 text-white" fill="currentColor" />
               </div>
               <div>
-                <h1 className="font-serif text-xl font-semibold tracking-tight text-foreground">
+                <h1 className="font-serif text-lg font-semibold tracking-tight text-foreground">
                   TGSubsBot
                 </h1>
-                <p className="text-xs text-muted-foreground font-light">
+                <p className="text-[10px] text-muted-foreground font-light leading-none">
                   Premium Subscriptions
                 </p>
               </div>
-            </div>
+            </Link>
           </div>
 
-          {/* Navigation */}
-          <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-            {allNavItems.map((item, index) => {
+          {/* Navigation - scrollable */}
+          <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto scrollbar-thin">
+            {allNavItems.map((item) => {
               const isActive = location.pathname === item.path;
               const Icon = item.icon;
               return (
@@ -142,75 +157,44 @@ export default function Layout() {
                   key={item.path}
                   to={item.path}
                   onClick={() => setSidebarOpen(false)}
-                  data-testid={`nav-${item.label.toLowerCase().replace(' ', '-')}`}
-                  className={`nav-item flex items-center gap-3 px-4 py-3 text-sm font-medium transition-all duration-200 ${
+                  data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                  className={`flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-all duration-150 ${
                     isActive
-                      ? "active bg-primary/15 text-primary border-l-2 border-primary"
-                      : "text-muted-foreground hover:text-foreground"
-                  } ${item.adminOnly ? "border border-dashed border-primary/20 rounded-xl" : ""} 
-                  ${item.superAdminOnly ? "border border-dashed border-amber-500/30 bg-amber-500/5 rounded-xl" : ""}
-                  opacity-0 animate-fade-in-up stagger-${Math.min(index + 1, 5)}`}
-                  style={{ animationFillMode: 'forwards' }}
+                      ? "bg-primary/15 text-primary border-l-2 border-primary font-medium"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  } ${item.adminOnly ? "border border-dashed border-primary/20" : ""} 
+                  ${item.superAdminOnly ? "border border-dashed border-amber-500/30 bg-amber-500/5" : ""}`}
                 >
-                  <Icon className="w-5 h-5" strokeWidth={1.5} />
-                  <span>{item.label}</span>
+                  <Icon className="w-4 h-4 flex-shrink-0" strokeWidth={1.5} />
+                  <span className="truncate">{item.label}</span>
                   {item.superAdminOnly && (
-                    <Crown className="w-3 h-3 text-amber-500 ml-auto" />
+                    <Crown className="w-3 h-3 text-amber-500 ml-auto flex-shrink-0" />
                   )}
                 </Link>
               );
             })}
           </nav>
-
-          {/* User section */}
-          <div className="p-4 border-t border-border/30">
-            <div className="romance-card p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500/20 to-red-600/20 flex items-center justify-center border border-primary/20">
-                  <span className="text-sm font-serif font-semibold text-primary">
-                    {user.name?.charAt(0)?.toUpperCase() || "U"}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate text-foreground">{user.name || "User"}</p>
-                  <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleLogout}
-                  data-testid="logout-btn"
-                  className="text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
-                >
-                  <LogOut className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
         </div>
       </aside>
 
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
+        {/* Header with Profile */}
         <header className="sticky top-0 z-30 glass border-b border-border/30">
-          <div className="flex items-center justify-between px-6 py-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="lg:hidden text-foreground hover:bg-primary/10 rounded-xl"
-              onClick={() => setSidebarOpen(true)}
-              data-testid="mobile-menu-btn"
-            >
-              <Menu className="w-5 h-5" />
-            </Button>
-            
-            <div className="flex-1 flex items-center justify-center lg:justify-start lg:ml-4">
+          <div className="flex items-center justify-between px-4 md:px-6 py-3">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="lg:hidden text-foreground hover:bg-primary/10 rounded-xl"
+                onClick={() => setSidebarOpen(true)}
+                data-testid="mobile-menu-btn"
+              >
+                <Menu className="w-5 h-5" />
+              </Button>
+              
               <h2 className="font-serif text-lg font-medium text-foreground hidden md:block">
-                {navItems.find(item => item.path === location.pathname)?.label || 
-                 adminNavItems.find(item => item.path === location.pathname)?.label ||
-                 superAdminNavItems.find(item => item.path === location.pathname)?.label ||
-                 "Dashboard"}
+                {allNavItems.find(item => item.path === location.pathname)?.label || "Dashboard"}
               </h2>
             </div>
             
@@ -218,11 +202,67 @@ export default function Layout() {
               <p className="text-sm text-muted-foreground hidden sm:block">
                 {new Date().toLocaleDateString("en-IN", {
                   weekday: "short",
-                  month: "short",
                   day: "numeric",
+                  month: "short",
                 })}
               </p>
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="System Online" />
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Online" />
+
+              {/* Profile Dropdown */}
+              <div className="relative" ref={profileRef}>
+                <button
+                  onClick={() => setProfileOpen(!profileOpen)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-muted/50 transition-colors border border-transparent hover:border-border/50"
+                  data-testid="profile-dropdown-btn"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-rose-500/20 to-red-600/20 flex items-center justify-center border border-primary/20">
+                    <span className="text-xs font-serif font-semibold text-primary">
+                      {user.name?.charAt(0)?.toUpperCase() || "U"}
+                    </span>
+                  </div>
+                  <span className="text-sm font-medium hidden md:block max-w-[120px] truncate">
+                    {user.name || "User"}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${profileOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {/* Dropdown Menu */}
+                {profileOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-border/50 bg-card shadow-xl py-1 z-50">
+                    <div className="px-4 py-3 border-b border-border/30">
+                      <p className="text-sm font-medium truncate">{user.name || "User"}</p>
+                      <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                    </div>
+                    <Link
+                      to="/dashboard/profile"
+                      onClick={() => setProfileOpen(false)}
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-muted/50 transition-colors"
+                      data-testid="profile-link"
+                    >
+                      <User className="w-4 h-4" />
+                      Profile
+                    </Link>
+                    <Link
+                      to="/dashboard/settings"
+                      onClick={() => setProfileOpen(false)}
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-muted/50 transition-colors"
+                    >
+                      <Settings className="w-4 h-4" />
+                      Settings
+                    </Link>
+                    <div className="border-t border-border/30 mt-1 pt-1">
+                      <button
+                        onClick={() => { setProfileOpen(false); handleLogout(); }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                        data-testid="logout-btn"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        Logout
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </header>
