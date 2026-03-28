@@ -40,6 +40,8 @@ const getAuthHeaders = () => ({
 export default function AdminSubscriptions() {
   const [requests, setRequests] = useState([]);
   const [tenantUsers, setTenantUsers] = useState([]);
+  const [platformUsers, setPlatformUsers] = useState([]);
+  const [platformStats, setPlatformStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [activeTab, setActiveTab] = useState("users");
@@ -54,7 +56,7 @@ export default function AdminSubscriptions() {
       const response = await axios.get(`${API}/auth/check-admin`, getAuthHeaders());
       setIsAdmin(response.data.is_admin);
       if (response.data.is_admin) {
-        await Promise.all([fetchRequests(), fetchTenantUsers()]);
+        await Promise.all([fetchRequests(), fetchTenantUsers(), fetchPlatformUsers()]);
       }
     } catch {
       setIsAdmin(false);
@@ -75,9 +77,19 @@ export default function AdminSubscriptions() {
   const fetchTenantUsers = async () => {
     try {
       const response = await axios.get(`${API}/tenant-users`, getAuthHeaders());
-      setTenantUsers(response.data);
+      setTenantUsers(response.data.users || response.data);
+      setPlatformStats(response.data.platform_stats || {});
     } catch (error) {
       console.error("Failed to fetch tenant users:", error);
+    }
+  };
+
+  const fetchPlatformUsers = async () => {
+    try {
+      const response = await axios.get(`${API}/platform-users`, getAuthHeaders());
+      setPlatformUsers(response.data);
+    } catch (error) {
+      console.error("Failed to fetch platform users:", error);
     }
   };
 
@@ -157,7 +169,7 @@ export default function AdminSubscriptions() {
           <h1 className="text-3xl font-bold tracking-tight">SaaS Management</h1>
           <p className="text-muted-foreground mt-1">Manage tenant users and dashboard subscriptions</p>
         </div>
-        <Button variant="outline" onClick={() => { fetchRequests(); fetchTenantUsers(); }}>
+        <Button variant="outline" onClick={() => { fetchRequests(); fetchTenantUsers(); fetchPlatformUsers(); }}>
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
         </Button>
@@ -243,6 +255,15 @@ export default function AdminSubscriptions() {
               {pendingCount}
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setActiveTab("platform")}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === "platform" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
+          }`}
+          data-testid="tab-platform"
+        >
+          Platform Users ({platformUsers.length})
         </button>
       </div>
 
@@ -403,6 +424,79 @@ export default function AdminSubscriptions() {
                 <Crown className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                 <h3 className="text-lg font-bold mb-2">No Requests Yet</h3>
                 <p className="text-muted-foreground">Subscription requests will appear here</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Platform Users Tab */}
+      {activeTab === "platform" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Platform Users (Bot Users)
+              <Badge variant="outline" className="ml-2">{platformUsers.length} total</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {platformUsers.length > 0 ? (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>User</TableHead>
+                      <TableHead>Telegram ID</TableHead>
+                      <TableHead>Subscriber</TableHead>
+                      <TableHead>Plan</TableHead>
+                      <TableHead>Payments</TableHead>
+                      <TableHead>Last Seen</TableHead>
+                      <TableHead>Joined</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {platformUsers.map((pu, idx) => (
+                      <TableRow key={pu.user_id || idx}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                              <span className="text-xs font-semibold text-blue-400">
+                                {pu.first_name?.charAt(0)?.toUpperCase() || pu.username?.charAt(0)?.toUpperCase() || "U"}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="font-medium">{pu.first_name || "Unknown"}</p>
+                              {pu.username && <p className="text-xs text-muted-foreground">@{pu.username}</p>}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <code className="text-xs bg-muted px-2 py-1 rounded">{pu.user_id}</code>
+                        </TableCell>
+                        <TableCell>
+                          {pu.is_subscriber ? (
+                            <Badge className="bg-green-500/20 text-green-400 border border-green-500/30">Active</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-muted-foreground">No</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-medium">{pu.plan_name || "-"}</TableCell>
+                        <TableCell>
+                          <span className="font-mono">{pu.payment_count || 0}</span>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{formatDate(pu.last_seen)}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{formatDate(pu.created_at)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-16">
+                <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-bold mb-2">No Platform Users</h3>
+                <p className="text-muted-foreground">Users who interact with your Telegram bot will appear here</p>
               </div>
             )}
           </CardContent>

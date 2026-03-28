@@ -565,4 +565,56 @@ async def update_ticket_status(ticket_id: str, data: dict, user = Depends(get_cu
     
     return {"message": "Status updated"}
 
+
+@router.delete("/support/tickets/{ticket_id}")
+async def delete_ticket(ticket_id: str, user = Depends(get_current_user)):
+    """Delete a support ticket (own ticket or admin)"""
+    ticket = await db.support_tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    is_admin = user.get("is_admin", False) or user.get("role") in ["admin", "super_admin"] or user.get("email") == SUPER_ADMIN_EMAIL
+    is_owner = ticket.get("user_id") == user.get("id")
+
+    if not is_admin and not is_owner:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this ticket")
+
+    await db.support_tickets.delete_one({"id": ticket_id})
+    return {"message": "Ticket deleted"}
+
+
+@router.put("/support/tickets/{ticket_id}/close")
+async def close_ticket(ticket_id: str, user = Depends(get_current_user)):
+    """Close own ticket"""
+    ticket = await db.support_tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    is_admin = user.get("is_admin", False) or user.get("role") in ["admin", "super_admin"]
+    is_owner = ticket.get("user_id") == user.get("id")
+
+    if not is_admin and not is_owner:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    await db.support_tickets.update_one({"id": ticket_id}, {"$set": {"status": "closed"}})
+    return {"message": "Ticket closed"}
+
+
+@router.put("/support/tickets/{ticket_id}/reopen")
+async def reopen_ticket(ticket_id: str, user = Depends(get_current_user)):
+    """Reopen a closed/resolved ticket"""
+    ticket = await db.support_tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    is_admin = user.get("is_admin", False) or user.get("role") in ["admin", "super_admin"]
+    is_owner = ticket.get("user_id") == user.get("id")
+
+    if not is_admin and not is_owner:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    await db.support_tickets.update_one({"id": ticket_id}, {"$set": {"status": "open"}})
+    return {"message": "Ticket reopened"}
+
+
 # ============== DASHBOARD SUBSCRIPTION ROUTES ==============

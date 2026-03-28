@@ -36,6 +36,9 @@ import {
   Shield,
   ChevronDown,
   ChevronUp,
+  Trash2,
+  RotateCcw,
+  XCircle,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -120,6 +123,37 @@ export default function SupportPage() {
       fetchTickets();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to send reply");
+    }
+  };
+
+  const handleDeleteTicket = async (ticketId) => {
+    if (!window.confirm("Are you sure you want to delete this ticket?")) return;
+    try {
+      await axios.delete(`${API}/support/tickets/${ticketId}`, getAuthHeaders());
+      toast.success("Ticket deleted");
+      fetchTickets();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to delete ticket");
+    }
+  };
+
+  const handleCloseTicket = async (ticketId) => {
+    try {
+      await axios.put(`${API}/support/tickets/${ticketId}/close`, {}, getAuthHeaders());
+      toast.success("Ticket closed");
+      fetchTickets();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to close ticket");
+    }
+  };
+
+  const handleReopenTicket = async (ticketId) => {
+    try {
+      await axios.put(`${API}/support/tickets/${ticketId}/reopen`, {}, getAuthHeaders());
+      toast.success("Ticket reopened");
+      fetchTickets();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to reopen ticket");
     }
   };
 
@@ -376,13 +410,50 @@ export default function SupportPage() {
                       )}
                     </div>
 
-                    <Button variant="ghost" size="sm">
-                      {expandedTicket === ticket.id ? (
-                        <ChevronUp className="w-5 h-5" />
-                      ) : (
-                        <ChevronDown className="w-5 h-5" />
+                    <div className="flex items-center gap-2">
+                      {/* Close/Reopen/Delete buttons */}
+                      {ticket.status !== "closed" && ticket.status !== "resolved" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); handleCloseTicket(ticket.id); }}
+                          className="text-yellow-600 hover:text-yellow-700"
+                          data-testid={`close-ticket-${ticket.id}`}
+                        >
+                          <XCircle className="w-4 h-4 mr-1" />
+                          Close
+                        </Button>
                       )}
-                    </Button>
+                      {(ticket.status === "closed" || ticket.status === "resolved") && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); handleReopenTicket(ticket.id); }}
+                          className="text-blue-600 hover:text-blue-700"
+                          data-testid={`reopen-ticket-${ticket.id}`}
+                        >
+                          <RotateCcw className="w-4 h-4 mr-1" />
+                          Reopen
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteTicket(ticket.id); }}
+                        className="text-destructive hover:text-destructive"
+                        data-testid={`delete-ticket-${ticket.id}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+
+                      <Button variant="ghost" size="sm">
+                        {expandedTicket === ticket.id ? (
+                          <ChevronUp className="w-5 h-5" />
+                        ) : (
+                          <ChevronDown className="w-5 h-5" />
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 </div>
 

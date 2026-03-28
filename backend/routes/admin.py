@@ -261,12 +261,16 @@ async def get_subscription_requests(user = Depends(get_current_user)):
 
 @router.get("/tenant-users")
 async def get_tenant_users(user = Depends(get_current_user)):
-    """Get all registered tenant users with subscription details (super admin only)"""
+    """Get all registered tenant users with subscription details and platform stats"""
     await verify_super_admin(user)
     users = await db.users.find({}, {"_id": 0, "password": 0, "password_hash": 0}).to_list(500)
 
+    # Get platform stats
+    total_bot_users = await db.bot_users.count_documents({})
+    total_subscribers = await db.subscribers.count_documents({})
+    total_payments = await db.payments.count_documents({})
+
     for u in users:
-        # Get active subscription details
         sub = await db.dashboard_subscriptions.find_one(
             {"user_id": u["id"], "status": "approved"},
             {"_id": 0},
@@ -275,7 +279,37 @@ async def get_tenant_users(user = Depends(get_current_user)):
         u["subscription"] = sub
         u["has_active_plan"] = u.get("dashboard_subscription_status") == "active"
 
-    return users
+    return {
+        "users": users,
+        "platform_stats": {
+            "total_bot_users": total_bot_users,
+            "total_subscribers": total_subscribers,
+            "total_payments": total_payments
+        }
+    }
+
+
+@router.get("/platform-users")
+async def get_platform_users(user = Depends(get_current_user)):
+    """Get all bot users (people who interacted with the Telegram bot)"""
+    await verify_super_admin(user)
+
+    bot_users = await db.bot_users.find({}, {"_id": 0}).to_list(1000)
+
+    for bu in bot_users:
+        # Check if this user has active subscription
+        sub = await db.subscribers.find_one(
+            {"telegram_user_id": bu.get("user_id"), "status": "active"},
+            {"_id": 0}
+        )
+        bu["is_subscriber"] = sub is not None
+        bu["plan_name"] = sub.get("plan_name", "") if sub else ""
+
+        # Get payment count
+        payment_count = await db.payments.count_documents({"telegram_user_id": bu.get("user_id")})
+        bu["payment_count"] = payment_count
+
+    return bot_users
 
 # Super Admin email
 SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"
