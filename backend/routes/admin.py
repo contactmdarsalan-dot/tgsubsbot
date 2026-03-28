@@ -12,10 +12,10 @@ router = APIRouter()
 SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"
 
 async def verify_super_admin(user: dict):
-    """Verify if user is super admin"""
-    if user.get("email") != SUPER_ADMIN_EMAIL:
-        raise HTTPException(status_code=403, detail="Super Admin access required")
-    return True
+    """Verify if user is super admin (by email OR role)"""
+    if user.get("email") == SUPER_ADMIN_EMAIL or user.get("role") == "super_admin" or user.get("is_admin"):
+        return True
+    raise HTTPException(status_code=403, detail="Super Admin access required")
 
 # ============== DASHBOARD SUBSCRIPTION ROUTES ==============
 
@@ -261,10 +261,10 @@ async def get_subscription_requests(user = Depends(get_current_user)):
 SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"
 
 async def verify_super_admin(user: dict):
-    """Verify if user is super admin"""
-    if user.get("email") != SUPER_ADMIN_EMAIL:
-        raise HTTPException(status_code=403, detail="Super Admin access required")
-    return True
+    """Verify if user is super admin (by email OR role)"""
+    if user.get("email") == SUPER_ADMIN_EMAIL or user.get("role") == "super_admin" or user.get("is_admin"):
+        return True
+    raise HTTPException(status_code=403, detail="Super Admin access required")
 
 # ============== SUPER ADMIN ROUTES ==============
 

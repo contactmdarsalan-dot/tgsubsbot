@@ -101,14 +101,14 @@ export default function Payments() {
   const isAdmin = user.email === SUPER_ADMIN_EMAIL || user.is_admin;
 
   useEffect(() => {
-    fetchData();
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchData, 30000);
+    fetchData(true);
+    // Auto-refresh every 30 seconds (silent - no loading flash)
+    const interval = setInterval(() => fetchData(false), 30000);
     return () => clearInterval(interval);
   }, [filter]);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const [paymentsResponse, plansResponse] = await Promise.all([
         axios.get(`${API}/payments${filter !== "all" ? `?status=${filter}` : ""}`, getAuthHeaders()),
@@ -118,7 +118,7 @@ export default function Payments() {
       setPlans(plansResponse.data);
       setSelectedPayments([]); // Clear selection on refresh
     } catch (error) {
-      toast.error("Failed to fetch data");
+      if (showLoading) toast.error("Failed to fetch data");
     } finally {
       setLoading(false);
     }
