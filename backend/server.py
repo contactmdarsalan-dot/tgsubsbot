@@ -2110,13 +2110,18 @@ async def add_chat_group(request: AddChatGroupRequest, user = Depends(get_curren
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
     
+    # Auto-fix group ID format — Telegram group IDs are always negative
+    group_id = request.group_id.strip()
+    if group_id and not group_id.startswith("-"):
+        group_id = f"-{group_id}"
+    
     # Verify bot is admin in the group
     try:
         async with httpx.AsyncClient() as http_client:
-            url = f"https://api.telegram.org/bot{bot_token}/getChatAdministrators?chat_id={request.group_id}"
+            url = f"https://api.telegram.org/bot{bot_token}/getChatAdministrators?chat_id={group_id}"
             response = await http_client.get(url)
             if response.status_code != 200:
-                raise HTTPException(status_code=400, detail="Bot is not admin in this group or group doesn't exist")
+                raise HTTPException(status_code=400, detail="Bot is not admin in this group or group doesn't exist. Make sure bot is added as admin to the group.")
             
             admins = response.json().get("result", [])
             bot_is_admin = False
@@ -2129,7 +2134,7 @@ async def add_chat_group(request: AddChatGroupRequest, user = Depends(get_curren
                 raise HTTPException(status_code=400, detail="Bot must be admin in this group")
             
             # Get group info
-            info_url = f"https://api.telegram.org/bot{bot_token}/getChat?chat_id={request.group_id}"
+            info_url = f"https://api.telegram.org/bot{bot_token}/getChat?chat_id={group_id}"
             info_response = await http_client.get(info_url)
             group_name = request.group_name
             if info_response.status_code == 200:
@@ -2141,14 +2146,14 @@ async def add_chat_group(request: AddChatGroupRequest, user = Depends(get_curren
         raise HTTPException(status_code=400, detail=f"Error verifying group: {str(e)}")
     
     # Check if group already in pool
-    existing = await db.chat_groups_pool.find_one({"group_id": request.group_id})
+    existing = await db.chat_groups_pool.find_one({"group_id": group_id})
     if existing:
         raise HTTPException(status_code=400, detail="Group already in pool")
     
     # Add to pool
     group_doc = {
         "id": str(uuid.uuid4()),
-        "group_id": request.group_id,
+        "group_id": group_id,
         "group_name": group_name,
         "status": "available",
         "assigned_to_user_id": "",
@@ -4445,38 +4450,162 @@ async def reject_superchat(chat_id: str, user = Depends(get_current_user)):
 
 @api_router.get("/analytics/revenue")
 async def get_revenue_analytics(user = Depends(get_current_user)):
-    """Get revenue analytics"""
-    # Get payments from last 30 days
-    thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    """Advanced revenue analytics with daily/weekly/monthly breakdowns"""
+    now = datetime.now(timezone.utc)
     
+    # Get ALL verified payments
     payments = await db.payments.find(
         {"status": "verified"},
-        {"_id": 0, "amount": 1, "created_at": 1}
-    ).to_list(10000)
+        {"_id": 0, "amount": 1, "created_at": 1, "plan_id": 1, "plan_name": 1}
+    ).to_list(100000)
     
-    # Calculate totals
+    # Get all subscribers
+    subscribers = await db.subscribers.find({}, {"_id": 0}).to_list(100000)
+    
+    # Get all plans
+    plans = await db.plans.find({}, {"_id": 0}).to_list(100)
+    
+    # === TOTAL METRICS ===
     total_revenue = sum(p.get("amount", 0) for p in payments)
+    total_payments = len(payments)
     
-    # Group by date for chart
+    # This month's revenue
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    monthly_payments = [p for p in payments if str(p.get("created_at", "")) >= month_start]
+    monthly_revenue = sum(p.get("amount", 0) for p in monthly_payments)
+    
+    # Last month's revenue for comparison
+    last_month_start = (now.replace(day=1) - timedelta(days=1)).replace(day=1).isoformat()
+    last_month_end = now.replace(day=1).isoformat()
+    last_month_payments = [p for p in payments if last_month_start <= str(p.get("created_at", "")) < last_month_end]
+    last_month_revenue = sum(p.get("amount", 0) for p in last_month_payments)
+    
+    # Revenue growth %
+    revenue_growth = 0
+    if last_month_revenue > 0:
+        revenue_growth = round(((monthly_revenue - last_month_revenue) / last_month_revenue) * 100, 1)
+    
+    # === DAILY CHART (Last 30 days) ===
     daily_revenue = {}
     for p in payments:
-        date = p.get("created_at", "")[:10]  # Get YYYY-MM-DD
+        date = str(p.get("created_at", ""))[:10]
         if date:
             daily_revenue[date] = daily_revenue.get(date, 0) + p.get("amount", 0)
     
-    # Last 30 days data
-    chart_data = []
+    daily_chart = []
     for i in range(30):
-        date = (datetime.now(timezone.utc) - timedelta(days=29-i)).strftime("%Y-%m-%d")
-        chart_data.append({
-            "date": date,
-            "revenue": daily_revenue.get(date, 0)
+        date = (now - timedelta(days=29-i)).strftime("%Y-%m-%d")
+        daily_chart.append({"date": date, "revenue": daily_revenue.get(date, 0)})
+    
+    # === WEEKLY CHART (Last 12 weeks) ===
+    weekly_chart = []
+    for w in range(12):
+        week_end = now - timedelta(weeks=11-w)
+        week_start = week_end - timedelta(days=6)
+        week_rev = sum(
+            p.get("amount", 0) for p in payments 
+            if week_start.strftime("%Y-%m-%d") <= str(p.get("created_at", ""))[:10] <= week_end.strftime("%Y-%m-%d")
+        )
+        weekly_chart.append({
+            "week": f"W{12-11+w}",
+            "label": f"{week_start.strftime('%d %b')} - {week_end.strftime('%d %b')}",
+            "revenue": week_rev
         })
+    
+    # === MONTHLY CHART (Last 6 months) ===
+    monthly_chart = []
+    for m in range(6):
+        month_date = now - timedelta(days=30 * (5 - m))
+        m_start = month_date.replace(day=1).strftime("%Y-%m-%d")
+        if m < 5:
+            next_month = (month_date.replace(day=1) + timedelta(days=32)).replace(day=1)
+            m_end = next_month.strftime("%Y-%m-%d")
+        else:
+            m_end = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+        
+        m_rev = sum(
+            p.get("amount", 0) for p in payments
+            if m_start <= str(p.get("created_at", ""))[:10] < m_end
+        )
+        monthly_chart.append({
+            "month": month_date.strftime("%b %Y"),
+            "revenue": m_rev
+        })
+    
+    # === PLAN PERFORMANCE ===
+    plan_revenue = {}
+    plan_count = {}
+    for p in payments:
+        pname = p.get("plan_name", p.get("plan_id", "Unknown"))
+        plan_revenue[pname] = plan_revenue.get(pname, 0) + p.get("amount", 0)
+        plan_count[pname] = plan_count.get(pname, 0) + 1
+    
+    plan_performance = [
+        {"name": name, "revenue": rev, "sales": plan_count.get(name, 0)}
+        for name, rev in sorted(plan_revenue.items(), key=lambda x: x[1], reverse=True)
+    ]
+    
+    # === SUBSCRIBER METRICS ===
+    active_subs = len([s for s in subscribers if s.get("status") == "active"])
+    grace_subs = len([s for s in subscribers if s.get("status") == "grace"])
+    expired_subs = len([s for s in subscribers if s.get("status") == "expired"])
+    
+    # Churn rate (expired / total * 100)
+    churn_rate = round((expired_subs / max(len(subscribers), 1)) * 100, 1)
+    
+    # Average Revenue Per User (ARPU)
+    arpu = round(total_revenue / max(len(subscribers), 1), 0)
+    
+    # Customer Lifetime Value (simple: ARPU * avg subscription months)
+    avg_duration = 0
+    for s in subscribers:
+        try:
+            start = s.get("start_date", "")
+            end = s.get("end_date", "")
+            if start and end:
+                s_date = datetime.fromisoformat(str(start)) if isinstance(start, str) else start
+                e_date = datetime.fromisoformat(str(end)) if isinstance(end, str) else end
+                avg_duration += (e_date - s_date).days
+        except Exception:
+            pass
+    avg_duration = avg_duration / max(len(subscribers), 1) / 30  # in months
+    ltv = round(arpu * max(avg_duration, 1), 0)
+    
+    # === TODAY'S STATS ===
+    today = now.strftime("%Y-%m-%d")
+    today_revenue = daily_revenue.get(today, 0)
+    today_payments = len([p for p in payments if str(p.get("created_at", ""))[:10] == today])
+    
+    # === CONVERSION FUNNEL ===
+    total_bot_users = await db.bot_users.count_documents({})
+    total_pending = await db.payments.count_documents({"status": "pending"})
+    
+    funnel = [
+        {"stage": "Bot Users", "count": total_bot_users},
+        {"stage": "Payment Started", "count": total_pending + total_payments},
+        {"stage": "Payment Verified", "count": total_payments},
+        {"stage": "Active Subscribers", "count": active_subs},
+    ]
     
     return {
         "total_revenue": total_revenue,
-        "total_payments": len(payments),
-        "chart_data": chart_data
+        "total_payments": total_payments,
+        "monthly_revenue": monthly_revenue,
+        "last_month_revenue": last_month_revenue,
+        "revenue_growth": revenue_growth,
+        "today_revenue": today_revenue,
+        "today_payments": today_payments,
+        "active_subscribers": active_subs,
+        "grace_subscribers": grace_subs,
+        "expired_subscribers": expired_subs,
+        "churn_rate": churn_rate,
+        "arpu": arpu,
+        "ltv": ltv,
+        "daily_chart": daily_chart,
+        "weekly_chart": weekly_chart,
+        "monthly_chart": monthly_chart,
+        "plan_performance": plan_performance,
+        "funnel": funnel
     }
 
 @api_router.get("/analytics/users")

@@ -50,6 +50,15 @@ Build a market-ready SaaS product for Telegram subscription management. Features
 - [x] Added Telegram ID, Channel ID, Group Name columns to Subscribers table
 - [x] Backend GET /api/subscribers enriched with plan and group data
 
+### Mar 28, 2026 - Revenue Dashboard & Bug Fixes
+- [x] **Revenue Analytics Dashboard** — Full page with Total Revenue, Monthly, Today, ARPU, LTV, Churn Rate
+  - Area chart with Daily/Weekly/Monthly tabs
+  - Plan Performance breakdown with animated bars
+  - Conversion Funnel (Bot Users → Payment Started → Verified → Active)
+  - Bottom stats grid (Total Payments, Active, Grace, Expired)
+- [x] **Group ID Auto-Fix** — Backend now auto-prepends `-` to Group IDs (Telegram IDs are negative)
+- [x] Added Revenue link in sidebar navigation
+
 ### Mar 28, 2026 - Major Feature Batch
 - [x] Fixed bot payment flow - users now always get channel invite (was blocked by empty plan channel_id + use_default=False)
 - [x] Added admin Telegram notification on new payments (notify_admin_new_payment)
