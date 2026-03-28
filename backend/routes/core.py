@@ -341,6 +341,129 @@ async def force_release_group(group_id: str, user = Depends(get_current_user)):
     return {"message": "Group released"}
 
 
+# ============== CHANNELS ROUTES ==============
+
+@router.get("/channels")
+async def get_channels(user = Depends(get_current_user)):
+    """Get all managed Telegram channels"""
+    channels = await db.channels.find({}, {"_id": 0}).to_list(100)
+    return channels
+
+
+@router.post("/channels")
+async def add_channel(data: dict, user = Depends(get_current_user)):
+    """Add a new Telegram channel to manage"""
+    channel_id = data.get("channel_id", "").strip()
+    channel_name = data.get("channel_name", "").strip()
+    channel_type = data.get("channel_type", "private")
+    description = data.get("description", "").strip()
+
+    if not channel_id:
+        raise HTTPException(status_code=400, detail="Channel ID is required")
+
+    if not channel_id.startswith("-"):
+        channel_id = f"-{channel_id}"
+
+    existing = await db.channels.find_one({"channel_id": channel_id})
+    if existing:
+        raise HTTPException(status_code=400, detail="Channel already exists")
+
+    # Try to get channel info from Telegram
+    member_count = 0
+    try:
+        settings = await get_bot_settings()
+        bot_token = settings.get("telegram_bot_token", "")
+        if bot_token:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(f"https://api.telegram.org/bot{bot_token}/getChatMemberCount?chat_id={channel_id}")
+                if resp.status_code == 200:
+                    result = resp.json()
+                    if result.get("ok"):
+                        member_count = result.get("result", 0)
+    except Exception as e:
+        logger.warning(f"Could not fetch channel member count: {e}")
+
+    channel_doc = {
+        "id": str(uuid.uuid4()),
+        "channel_id": channel_id,
+        "channel_name": channel_name or f"Channel {channel_id}",
+        "channel_type": channel_type,
+        "description": description,
+        "member_count": member_count,
+        "status": "active",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.channels.insert_one(channel_doc)
+    channel_doc.pop("_id", None)
+    return channel_doc
+
+
+@router.put("/channels/{channel_id}")
+async def update_channel(channel_id: str, data: dict, user = Depends(get_current_user)):
+    """Update channel details"""
+    update_data = {}
+    if "channel_name" in data:
+        update_data["channel_name"] = data["channel_name"].strip()
+    if "description" in data:
+        update_data["description"] = data["description"].strip()
+    if "channel_type" in data:
+        update_data["channel_type"] = data["channel_type"]
+    if "status" in data:
+        update_data["status"] = data["status"]
+
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No update data provided")
+
+    result = await db.channels.update_one({"channel_id": channel_id}, {"$set": update_data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return {"message": "Channel updated"}
+
+
+@router.post("/channels/{channel_id}/refresh")
+async def refresh_channel_info(channel_id: str, user = Depends(get_current_user)):
+    """Refresh channel member count from Telegram"""
+    channel = await db.channels.find_one({"channel_id": channel_id}, {"_id": 0})
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+
+    member_count = 0
+    channel_title = channel.get("channel_name", "")
+    try:
+        if bot_token:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # Get member count
+                resp = await client.get(f"https://api.telegram.org/bot{bot_token}/getChatMemberCount?chat_id={channel_id}")
+                if resp.status_code == 200 and resp.json().get("ok"):
+                    member_count = resp.json().get("result", 0)
+
+                # Get chat info for title
+                resp2 = await client.get(f"https://api.telegram.org/bot{bot_token}/getChat?chat_id={channel_id}")
+                if resp2.status_code == 200 and resp2.json().get("ok"):
+                    chat_info = resp2.json().get("result", {})
+                    channel_title = chat_info.get("title", channel_title)
+    except Exception as e:
+        logger.warning(f"Could not refresh channel info: {e}")
+
+    await db.channels.update_one(
+        {"channel_id": channel_id},
+        {"$set": {"member_count": member_count, "channel_name": channel_title, "last_refreshed": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"member_count": member_count, "channel_name": channel_title}
+
+
+@router.delete("/channels/{channel_id}")
+async def delete_channel(channel_id: str, user = Depends(get_current_user)):
+    """Remove a channel"""
+    result = await db.channels.delete_one({"channel_id": channel_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return {"message": "Channel removed"}
+
+
 # ============== PAYMENTS ROUTES ==============
 
 @router.get("/payments")
