@@ -7099,6 +7099,21 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             event_type = "payment_screenshot" if chat_type == "private" else "photo"
         asyncio.create_task(log_bot_activity(event_type, chat_id, username, text[:100] if text else event_type))
         
+        # Track bot user (upsert)
+        if chat_type == "private" and chat_id:
+            asyncio.create_task(db.bot_users.update_one(
+                {"user_id": str(chat_id)},
+                {"$set": {
+                    "user_id": str(chat_id),
+                    "username": username or "",
+                    "first_name": first_name or "",
+                    "last_seen": datetime.now(timezone.utc).isoformat()
+                }, "$setOnInsert": {
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            ))
+        
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
         
@@ -8360,6 +8375,62 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 msg += f"🕐 {str(p.get('created_at', ''))[:16]}\n\n"
             
             msg += "Use the dashboard to verify payments."
+            await send_telegram_message(chat_id, msg, bot_token)
+        
+        # Handle /broadcast command for admins
+        elif text and text.startswith("/broadcast "):
+            is_admin = await is_admin_or_creator(chat_id, username)
+            if not is_admin:
+                await send_telegram_message(chat_id, "❌ Admin access required.")
+                return {"ok": True}
+            
+            broadcast_text = text.replace("/broadcast ", "", 1).strip()
+            if not broadcast_text:
+                await send_telegram_message(chat_id, "Usage: /broadcast Your message here")
+                return {"ok": True}
+            
+            # Get all bot users
+            bot_users = await db.bot_users.find({}, {"_id": 0, "user_id": 1}).to_list(100000)
+            user_ids = [u.get("user_id", "") for u in bot_users if u.get("user_id")]
+            
+            settings = await get_bot_settings()
+            bot_token_val = settings.get("telegram_bot_token", "")
+            
+            sent = 0
+            failed = 0
+            for uid in user_ids:
+                try:
+                    result = await send_telegram_message(uid, broadcast_text, bot_token_val)
+                    if result:
+                        sent += 1
+                    else:
+                        failed += 1
+                except Exception:
+                    failed += 1
+                await asyncio.sleep(0.05)
+            
+            await send_telegram_message(chat_id, f"📢 Broadcast sent!\n✅ Delivered: {sent}\n❌ Failed: {failed}", bot_token_val)
+        
+        # Handle /users command for admins
+        elif text == "/users":
+            is_admin = await is_admin_or_creator(chat_id, username)
+            if not is_admin:
+                await send_telegram_message(chat_id, "❌ Admin access required.")
+                return {"ok": True}
+            
+            recent_users = await db.bot_users.find({}, {"_id": 0}).sort("last_seen", -1).limit(10).to_list(10)
+            
+            if not recent_users:
+                await send_telegram_message(chat_id, "No users found.")
+                return {"ok": True}
+            
+            msg = f"👥 <b>Recent Users ({len(recent_users)})</b>\n━━━━━━━━━━━━━━━\n\n"
+            for u in recent_users:
+                msg += f"• @{u.get('username', '')} (<code>{u.get('user_id', '')}</code>)"
+                if u.get('first_name'):
+                    msg += f" - {u['first_name']}"
+                msg += "\n"
+            
             await send_telegram_message(chat_id, msg)
         
         # Handle /plan command - share specific plan

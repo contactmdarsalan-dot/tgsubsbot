@@ -48,9 +48,12 @@ const COLORS = ["#E11D48", "#10B981", "#F59E0B", "#8B5CF6"];
 export default function Dashboard() {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState(null);
+  const [plans, setPlans] = useState([]);
 
   useEffect(() => {
     fetchAnalytics();
+    fetchSetupData();
   }, []);
 
   const fetchAnalytics = async () => {
@@ -63,6 +66,30 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
+
+  const fetchSetupData = async () => {
+    try {
+      const [settingsRes, plansRes] = await Promise.all([
+        axios.get(`${API}/settings`, getAuthHeaders()),
+        axios.get(`${API}/plans`, getAuthHeaders()),
+      ]);
+      setSettings(settingsRes.data);
+      setPlans(plansRes.data);
+    } catch (error) {
+      console.error("Setup data fetch error:", error);
+    }
+  };
+
+  const setupChecklist = settings ? [
+    { label: "Bot Token configured", done: !!settings.telegram_bot_token, link: "/dashboard/settings" },
+    { label: "Channel ID set", done: !!settings.telegram_channel_id, link: "/dashboard/settings" },
+    { label: "QR Code uploaded", done: !!settings.qr_code_url, link: "/dashboard/settings" },
+    { label: "Plans created", done: plans.length > 0, link: "/dashboard/plans" },
+    { label: "Welcome message set", done: settings.welcome_message && settings.welcome_message !== "Welcome to our subscription bot! Use /plans to see available plans.", link: "/dashboard/settings" },
+  ] : [];
+
+  const setupComplete = setupChecklist.filter(s => s.done).length;
+  const setupTotal = setupChecklist.length;
 
   if (loading) {
     return (
@@ -155,6 +182,43 @@ export default function Dashboard() {
           />
         </BentoItem>
       </BentoGrid>
+
+      {/* Setup Checklist - Only show if not all complete */}
+      {setupTotal > 0 && setupComplete < setupTotal && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+          className="rounded-2xl bg-card border border-border/50 p-5"
+          data-testid="setup-checklist"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-serif text-lg font-semibold">Setup Checklist</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">{setupComplete}/{setupTotal} steps done</p>
+            </div>
+            <div className="w-24 h-2 bg-muted/50 rounded-full overflow-hidden">
+              <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${(setupComplete/setupTotal)*100}%` }} />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+            {setupChecklist.map((item, i) => (
+              <a
+                key={item.label}
+                href={item.link}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+                  item.done
+                    ? "bg-emerald-500/10 text-emerald-500"
+                    : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
+                }`}
+              >
+                <span className="text-base">{item.done ? "✓" : "○"}</span>
+                <span className="truncate">{item.label}</span>
+              </a>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

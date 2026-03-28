@@ -204,8 +204,13 @@ export default function BotActivityLogs() {
         {filteredLogs.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border/50 p-12 text-center">
             <Activity className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
-            <p className="text-muted-foreground">No bot activity yet</p>
-            <p className="text-sm text-muted-foreground/70 mt-1">Activity will appear here when users interact with the bot</p>
+            <p className="text-lg font-medium text-muted-foreground">No bot activity yet</p>
+            <p className="text-sm text-muted-foreground/70 mt-2 max-w-md mx-auto">
+              Activity logs appear when users interact with the bot. Deploy latest code to production first — "Save to Github" then redeploy on Coolify.
+            </p>
+            <Button variant="outline" size="sm" className="mt-4" onClick={fetchData} data-testid="refresh-activity">
+              <RefreshCcw className="w-4 h-4 mr-1.5" /> Refresh
+            </Button>
           </div>
         ) : (
           filteredLogs.map((log, i) => {
