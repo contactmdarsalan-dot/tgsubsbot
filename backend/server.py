@@ -5063,7 +5063,7 @@ async def edit_telegram_message(chat_id: str, message_id: int, text: str, button
 
 
 async def urgency_timer_task(chat_id: str, message_id: int, plan: dict, price_display: str, final_price: float, buttons: list, bot_token: str):
-    """Background task to update plan message with urgency timer"""
+    """Background task - live countdown timer on plan message"""
     try:
         plan_name = plan.get('name', '')
         features_text = ""
@@ -5073,7 +5073,8 @@ async def urgency_timer_task(chat_id: str, message_id: int, plan: dict, price_di
                 features_text += f"✅ {feat}\n"
             features_text += "\n"
         
-        base_msg = f"<b>📦 {plan_name}</b>\n\n"
+        base_msg = f"🔥 <b>EXCLUSIVE OFFER!</b> 🔥\n\n"
+        base_msg += f"<b>📦 {plan_name}</b>\n\n"
         base_msg += f"💰 Price: {price_display}\n"
         base_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
         base_msg += features_text
@@ -5084,22 +5085,50 @@ async def urgency_timer_task(chat_id: str, message_id: int, plan: dict, price_di
         payment_info += "2️⃣ After payment, send screenshot\n\n"
         payment_info += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"
         
-        # Wait 60 seconds, then show "Last chance"
-        await asyncio.sleep(60)
+        # Phase 1: Countdown from 60 to 0 (every 10 seconds)
+        for remaining in [50, 40, 30, 20, 10]:
+            await asyncio.sleep(10)
+            
+            bar_filled = remaining // 10
+            bar_empty = 6 - bar_filled
+            progress_bar = "🟢" * bar_filled + "⚪" * bar_empty
+            
+            timer_msg = base_msg
+            timer_msg += f"⏰ <b>Offer expires in {remaining} seconds!</b>\n"
+            timer_msg += f"{progress_bar}\n"
+            timer_msg += payment_info
+            
+            await edit_telegram_message(chat_id, message_id, timer_msg, buttons, bot_token)
         
-        urgency_msg = "⚡ <b>LAST CHANCE TO GRAB THIS OFFER!</b> ⚡\n\n"
-        urgency_msg += base_msg
-        urgency_msg += "🚨 <b>Hurry! This offer won't last long!</b>\n"
-        urgency_msg += payment_info
+        # Phase 2: LAST CHANCE (10 sec intervals for 60 more seconds)
+        await asyncio.sleep(10)
         
-        await edit_telegram_message(chat_id, message_id, urgency_msg, buttons, bot_token)
+        for i in range(6):
+            remaining = 60 - (i * 10)
+            
+            urgency_msg = "⚡ <b>LAST CHANCE TO GRAB THIS OFFER!</b> ⚡\n\n"
+            urgency_msg += f"<b>📦 {plan_name}</b>\n\n"
+            urgency_msg += f"💰 Price: {price_display}\n"
+            urgency_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
+            urgency_msg += features_text
+            urgency_msg += f"🚨 <b>Only {remaining}s left! Don't miss out!</b>\n"
+            urgency_msg += "🔴🔴🔴🔴🔴🔴\n"
+            urgency_msg += payment_info
+            
+            await edit_telegram_message(chat_id, message_id, urgency_msg, buttons, bot_token)
+            
+            if i < 5:
+                await asyncio.sleep(10)
         
-        # Wait another 60 seconds (total 120s), then show expired
-        await asyncio.sleep(60)
+        # Phase 3: Timer ended
+        await asyncio.sleep(10)
         
         expired_msg = "⏰ <b>Offer timer ended!</b>\n\n"
-        expired_msg += base_msg
-        expired_msg += "💡 <b>Don't worry — you can still purchase!</b>\n"
+        expired_msg += f"<b>📦 {plan_name}</b>\n\n"
+        expired_msg += f"💰 Price: {price_display}\n"
+        expired_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
+        expired_msg += features_text
+        expired_msg += "💡 <b>You can still purchase — but hurry!</b>\n"
         expired_msg += payment_info
         
         await edit_telegram_message(chat_id, message_id, expired_msg, buttons, bot_token)
