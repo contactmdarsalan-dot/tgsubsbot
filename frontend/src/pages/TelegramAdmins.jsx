@@ -29,6 +29,7 @@ import {
   ToggleLeft,
   ToggleRight,
   AlertCircle,
+  Pencil,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -49,6 +50,7 @@ export default function TelegramAdmins() {
   const [admins, setAdmins] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingAdmin, setEditingAdmin] = useState(null);
   const [form, setForm] = useState({
     name: "",
     telegram_user_id: "",
@@ -78,9 +80,15 @@ export default function TelegramAdmins() {
       return;
     }
     try {
-      await axios.post(`${API}/telegram-admins`, form, getAuthHeaders());
-      toast.success("Telegram Admin created! Notification sent.");
+      if (editingAdmin) {
+        await axios.put(`${API}/telegram-admins/${editingAdmin.id}`, form, getAuthHeaders());
+        toast.success("Admin updated successfully!");
+      } else {
+        await axios.post(`${API}/telegram-admins`, form, getAuthHeaders());
+        toast.success("Telegram Admin created! Notification sent.");
+      }
       setDialogOpen(false);
+      setEditingAdmin(null);
       setForm({
         name: "",
         telegram_user_id: "",
@@ -90,7 +98,33 @@ export default function TelegramAdmins() {
       });
       fetchAdmins();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to create admin");
+      toast.error(error.response?.data?.detail || "Failed to save admin");
+    }
+  };
+
+  const handleEdit = (admin) => {
+    setEditingAdmin(admin);
+    setForm({
+      name: admin.name || "",
+      telegram_user_id: admin.telegram_user_id || "",
+      telegram_username: admin.telegram_username || "",
+      role: admin.role || "admin",
+      permissions: admin.permissions || [],
+    });
+    setDialogOpen(true);
+  };
+
+  const handleDialogClose = (open) => {
+    setDialogOpen(open);
+    if (!open) {
+      setEditingAdmin(null);
+      setForm({
+        name: "",
+        telegram_user_id: "",
+        telegram_username: "",
+        role: "admin",
+        permissions: ["manage_bot", "verify_payments", "broadcast", "live_manage"],
+      });
     }
   };
 
@@ -148,7 +182,7 @@ export default function TelegramAdmins() {
             Manage who can control your bot directly from Telegram
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
           <DialogTrigger asChild>
             <Button className="btn-hover gap-2" data-testid="add-tg-admin-btn">
               <UserPlus className="w-4 h-4" />
@@ -159,7 +193,7 @@ export default function TelegramAdmins() {
             <DialogHeader>
               <DialogTitle className="font-serif text-xl font-bold flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-primary" />
-                Add Telegram Admin
+                {editingAdmin ? "Edit Telegram Admin" : "Add Telegram Admin"}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 mt-4">
@@ -248,7 +282,7 @@ export default function TelegramAdmins() {
               </div>
               <Button onClick={handleCreate} className="w-full btn-hover" data-testid="confirm-add-tg-admin">
                 <ShieldCheck className="w-4 h-4 mr-2" />
-                Add Admin
+                {editingAdmin ? "Save Changes" : "Add Admin"}
               </Button>
             </div>
           </DialogContent>
@@ -351,6 +385,15 @@ export default function TelegramAdmins() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEdit(admin)}
+                      data-testid={`edit-admin-${admin.id}`}
+                      className="text-blue-400 hover:text-blue-300"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
