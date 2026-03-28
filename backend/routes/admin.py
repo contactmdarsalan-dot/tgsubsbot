@@ -238,24 +238,44 @@ async def verify_dashboard_razorpay_payment(data: dict, user = Depends(get_curre
 
 @router.get("/auth/check-admin")
 async def check_if_admin(user = Depends(get_current_user)):
-    """Check if current user is admin (first registered user)"""
-    first_user = await db.users.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
-    is_admin = first_user and first_user["id"] == user["id"]
+    """Check if current user is admin/super_admin"""
+    is_admin = user.get("is_admin", False) or user.get("role") in ["admin", "super_admin"] or user.get("email") == SUPER_ADMIN_EMAIL
+    if not is_admin:
+        first_user = await db.users.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
+        is_admin = first_user and first_user["id"] == user["id"]
     return {"is_admin": is_admin}
 
 @router.get("/dashboard-subscription/requests")
 async def get_subscription_requests(user = Depends(get_current_user)):
-    """Get all subscription requests (admin only - first user is admin)"""
-    # Check if first user (admin)
-    first_user = await db.users.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
-    if not first_user or first_user["id"] != user["id"]:
-        # Only show own requests
-        requests = await db.dashboard_subscriptions.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
-    else:
-        # Admin sees all
+    """Get all subscription requests (admin/super_admin sees all)"""
+    is_admin = user.get("is_admin", False) or user.get("role") in ["admin", "super_admin"] or user.get("email") == SUPER_ADMIN_EMAIL
+    if not is_admin:
+        first_user = await db.users.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
+        is_admin = first_user and first_user["id"] == user["id"]
+
+    if is_admin:
         requests = await db.dashboard_subscriptions.find({}, {"_id": 0}).to_list(100)
-    
+    else:
+        requests = await db.dashboard_subscriptions.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
     return requests
+
+@router.get("/tenant-users")
+async def get_tenant_users(user = Depends(get_current_user)):
+    """Get all registered tenant users with subscription details (super admin only)"""
+    await verify_super_admin(user)
+    users = await db.users.find({}, {"_id": 0, "password": 0, "password_hash": 0}).to_list(500)
+
+    for u in users:
+        # Get active subscription details
+        sub = await db.dashboard_subscriptions.find_one(
+            {"user_id": u["id"], "status": "approved"},
+            {"_id": 0},
+            sort=[("created_at", -1)]
+        )
+        u["subscription"] = sub
+        u["has_active_plan"] = u.get("dashboard_subscription_status") == "active"
+
+    return users
 
 # Super Admin email
 SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"

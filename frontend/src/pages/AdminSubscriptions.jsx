@@ -11,8 +11,25 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 import { toast } from "sonner";
-import { Users, CheckCircle, Clock, Crown } from "lucide-react";
+import {
+  Users,
+  CheckCircle,
+  Clock,
+  Crown,
+  Shield,
+  UserCheck,
+  Image,
+  ExternalLink,
+  RefreshCw,
+  XCircle,
+} from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -22,20 +39,27 @@ const getAuthHeaders = () => ({
 
 export default function AdminSubscriptions() {
   const [requests, setRequests] = useState([]);
+  const [tenantUsers, setTenantUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [activeTab, setActiveTab] = useState("users");
+  const [screenshotUrl, setScreenshotUrl] = useState(null);
 
   useEffect(() => {
     checkAdmin();
-    fetchRequests();
   }, []);
 
   const checkAdmin = async () => {
     try {
       const response = await axios.get(`${API}/auth/check-admin`, getAuthHeaders());
       setIsAdmin(response.data.is_admin);
+      if (response.data.is_admin) {
+        await Promise.all([fetchRequests(), fetchTenantUsers()]);
+      }
     } catch {
       setIsAdmin(false);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -45,8 +69,15 @@ export default function AdminSubscriptions() {
       setRequests(response.data);
     } catch (error) {
       console.error("Failed to fetch requests:", error);
-    } finally {
-      setLoading(false);
+    }
+  };
+
+  const fetchTenantUsers = async () => {
+    try {
+      const response = await axios.get(`${API}/tenant-users`, getAuthHeaders());
+      setTenantUsers(response.data);
+    } catch (error) {
+      console.error("Failed to fetch tenant users:", error);
     }
   };
 
@@ -55,6 +86,7 @@ export default function AdminSubscriptions() {
       await axios.put(`${API}/dashboard-subscription/approve/${requestId}`, {}, getAuthHeaders());
       toast.success("Subscription approved!");
       fetchRequests();
+      fetchTenantUsers();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to approve");
     }
@@ -63,21 +95,36 @@ export default function AdminSubscriptions() {
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
     return new Date(dateStr).toLocaleDateString("en-IN", {
-      year: "numeric",
+      day: "2-digit",
       month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
+      year: "numeric",
     });
   };
 
   const getStatusBadge = (status) => {
     const styles = {
-      pending: "bg-yellow-100 text-yellow-700",
-      approved: "bg-green-100 text-green-700",
-      rejected: "bg-red-100 text-red-700",
+      pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+      approved: "bg-green-500/20 text-green-400 border-green-500/30",
+      rejected: "bg-red-500/20 text-red-400 border-red-500/30",
+      active: "bg-green-500/20 text-green-400 border-green-500/30",
+      expired: "bg-red-500/20 text-red-400 border-red-500/30",
+      inactive: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
     };
-    return <Badge className={styles[status] || ""}>{status}</Badge>;
+    return (
+      <Badge className={`${styles[status] || styles.inactive} border`}>
+        {status?.charAt(0).toUpperCase() + status?.slice(1) || "None"}
+      </Badge>
+    );
+  };
+
+  const getRoleBadge = (user) => {
+    if (user.role === "super_admin") {
+      return <Badge className="bg-amber-500/20 text-amber-400 border border-amber-500/30">Super Admin</Badge>;
+    }
+    if (user.role === "admin" || user.is_admin) {
+      return <Badge className="bg-purple-500/20 text-purple-400 border border-purple-500/30">Admin</Badge>;
+    }
+    return <Badge variant="outline">User</Badge>;
   };
 
   if (loading) {
@@ -92,128 +139,299 @@ export default function AdminSubscriptions() {
     return (
       <div className="flex flex-col items-center justify-center h-64">
         <Crown className="w-12 h-12 text-muted-foreground mb-4" />
-        <h2 className="font-heading text-xl font-bold">Admin Access Required</h2>
-        <p className="text-muted-foreground">Only the first registered user can access this page.</p>
+        <h2 className="text-xl font-bold">Admin Access Required</h2>
+        <p className="text-muted-foreground">Super Admin or Admin role is required to access this page.</p>
       </div>
     );
   }
 
-  const pendingCount = requests.filter(r => r.status === "pending").length;
-  const approvedCount = requests.filter(r => r.status === "approved").length;
+  const pendingCount = requests.filter((r) => r.status === "pending").length;
+  const approvedCount = requests.filter((r) => r.status === "approved").length;
+  const activeUsersCount = tenantUsers.filter((u) => u.has_active_plan).length;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-testid="admin-subs-page">
       {/* Header */}
-      <div>
-        <h1 className="font-heading text-4xl font-bold tracking-tight">
-          Dashboard Subscriptions
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Manage SubsBot dashboard subscription requests
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">SaaS Management</h1>
+          <p className="text-muted-foreground mt-1">Manage tenant users and dashboard subscriptions</p>
+        </div>
+        <Button variant="outline" onClick={() => { fetchRequests(); fetchTenantUsers(); }}>
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Refresh
+        </Button>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="border">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Requests</p>
-                <p className="font-heading text-3xl font-bold mt-1">{requests.length}</p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-primary/10">
+                <Users className="w-6 h-6 text-primary" />
               </div>
-              <Users className="w-8 h-8 text-muted-foreground" />
+              <div>
+                <p className="text-sm text-muted-foreground">Total Users</p>
+                <p className="text-2xl font-bold">{tenantUsers.length}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
-
-        <Card className="border">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Pending</p>
-                <p className="font-heading text-3xl font-bold mt-1 text-yellow-600">{pendingCount}</p>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-green-500/10">
+                <UserCheck className="w-6 h-6 text-green-500" />
               </div>
-              <Clock className="w-8 h-8 text-yellow-500" />
+              <div>
+                <p className="text-sm text-muted-foreground">Active Plans</p>
+                <p className="text-2xl font-bold text-green-500">{activeUsersCount}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
-
-        <Card className="border">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-yellow-500/10">
+                <Clock className="w-6 h-6 text-yellow-500" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Pending Requests</p>
+                <p className="text-2xl font-bold text-yellow-500">{pendingCount}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-blue-500/10">
+                <CheckCircle className="w-6 h-6 text-blue-500" />
+              </div>
               <div>
                 <p className="text-sm text-muted-foreground">Approved</p>
-                <p className="font-heading text-3xl font-bold mt-1 text-green-600">{approvedCount}</p>
+                <p className="text-2xl font-bold text-blue-500">{approvedCount}</p>
               </div>
-              <CheckCircle className="w-8 h-8 text-green-500" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Requests Table */}
-      <Card className="border">
-        <CardHeader>
-          <CardTitle className="font-heading text-lg font-bold">
-            Subscription Requests
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {requests.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead className="font-heading font-bold">User</TableHead>
-                    <TableHead className="font-heading font-bold">Plan</TableHead>
-                    <TableHead className="font-heading font-bold">Amount</TableHead>
-                    <TableHead className="font-heading font-bold">Status</TableHead>
-                    <TableHead className="font-heading font-bold">Date</TableHead>
-                    <TableHead className="font-heading font-bold text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {requests.map((request) => (
-                    <TableRow key={request.id} className="hover:bg-muted/30">
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{request.user_name}</p>
-                          <p className="text-xs text-muted-foreground">{request.user_email}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium">{request.plan_name}</TableCell>
-                      <TableCell className="font-mono">₹{request.amount?.toLocaleString()}</TableCell>
-                      <TableCell>{getStatusBadge(request.status)}</TableCell>
-                      <TableCell className="text-sm">{formatDate(request.created_at)}</TableCell>
-                      <TableCell className="text-right">
-                        {request.status === "pending" && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleApprove(request.id)}
-                            className="btn-hover"
-                          >
-                            <CheckCircle className="w-4 h-4 mr-1" />
-                            Approve
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-16">
-              <Users className="w-12 h-12 text-muted-foreground mb-4" />
-              <h3 className="font-heading text-xl font-bold mb-2">No Requests Yet</h3>
-              <p className="text-muted-foreground">
-                Subscription requests will appear here
-              </p>
-            </div>
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-border">
+        <button
+          onClick={() => setActiveTab("users")}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === "users" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
+          }`}
+          data-testid="tab-users"
+        >
+          Tenant Users ({tenantUsers.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("requests")}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === "requests" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
+          }`}
+          data-testid="tab-requests"
+        >
+          Subscription Requests ({requests.length})
+          {pendingCount > 0 && (
+            <span className="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold bg-red-500 text-white rounded-full">
+              {pendingCount}
+            </span>
           )}
-        </CardContent>
-      </Card>
+        </button>
+      </div>
+
+      {/* Tenant Users Tab */}
+      {activeTab === "users" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Registered Users
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {tenantUsers.length > 0 ? (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>User</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Plan</TableHead>
+                      <TableHead>Subscription Status</TableHead>
+                      <TableHead>Plan Expiry</TableHead>
+                      <TableHead>Joined</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {tenantUsers.map((u) => (
+                      <TableRow key={u.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-rose-500/20 to-red-600/20 flex items-center justify-center border border-primary/20">
+                              <span className="text-xs font-semibold text-primary">
+                                {u.name?.charAt(0)?.toUpperCase() || "U"}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="font-medium">{u.name || "Unnamed"}</p>
+                              <p className="text-xs text-muted-foreground">{u.email}</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{getRoleBadge(u)}</TableCell>
+                        <TableCell>
+                          <span className="font-medium">{u.dashboard_plan || "-"}</span>
+                        </TableCell>
+                        <TableCell>
+                          {getStatusBadge(u.dashboard_subscription_status || "inactive")}
+                        </TableCell>
+                        <TableCell>
+                          {u.dashboard_subscription_end ? formatDate(u.dashboard_subscription_end) : "-"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {formatDate(u.created_at)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-16">
+                <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No registered users yet</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Subscription Requests Tab */}
+      {activeTab === "requests" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Crown className="w-5 h-5" />
+              Subscription Requests
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {requests.length > 0 ? (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Screenshot</TableHead>
+                      <TableHead>User</TableHead>
+                      <TableHead>Plan</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {requests.map((request) => (
+                      <TableRow key={request.id}>
+                        <TableCell>
+                          {request.payment_screenshot || request.screenshot_url ? (
+                            <button
+                              onClick={() => setScreenshotUrl(request.payment_screenshot || request.screenshot_url)}
+                              className="group relative w-14 h-14 rounded-lg overflow-hidden bg-muted/50 border border-border/50 hover:border-primary/50 transition-colors"
+                              data-testid={`view-screenshot-${request.id}`}
+                            >
+                              <img
+                                src={request.payment_screenshot || request.screenshot_url}
+                                alt="Payment"
+                                className="w-full h-full object-cover"
+                              />
+                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <Image className="w-5 h-5 text-white" />
+                              </div>
+                            </button>
+                          ) : (
+                            <div className="w-14 h-14 rounded-lg bg-muted/30 border border-dashed border-border flex items-center justify-center">
+                              <Image className="w-5 h-5 text-muted-foreground" />
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{request.user_name || "Unknown"}</p>
+                            <p className="text-xs text-muted-foreground">{request.user_email}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">{request.plan_name}</TableCell>
+                        <TableCell className="font-mono font-medium">
+                          {request.amount ? `₹${request.amount.toLocaleString()}` : "-"}
+                        </TableCell>
+                        <TableCell>{getStatusBadge(request.status)}</TableCell>
+                        <TableCell className="text-sm">{formatDate(request.created_at)}</TableCell>
+                        <TableCell className="text-right">
+                          {request.status === "pending" && (
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleApprove(request.id)}
+                                data-testid={`approve-${request.id}`}
+                              >
+                                <CheckCircle className="w-4 h-4 mr-1" />
+                                Approve
+                              </Button>
+                            </div>
+                          )}
+                          {request.status === "approved" && (
+                            <Badge className="bg-green-500/20 text-green-400 border border-green-500/30">
+                              Approved
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-16">
+                <Crown className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-bold mb-2">No Requests Yet</h3>
+                <p className="text-muted-foreground">Subscription requests will appear here</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Screenshot Preview Dialog */}
+      <Dialog open={!!screenshotUrl} onOpenChange={() => setScreenshotUrl(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Payment Screenshot</DialogTitle>
+          </DialogHeader>
+          <div className="rounded-lg overflow-hidden border border-border">
+            {screenshotUrl && (
+              <img
+                src={screenshotUrl}
+                alt="Payment Screenshot"
+                className="w-full h-auto max-h-[70vh] object-contain bg-black"
+              />
+            )}
+          </div>
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => window.open(screenshotUrl, "_blank")}>
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Open Full Size
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

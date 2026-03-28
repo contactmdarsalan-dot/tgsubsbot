@@ -585,8 +585,8 @@ async def is_admin_or_creator(telegram_user_id: str, telegram_username: str = ""
     return admin_user is not None
 
 
-async def notify_admin_new_payment(user_id: str, username: str, plan_name: str, amount: float):
-    """Notify admin about new payment via Telegram"""
+async def notify_admin_new_payment(user_id: str, username: str, plan_name: str, amount: float, screenshot_file_id: str = None):
+    """Notify admin about new payment via Telegram with screenshot"""
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
 
@@ -604,14 +604,23 @@ async def notify_admin_new_payment(user_id: str, username: str, plan_name: str, 
     if not admin_ids:
         return
 
-    msg = "<b>New Payment!</b>\n\n"
-    msg += f"User: @{username} ({user_id})\n"
+    msg = "<b>New Payment Verified!</b>\n\n"
+    msg += f"User: @{username} (<code>{user_id}</code>)\n"
     msg += f"Plan: <b>{plan_name}</b>\n"
     msg += f"Amount: <b>Rs.{amount}</b>\n\n"
     msg += "Check dashboard for details."
 
     for admin_id in admin_ids:
         try:
-            await send_telegram_message(admin_id, msg, bot_token)
+            # Send screenshot if available
+            if screenshot_file_id and bot_token:
+                await send_telegram_photo(
+                    admin_id,
+                    screenshot_file_id,
+                    msg,
+                    bot_token
+                )
+            else:
+                await send_telegram_message(admin_id, msg, bot_token)
         except Exception as e:
             logger.error(f"Failed to notify admin {admin_id}: {e}")
