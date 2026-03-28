@@ -5085,12 +5085,12 @@ async def urgency_timer_task(chat_id: str, message_id: int, plan: dict, price_di
         payment_info += "2️⃣ After payment, send screenshot\n\n"
         payment_info += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"
         
-        # Phase 1: Countdown from 60 to 0 (every 10 seconds)
-        for remaining in [50, 40, 30, 20, 10]:
-            await asyncio.sleep(10)
+        # Phase 1: Countdown from 60 to 0 (every 5 seconds)
+        for remaining in [55, 50, 45, 40, 35, 30, 25, 20, 15, 10, 5]:
+            await asyncio.sleep(5)
             
-            bar_filled = remaining // 10
-            bar_empty = 6 - bar_filled
+            bar_filled = remaining // 5
+            bar_empty = 12 - bar_filled
             progress_bar = "🟢" * bar_filled + "⚪" * bar_empty
             
             timer_msg = base_msg
@@ -5100,11 +5100,11 @@ async def urgency_timer_task(chat_id: str, message_id: int, plan: dict, price_di
             
             await edit_telegram_message(chat_id, message_id, timer_msg, buttons, bot_token)
         
-        # Phase 2: LAST CHANCE (10 sec intervals for 60 more seconds)
-        await asyncio.sleep(10)
+        # Phase 2: LAST CHANCE (5 sec intervals for 60 more seconds)
+        await asyncio.sleep(5)
         
-        for i in range(6):
-            remaining = 60 - (i * 10)
+        for i in range(12):
+            remaining = 60 - (i * 5)
             
             urgency_msg = "⚡ <b>LAST CHANCE TO GRAB THIS OFFER!</b> ⚡\n\n"
             urgency_msg += f"<b>📦 {plan_name}</b>\n\n"
@@ -5117,11 +5117,11 @@ async def urgency_timer_task(chat_id: str, message_id: int, plan: dict, price_di
             
             await edit_telegram_message(chat_id, message_id, urgency_msg, buttons, bot_token)
             
-            if i < 5:
-                await asyncio.sleep(10)
+            if i < 11:
+                await asyncio.sleep(5)
         
         # Phase 3: Timer ended
-        await asyncio.sleep(10)
+        await asyncio.sleep(5)
         
         expired_msg = "⏰ <b>Offer timer ended!</b>\n\n"
         expired_msg += f"<b>📦 {plan_name}</b>\n\n"
