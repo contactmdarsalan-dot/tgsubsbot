@@ -28,6 +28,7 @@ import UserManagement from "./pages/UserManagement";
 import Creators from "./pages/Creators";
 import LandingPage from "./pages/LandingPage";
 import RevenueDashboard from "./pages/RevenueDashboard";
+import TelegramAdmins from "./pages/TelegramAdmins";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -145,6 +146,7 @@ function AppRouter() {
         <Route path="faqs" element={<FAQs />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="revenue" element={<RevenueDashboard />} />
+        <Route path="telegram-admins" element={<TelegramAdmins />} />
         <Route path="video-calls" element={<VideoCalls />} />
         <Route path="live-stream" element={<LiveStream />} />
         <Route path="paid-posts" element={<PaidPosts />} />

@@ -4026,11 +4026,23 @@ async def link_creator_telegram(data: dict, user = Depends(get_current_user)):
     return {"message": "Telegram account linked"}
 
 async def is_admin_or_creator(telegram_user_id: str, telegram_username: str = "") -> bool:
-    """Check if user is admin or creator"""
+    """Check if user is admin, creator, or telegram admin"""
+    # Check telegram_admins collection
+    tg_admin = await db.telegram_admins.find_one({
+        "$or": [
+            {"telegram_user_id": str(telegram_user_id)},
+            {"telegram_username": telegram_username}
+        ],
+        "is_active": True
+    }, {"_id": 0})
+    
+    if tg_admin:
+        return True
+    
     # Check creators collection
     creator = await db.creators.find_one({
         "$or": [
-            {"telegram_user_id": telegram_user_id},
+            {"telegram_user_id": str(telegram_user_id)},
             {"telegram_username": telegram_username}
         ],
         "is_active": True
@@ -4042,13 +4054,109 @@ async def is_admin_or_creator(telegram_user_id: str, telegram_username: str = ""
     # Check users collection for admin
     admin_user = await db.users.find_one({
         "$or": [
-            {"telegram_user_id": telegram_user_id},
+            {"telegram_user_id": str(telegram_user_id)},
             {"telegram_username": telegram_username}
         ],
         "role": {"$in": ["admin", "super_admin"]}
     }, {"_id": 0})
     
     return admin_user is not None
+
+
+# ============== TELEGRAM ADMIN MANAGEMENT ==============
+
+@api_router.get("/telegram-admins")
+async def get_telegram_admins(user = Depends(get_current_user)):
+    """Get all Telegram admins"""
+    admins = await db.telegram_admins.find({}, {"_id": 0}).to_list(100)
+    return admins
+
+@api_router.post("/telegram-admins")
+async def create_telegram_admin(data: dict, user = Depends(get_current_user)):
+    """Create a new Telegram admin who can manage the bot"""
+    name = data.get("name", "")
+    telegram_user_id = str(data.get("telegram_user_id", "")).strip()
+    telegram_username = data.get("telegram_username", "").strip().replace("@", "")
+    role = data.get("role", "admin")
+    permissions = data.get("permissions", ["manage_bot", "verify_payments", "broadcast", "live_manage"])
+    
+    if not telegram_user_id and not telegram_username:
+        raise HTTPException(status_code=400, detail="Telegram User ID or Username required")
+    
+    # Check if already exists
+    query_conditions = []
+    if telegram_user_id:
+        query_conditions.append({"telegram_user_id": telegram_user_id})
+    if telegram_username:
+        query_conditions.append({"telegram_username": telegram_username})
+    
+    existing = await db.telegram_admins.find_one({"$or": query_conditions})
+    if existing:
+        raise HTTPException(status_code=400, detail="This Telegram user is already an admin")
+    
+    admin_doc = {
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "telegram_user_id": telegram_user_id,
+        "telegram_username": telegram_username,
+        "role": role,
+        "permissions": permissions,
+        "is_active": True,
+        "created_by": user.get("email", ""),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.telegram_admins.insert_one(admin_doc)
+    
+    # Send notification to the new admin on Telegram
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    if bot_token and telegram_user_id:
+        msg = "🎉 <b>You've been added as a Bot Admin!</b>\n\n"
+        msg += f"👤 Name: <b>{name}</b>\n"
+        msg += f"🔑 Role: <b>{role.title()}</b>\n\n"
+        msg += "<b>Your permissions:</b>\n"
+        perm_labels = {
+            "manage_bot": "🤖 Manage Bot",
+            "verify_payments": "💳 Verify Payments",
+            "broadcast": "📢 Send Broadcasts",
+            "live_manage": "🎬 Manage Live Streams",
+            "superchat_view": "💬 View Super Chats",
+            "add_subscribers": "👥 Add Subscribers",
+        }
+        for p in permissions:
+            msg += f"  {perm_labels.get(p, p)}\n"
+        msg += "\nUse /admin to see available admin commands."
+        await send_telegram_message(telegram_user_id, msg, bot_token)
+    
+    return {"message": "Telegram admin created", "id": admin_doc["id"]}
+
+@api_router.put("/telegram-admins/{admin_id}")
+async def update_telegram_admin(admin_id: str, data: dict, user = Depends(get_current_user)):
+    """Update a Telegram admin"""
+    update_data = {}
+    for field in ["name", "telegram_user_id", "telegram_username", "role", "permissions", "is_active"]:
+        if field in data:
+            update_data[field] = data[field]
+    
+    await db.telegram_admins.update_one({"id": admin_id}, {"$set": update_data})
+    return {"message": "Telegram admin updated"}
+
+@api_router.delete("/telegram-admins/{admin_id}")
+async def delete_telegram_admin(admin_id: str, user = Depends(get_current_user)):
+    """Remove a Telegram admin"""
+    # Get admin info before deleting
+    admin = await db.telegram_admins.find_one({"id": admin_id}, {"_id": 0})
+    await db.telegram_admins.delete_one({"id": admin_id})
+    
+    # Notify removed admin
+    if admin:
+        settings = await get_bot_settings()
+        bot_token = settings.get("telegram_bot_token", "")
+        if bot_token and admin.get("telegram_user_id"):
+            msg = "⚠️ Your bot admin access has been revoked."
+            await send_telegram_message(admin["telegram_user_id"], msg, bot_token)
+    
+    return {"message": "Telegram admin removed"}
 
 
 # ============== LIVE STREAM APIs ==============

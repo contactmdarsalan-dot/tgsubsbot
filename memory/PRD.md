@@ -50,6 +50,14 @@ Build a market-ready SaaS product for Telegram subscription management. Features
 - [x] Added Telegram ID, Channel ID, Group Name columns to Subscribers table
 - [x] Backend GET /api/subscribers enriched with plan and group data
 
+### Mar 28, 2026 - Telegram Admin Management
+- [x] **Telegram Admins page** — Full CRUD for managing bot admins from dashboard
+  - Add admin with Telegram User ID, Username, Role (Admin/Moderator), granular permissions
+  - Toggle active/inactive, delete with Telegram notification
+  - `is_admin_or_creator` updated to check `telegram_admins` collection
+  - Stats cards: Total, Active, Inactive
+  - Sidebar link "TG Admins" added
+
 ### Mar 28, 2026 - Revenue Dashboard & Bug Fixes
 - [x] **Revenue Analytics Dashboard** — Full page with Total Revenue, Monthly, Today, ARPU, LTV, Churn Rate
   - Area chart with Daily/Weekly/Monthly tabs
