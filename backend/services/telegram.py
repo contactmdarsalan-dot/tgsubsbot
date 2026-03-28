@@ -440,74 +440,111 @@ async def send_screenshot_reminders(chat_id: str, username: str, bot_token: str)
 
 
 async def urgency_timer_task(chat_id: str, message_id: int, plan: dict, price_display: str, final_price: float, buttons: list, bot_token: str):
-    """Background task - live countdown timer on plan message"""
+    """Background task - live countdown timer with professional styling"""
     try:
         plan_name = plan.get('name', '')
+        duration = plan.get('duration_days', 0)
+
         features_text = ""
         if plan.get('features'):
-            features_text = "<b>Features:</b>\n"
             for feat in plan['features']:
-                features_text += f"  {feat}\n"
-            features_text += "\n"
+                features_text += f"    {feat}\n"
 
-        base_msg = f"<b>EXCLUSIVE OFFER!</b>\n\n"
-        base_msg += f"<b>{plan_name}</b>\n\n"
-        base_msg += f"Price: {price_display}\n"
-        base_msg += f"Duration: <b>{plan['duration_days']} days</b>\n\n"
-        base_msg += features_text
+        def build_progress_bar(percent):
+            """Create sexy Unicode progress bar"""
+            total = 15
+            filled = int(total * percent / 100)
+            empty = total - filled
+            bar = "\u2588" * filled + "\u2591" * empty
+            return bar
 
-        payment_info = "---\n"
-        payment_info += "<b>Payment Options:</b>\n\n"
-        payment_info += "1. <b>UPI/QR Code:</b> Pay via any UPI app\n"
-        payment_info += "2. After payment, send screenshot\n\n"
-        payment_info += f"<b>Your User ID:</b> <code>{chat_id}</code>"
+        def format_time(secs):
+            """Format seconds as MM:SS"""
+            m, s = divmod(secs, 60)
+            return f"{m:01d}:{s:02d}"
 
-        # Phase 1: Countdown from 60 to 0
-        for remaining in [55, 50, 45, 40, 35, 30, 25, 20, 15, 10, 5]:
+        payment_info = "\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
+        payment_info += "\n<b>Payment Methods:</b>\n"
+        payment_info += "  \u25b8 UPI / QR Code \u2014 Any UPI app\n"
+        payment_info += "  \u25b8 Send screenshot after payment\n\n"
+        payment_info += f"<b>Your ID:</b> <code>{chat_id}</code>"
+
+        # Phase 1: Smooth countdown (60s)
+        countdown_steps = [55, 50, 45, 40, 35, 30, 25, 20, 15, 10, 5]
+        for remaining in countdown_steps:
             await asyncio.sleep(5)
 
-            bar_filled = remaining // 5
-            bar_empty = 12 - bar_filled
-            progress_bar = "O" * bar_filled + "." * bar_empty
+            percent = int((remaining / 60) * 100)
+            bar = build_progress_bar(percent)
 
-            timer_msg = base_msg
-            timer_msg += f"<b>Offer expires in {remaining} seconds!</b>\n"
-            timer_msg += f"{progress_bar}\n"
-            timer_msg += payment_info
+            if remaining > 30:
+                pulse = "\u23f3"
+            elif remaining > 15:
+                pulse = "\u26a1"
+            else:
+                pulse = "\ud83d\udd25"
 
-            await edit_telegram_message(chat_id, message_id, timer_msg, buttons, bot_token)
+            msg = f"{pulse} <b>LIMITED TIME OFFER</b> {pulse}\n"
+            msg += "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n"
+            msg += f"\ud83c\udf1f <b>{plan_name}</b>\n\n"
+            msg += f"    \ud83d\udcb0 Price: <b>{price_display}</b>\n"
+            msg += f"    \ud83d\udcc5 Duration: <b>{duration} days</b>\n"
+            if features_text:
+                msg += f"    \ud83c\udfaf Features:\n{features_text}"
+            msg += f"\n\u23f1 <b>Offer ends in {format_time(remaining)}</b>\n\n"
+            msg += f"<code>{bar}</code>  {percent}%"
+            msg += payment_info
 
-        # Phase 2: LAST CHANCE
+            await edit_telegram_message(chat_id, message_id, msg, buttons, bot_token)
+
+        # Phase 2: LAST CHANCE - high urgency (60s)
         await asyncio.sleep(5)
 
-        for i in range(12):
-            remaining = 60 - (i * 5)
+        urgency_steps = list(range(55, -1, -5))
+        for i, remaining in enumerate(urgency_steps):
+            warn = "\ud83d\udea8" if i % 2 == 0 else "\u26a0\ufe0f"
+            percent = int((remaining / 60) * 100)
+            bar = build_progress_bar(percent)
 
-            urgency_msg = "<b>LAST CHANCE TO GRAB THIS OFFER!</b>\n\n"
-            urgency_msg += f"<b>{plan_name}</b>\n\n"
-            urgency_msg += f"Price: {price_display}\n"
-            urgency_msg += f"Duration: <b>{plan['duration_days']} days</b>\n\n"
-            urgency_msg += features_text
-            urgency_msg += f"<b>Only {remaining}s left! Don't miss out!</b>\n"
-            urgency_msg += payment_info
+            msg = f"{warn} <b>LAST CHANCE</b> {warn}\n"
+            msg += "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n"
+            msg += f"\ud83d\udc8e <b>{plan_name}</b>\n\n"
+            msg += f"    \ud83d\udcb0 <b>{price_display}</b>  \u00b7  {duration} days\n"
+            if features_text:
+                msg += f"    \ud83c\udfaf Features:\n{features_text}"
 
-            await edit_telegram_message(chat_id, message_id, urgency_msg, buttons, bot_token)
+            if remaining > 30:
+                msg += f"\n\u23f1 <b>{remaining}s remaining</b>\n\n"
+            elif remaining > 10:
+                msg += f"\n\ud83d\udd25 <b>Only {remaining}s left!</b>\n\n"
+            elif remaining > 0:
+                msg += f"\n\ud83d\udea8 <b>HURRY! {remaining}s!</b>\n\n"
+            else:
+                msg += f"\n\u203c\ufe0f <b>TIME'S UP!</b>\n\n"
 
-            if i < 11:
+            msg += f"<code>{bar}</code>  {percent}%"
+            msg += payment_info
+
+            await edit_telegram_message(chat_id, message_id, msg, buttons, bot_token)
+
+            if remaining > 0:
                 await asyncio.sleep(5)
 
-        # Phase 3: Timer ended
+        # Phase 3: Timer ended - still encouraging
         await asyncio.sleep(5)
 
-        expired_msg = "<b>Offer timer ended!</b>\n\n"
-        expired_msg += f"<b>{plan_name}</b>\n\n"
-        expired_msg += f"Price: {price_display}\n"
-        expired_msg += f"Duration: <b>{plan['duration_days']} days</b>\n\n"
-        expired_msg += features_text
-        expired_msg += "<b>You can still purchase -- but hurry!</b>\n"
-        expired_msg += payment_info
+        msg = "\u2728 <b>OFFER STILL AVAILABLE</b> \u2728\n"
+        msg += "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n"
+        msg += f"\ud83d\udc8e <b>{plan_name}</b>\n\n"
+        msg += f"    \ud83d\udcb0 Price: <b>{price_display}</b>\n"
+        msg += f"    \ud83d\udcc5 Duration: <b>{duration} days</b>\n"
+        if features_text:
+            msg += f"    \ud83c\udfaf Features:\n{features_text}"
+        msg += "\n\ud83d\udcac Timer ended but you can still grab this!\n"
+        msg += "<b>Don't miss out \u2014 purchase now!</b>"
+        msg += payment_info
 
-        await edit_telegram_message(chat_id, message_id, expired_msg, buttons, bot_token)
+        await edit_telegram_message(chat_id, message_id, msg, buttons, bot_token)
 
     except Exception as e:
         logger.error(f"Error in urgency timer: {e}")
