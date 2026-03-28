@@ -13,26 +13,50 @@ Build a market-ready SaaS product for Telegram subscription management. Features
 2. Admin Dashboard with subscriber management, analytics, broadcasts
 3. Live Stream management with super chat
 4. Video call booking system
-5. Multi-tenant SaaS architecture (P0 - In Progress)
+5. Multi-tenant SaaS architecture
 6. Payment gateway integration (Razorpay)
 
-## Architecture
+## Architecture (Refactored - Mar 28, 2026)
 ```
 /app/backend/
-├── config.py          # Env vars, logging, clients
-├── database.py        # MongoDB + Redis connections
-├── models/__init__.py # All Pydantic models
-├── routes/            # (Planned) Modular route files
-├── services/          # (Planned) Service layer
-├── utils/             # (Planned) Helper utilities
-└── server.py          # Main app (~8800 lines, being refactored)
+├── server.py              # App setup, middleware, router inclusion (79 lines)
+├── config.py              # Env vars, logging, clients
+├── database.py            # MongoDB + Redis connections
+├── rate_limiter.py        # SlowAPI rate limiter instance
+├── models/
+│   └── __init__.py        # All Pydantic models (340 lines)
+├── services/
+│   ├── auth.py            # Password hashing, JWT, user verification
+│   ├── telegram.py        # Telegram API helpers (messaging, channels)
+│   ├── payment.py         # OCR detection, AI analysis, image blur
+│   ├── chat_pool.py       # Chat group pool management
+│   ├── bot_activity.py    # Bot activity logging
+│   ├── background_tasks.py # Scheduled background jobs
+│   ├── csv_export.py      # CSV generation utilities
+│   └── email_service.py   # Email service
+├── routes/
+│   ├── auth.py            # Auth, OTP, Support tickets
+│   ├── admin.py           # Dashboard subscription, Super admin
+│   ├── core.py            # Plans, Subscribers, Payments, Settings
+│   ├── features.py        # Templates, Broadcast, Coupons, Live, etc.
+│   └── telegram_webhook.py # Main webhook handler
+├── tests/
+│   ├── test_refactored_backend.py
+│   └── ...
+├── Dockerfile
+└── requirements.txt
 
 /app/frontend/
 ├── src/
-│   ├── components/ui/ # Shadcn + SeraUI animated components
-│   ├── pages/         # Dashboard pages (Romance theme)
-│   ├── App.js         # Routing (/ → Landing, /dashboard → Admin)
-│   └── index.css      # Romance theme CSS variables
+│   ├── components/ui/     # Shadcn + SeraUI animated components
+│   ├── pages/             # Dashboard pages (Romance theme)
+│   │   ├── RevenueDashboard.jsx
+│   │   ├── TelegramAdmins.jsx
+│   │   ├── BotActivityLogs.jsx
+│   │   ├── Subscribers.jsx
+│   │   └── Dashboard.jsx
+│   ├── App.js             # Routing
+│   └── index.css          # Romance theme CSS variables
 ```
 
 ## Tech Stack
@@ -40,91 +64,48 @@ Build a market-ready SaaS product for Telegram subscription management. Features
 - Backend: FastAPI, MongoDB (Motor async), Redis
 - Bot: Telegram Bot API (Webhooks)
 - AI: GPT-4o Vision (payment verification) via Emergent LLM Key
+- Rate Limiting: SlowAPI
 - Hosting: Coolify (production), Emergent Preview (development)
 
 ---
 
 ## Implementation Log
 
-### Mar 27, 2026 - Subscriber Details Enhancement
-- [x] Added Telegram ID, Channel ID, Group Name columns to Subscribers table
-- [x] Backend GET /api/subscribers enriched with plan and group data
+### Mar 28, 2026 - Backend Refactoring Phase 2 (COMPLETE)
+- [x] **Monolith decomposition**: server.py reduced from 9408 lines to 79 lines
+- [x] **Service layer**: Extracted auth, telegram, payment, chat_pool, bot_activity, background_tasks
+- [x] **Route modules**: Split into auth, admin, core, features, telegram_webhook
+- [x] **Shared rate limiter**: Created rate_limiter.py for cross-module access
+- [x] **Docker deployment fix**: Removed emergentintegrations from requirements.txt (installed via Dockerfile)
+- [x] **slowapi preserved**: Confirmed slowapi==0.1.9 in requirements.txt
+- [x] **Full regression test**: 25/25 API tests passed, frontend verified working
 
-### Mar 28, 2026 - SaaS Infrastructure (Batch 3)
-- [x] **Bot /admin command** — Admin panel in Telegram with quick stats, /stats, /pending, /broadcast, /users commands
-- [x] **Admin callback buttons** — View Stats, Pending Payments, New Broadcast inline buttons
-- [x] **/broadcast command** — Send message to all bot users directly from Telegram
-- [x] **/users command** — View recent bot users
-- [x] **Bot user tracking** — Auto-upsert user data on every webhook message
-- [x] **Dashboard Setup Checklist** — Onboarding widget shows completion status (Bot Token, Channel ID, QR, Plans, Welcome Message)
-- [x] **Bot Activity improved** — Empty state with deploy instructions + Refresh button
-
-### Mar 28, 2026 - SaaS Infrastructure (Batch 2)
-- [x] **Bot Activity Logs** — Real-time dashboard with 24h stats, search, filter by event type, Export CSV, Auto-Refresh (5s)
-  - Activity logged for commands, button clicks, messages, payment screenshots
-  - Stats: events 24h, active users 24h, commands, payments
-- [x] **API Rate Limiting** — slowapi integrated: Login 10/min, Register 5/min, Webhook 300/min
-- [x] **Revenue Export CSV** — Download full revenue report from Revenue Dashboard
-- [x] **Enhanced Export API** — `/api/export/revenue-report` with CSV data + summary
-
-### Mar 28, 2026 - Telegram Admin Management
-- [x] **Telegram Admins page** — Full CRUD for managing bot admins from dashboard
-  - Add admin with Telegram User ID, Username, Role (Admin/Moderator), granular permissions
-  - Toggle active/inactive, delete with Telegram notification
-  - `is_admin_or_creator` updated to check `telegram_admins` collection
-  - Stats cards: Total, Active, Inactive
-  - Sidebar link "TG Admins" added
-
-### Mar 28, 2026 - Revenue Dashboard & Bug Fixes
-- [x] **Revenue Analytics Dashboard** — Full page with Total Revenue, Monthly, Today, ARPU, LTV, Churn Rate
-  - Area chart with Daily/Weekly/Monthly tabs
-  - Plan Performance breakdown with animated bars
-  - Conversion Funnel (Bot Users → Payment Started → Verified → Active)
-  - Bottom stats grid (Total Payments, Active, Grace, Expired)
-- [x] **Group ID Auto-Fix** — Backend now auto-prepends `-` to Group IDs (Telegram IDs are negative)
-- [x] Added Revenue link in sidebar navigation
-
-### Mar 28, 2026 - Major Feature Batch
-- [x] Fixed bot payment flow - users now always get channel invite (was blocked by empty plan channel_id + use_default=False)
-- [x] Added admin Telegram notification on new payments (notify_admin_new_payment)
-- [x] Added bulk-add-to-channel endpoint for existing subscribers
-- [x] Added 5-sec interval countdown timer on plan purchase (60s offer + 60s last chance + expired)
-- [x] Added Promote Plan to Group feature (admin can share specific plan to selected Telegram group)
-- [x] Added /start buy_{plan_id} deep link support for promote button
-- [x] Welcome message sent to new subscribers after payment
-- [x] Group auto-assignment in create_subscriber_task
-
-### Mar 28, 2026 - Architecture Refactoring (Phase 1)
-- [x] Created config.py (env vars, logging, client initialization)
-- [x] Created database.py (MongoDB + Redis connections)
-- [x] Created models/__init__.py (all Pydantic models extracted)
-- [x] Created modular directory structure (routes/, services/, utils/)
-- [x] Updated server.py to import from modules
+### Mar 28, 2026 - SaaS Infrastructure (Previous)
+- [x] Revenue Analytics Dashboard with ARPU, LTV, Churn
+- [x] Bot Activity Logs with CSV Export
+- [x] Telegram Admin Management
+- [x] API Rate Limiting (slowapi)
+- [x] Bot commands: /admin, /stats, /pending, /broadcast, /users
+- [x] 5-second countdown urgency timer on plan purchase
+- [x] Phase 1 refactoring: config.py, database.py, models/
 
 ---
 
 ## Backlog (Prioritized)
 
-### P0 - SaaS Foundation
-- [ ] Backend refactoring Phase 2: Extract routes from server.py into routes/
-- [ ] Backend refactoring Phase 3: Extract services (telegram, payment, notification)
-- [ ] Multi-tenant system (each customer gets own bot/dashboard)
-- [ ] SaaS billing (Razorpay/Stripe for dashboard access)
-- [ ] Onboarding wizard for new users
+### P0 - Deployment
+- [ ] Verify Coolify deployment (user needs to "Save to Github" and redeploy)
 
 ### P1 - Important Features
-- [ ] Advanced analytics dashboard (revenue graphs, conversion funnel, churn rate)
 - [ ] Razorpay/Stripe direct payment in bot
 - [ ] Email notifications (SendGrid/Resend)
-- [ ] API rate limiting & security hardening
 - [ ] Mobile responsive dashboard improvements
 
 ### P2 - Nice to Have
 - [ ] White-label branding (custom logo, colors, domain)
 - [ ] Multi-language bot (Hindi/English)
-- [ ] Affiliate/Referral system in bot
-- [ ] Webhook logs & debugging panel
-- [ ] Zapier/Make integration
+- [ ] Revenue Dashboard PDF export
+- [ ] Affiliate/Referral system enhancements
 
 ### P3 - Future
 - [ ] WhatsApp integration
