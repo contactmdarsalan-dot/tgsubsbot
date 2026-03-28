@@ -6,7 +6,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://admin-dashboard-1073.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://subscription-manager-44.preview.emergentagent.com')
 
 # Test credentials from test_credentials.md
 TEST_EMAIL = "gamerxboys8958@gmail.com"

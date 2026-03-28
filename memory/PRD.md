@@ -116,4 +116,4 @@ Build a market-ready SaaS product for Telegram subscription management. Features
 - Super Admin: gamerxboys8958@gmail.com / Sumit@8958
 - Bot Token: 8275964628:AAH8U7ECRII7eyAySt7U2pyDQhLcnZunTnY
 - Production webhook: https://api.tgsubsbot.com/api/telegram/webhook
-- Preview webhook: https://admin-dashboard-1073.preview.emergentagent.com/api/telegram/webhook
+- Preview webhook: https://subscription-manager-44.preview.emergentagent.com/api/telegram/webhook
