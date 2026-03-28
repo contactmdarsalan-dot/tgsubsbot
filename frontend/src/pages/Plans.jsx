@@ -13,7 +13,14 @@ import {
 } from "../components/ui/dialog";
 import { Switch } from "../components/ui/switch";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Package, IndianRupee, Clock } from "lucide-react";
+import { Plus, Pencil, Trash2, Package, IndianRupee, Clock, Megaphone } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -26,6 +33,10 @@ export default function Plans() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
+  const [promoteDialogOpen, setPromoteDialogOpen] = useState(false);
+  const [promotePlan, setPromotePlan] = useState(null);
+  const [groups, setGroups] = useState([]);
+  const [selectedGroup, setSelectedGroup] = useState("");
   const [form, setForm] = useState({
     name: "",
     price: "",
@@ -40,7 +51,17 @@ export default function Plans() {
 
   useEffect(() => {
     fetchPlans();
+    fetchGroups();
   }, []);
+
+  const fetchGroups = async () => {
+    try {
+      const response = await axios.get(`${API}/chat-groups`, getAuthHeaders());
+      setGroups(response.data);
+    } catch (error) {
+      console.error("Failed to fetch groups");
+    }
+  };
 
   const fetchPlans = async () => {
     try {
@@ -135,6 +156,29 @@ export default function Plans() {
     setDialogOpen(open);
     if (!open) {
       resetForm();
+    }
+  };
+
+  const handlePromote = async () => {
+    if (!promotePlan || !selectedGroup) {
+      toast.error("Group select karo!");
+      return;
+    }
+    try {
+      const response = await axios.post(`${API}/promote-plan`, {
+        plan_id: promotePlan.id,
+        group_id: selectedGroup
+      }, getAuthHeaders());
+      if (response.data.success) {
+        toast.success("Plan promoted to group!");
+      } else {
+        toast.error(response.data.message || "Failed to promote");
+      }
+      setPromoteDialogOpen(false);
+      setPromotePlan(null);
+      setSelectedGroup("");
+    } catch (error) {
+      toast.error("Failed to promote plan");
     }
   };
 
@@ -380,6 +424,21 @@ export default function Plans() {
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
+                      setPromotePlan(plan);
+                      setPromoteDialogOpen(true);
+                    }}
+                    data-testid={`promote-plan-${plan.id}`}
+                    className="flex-1 border-yellow-600 text-yellow-500 hover:bg-yellow-900/30"
+                  >
+                    <Megaphone className="w-4 h-4 mr-2" />
+                    Promote
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       handleEdit(plan);
                     }}
                     data-testid={`edit-plan-${plan.id}`}
@@ -421,6 +480,48 @@ export default function Plans() {
           </CardContent>
         </Card>
       )}
+
+      {/* Promote Plan Dialog */}
+      <Dialog open={promoteDialogOpen} onOpenChange={(open) => {
+        setPromoteDialogOpen(open);
+        if (!open) { setPromotePlan(null); setSelectedGroup(""); }
+      }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-xl font-bold flex items-center gap-2">
+              <Megaphone className="w-5 h-5 text-yellow-500" />
+              Promote Plan to Group
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            {promotePlan && (
+              <div className="bg-muted/50 rounded-lg p-3">
+                <p className="font-medium">{promotePlan.name}</p>
+                <p className="text-sm text-muted-foreground">₹{promotePlan.price} - {promotePlan.duration_days} days</p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Select Group</Label>
+              <Select value={selectedGroup} onValueChange={setSelectedGroup}>
+                <SelectTrigger data-testid="promote-group-select" className="bg-muted/50 border-transparent">
+                  <SelectValue placeholder="Select a group to promote in" />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups.map((group) => (
+                    <SelectItem key={group.group_id} value={group.group_id}>
+                      {group.group_name || group.group_id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={handlePromote} className="w-full btn-hover" data-testid="confirm-promote-btn">
+              <Megaphone className="w-4 h-4 mr-2" />
+              Send Promotion
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

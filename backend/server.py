@@ -2939,6 +2939,15 @@ async def verify_manual_payment(payment_id: str, background_tasks: BackgroundTas
         success_msg += "📨 You'll receive the channel invite link shortly."
         await send_telegram_message(payment["telegram_user_id"], success_msg, bot_token)
     
+    # Notify admin on Telegram
+    background_tasks.add_task(
+        notify_admin_new_payment,
+        payment.get("telegram_user_id", ""),
+        payment.get("telegram_username", ""),
+        payment.get("plan_name", "N/A"),
+        payment.get("amount", 0)
+    )
+    
     return {"message": "Payment verified and subscriber created"}
 
 @api_router.put("/payments/{payment_id}/reject")
@@ -3086,32 +3095,161 @@ async def bulk_delete_payments(data: dict, user = Depends(get_current_user)):
 
 async def create_subscriber_task(subscriber_create: SubscriberCreate, plan: dict):
     """Background task to create subscriber after payment verification"""
-    settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
-    grace_days = settings.get("grace_period_days", 2)
-    plan_channel = plan.get("channel_id", "")
+    try:
+        settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
+        grace_days = settings.get("grace_period_days", 2)
+        plan_channel = plan.get("channel_id", "")
+        
+        end_date = datetime.now(timezone.utc) + timedelta(days=plan["duration_days"])
+        grace_end = end_date + timedelta(days=grace_days)
+        
+        subscriber_obj = Subscriber(
+            telegram_user_id=subscriber_create.telegram_user_id,
+            telegram_username=subscriber_create.telegram_username,
+            plan_id=subscriber_create.plan_id,
+            plan_name=plan["name"],
+            payment_method=subscriber_create.payment_method,
+            payment_id=subscriber_create.payment_id,
+            end_date=end_date,
+            grace_end_date=grace_end
+        )
+        
+        doc = subscriber_obj.model_dump()
+        doc['start_date'] = doc['start_date'].isoformat()
+        doc['end_date'] = doc['end_date'].isoformat()
+        doc['grace_end_date'] = doc['grace_end_date'].isoformat()
+        doc['created_at'] = doc['created_at'].isoformat()
+        
+        await db.subscribers.insert_one(doc)
+        
+        # Add to channel (uses default channel if plan has no specific channel)
+        added = await add_to_channel(subscriber_create.telegram_user_id, plan_channel, plan["name"], use_default=True)
+        logger.info(f"Add to channel result for {subscriber_create.telegram_user_id}: {added}")
+        
+        # Handle group assignment if plan has auto_assign_group or group_id
+        if plan.get("auto_assign_group"):
+            available_group = await get_available_chat_group()
+            if available_group:
+                result = await assign_chat_group(
+                    available_group["group_id"],
+                    subscriber_create.telegram_user_id,
+                    subscriber_create.telegram_username or "",
+                    f"plan_{plan['id']}",
+                    plan['duration_days'] * 24 * 60
+                )
+                logger.info(f"Auto-assigned group for {subscriber_create.telegram_user_id}: {result}")
+        elif plan.get("group_id"):
+            # Send group invite link
+            bot_token = settings.get("telegram_bot_token", "")
+            if bot_token:
+                try:
+                    async with httpx.AsyncClient() as http_client:
+                        url = f"https://api.telegram.org/bot{bot_token}/createChatInviteLink"
+                        response = await http_client.post(url, json={
+                            "chat_id": plan["group_id"],
+                            "member_limit": 1,
+                            "expire_date": int((datetime.now(timezone.utc) + timedelta(hours=24)).timestamp())
+                        })
+                        if response.status_code == 200:
+                            invite_link = response.json().get("result", {}).get("invite_link", "")
+                            if invite_link:
+                                msg = f"👥 <b>Group Access for {plan['name']}:</b>\n{invite_link}"
+                                await send_telegram_message(subscriber_create.telegram_user_id, msg, bot_token)
+                except Exception as e:
+                    logger.error(f"Error creating group invite: {e}")
+        
+        # Notify admin
+        await notify_admin_new_payment(
+            subscriber_create.telegram_user_id,
+            subscriber_create.telegram_username or "",
+            plan["name"],
+            plan.get("price", 0)
+        )
+        
+        # Send welcome message
+        welcome_msg = settings.get("success_message", "🎉 Payment verified! Your subscription is now active.")
+        bot_token = settings.get("telegram_bot_token", "")
+        if bot_token and welcome_msg:
+            full_msg = f"{welcome_msg}\n\n📦 Plan: <b>{plan['name']}</b>\n⏱ Duration: <b>{plan['duration_days']} days</b>"
+            await send_telegram_message(subscriber_create.telegram_user_id, full_msg, bot_token)
+    except Exception as e:
+        logger.error(f"Error in create_subscriber_task: {e}")
+
+
+async def notify_admin_new_payment(user_id: str, username: str, plan_name: str, amount: float):
+    """Send Telegram notification to admin when a new payment is received"""
+    try:
+        settings = await get_bot_settings()
+        bot_token = settings.get("telegram_bot_token", "")
+        if not bot_token:
+            return
+        
+        # Get admin users
+        admins = await db.users.find({"role": {"$in": ["super_admin", "admin"]}}, {"_id": 0}).to_list(10)
+        
+        msg = "🔔 <b>New Payment Received!</b>\n\n"
+        msg += f"👤 User: <b>@{username}</b> (<code>{user_id}</code>)\n" if username else f"👤 User: <code>{user_id}</code>\n"
+        msg += f"📦 Plan: <b>{plan_name}</b>\n"
+        msg += f"💰 Amount: <b>₹{amount}</b>\n"
+        msg += f"🕐 Time: <b>{datetime.now(timezone.utc).strftime('%d %b %Y %I:%M %p')} UTC</b>"
+        
+        # Send to all admins who have telegram_user_id linked
+        for admin in admins:
+            admin_tg_id = admin.get("telegram_user_id", "")
+            if admin_tg_id:
+                await send_telegram_message(admin_tg_id, msg, bot_token)
+        
+        # Also send to the default bot owner (first admin with telegram_user_id)
+        # If no admin has telegram_user_id, try sending to the creator/owner
+        creators = await db.creators.find({}, {"_id": 0}).to_list(5)
+        for creator in creators:
+            creator_tg_id = creator.get("telegram_user_id", "")
+            if creator_tg_id:
+                already_sent = any(a.get("telegram_user_id") == creator_tg_id for a in admins if a.get("telegram_user_id"))
+                if not already_sent:
+                    await send_telegram_message(creator_tg_id, msg, bot_token)
+    except Exception as e:
+        logger.error(f"Error notifying admin: {e}")
+
+
+
+@api_router.post("/subscribers/bulk-add-to-channel")
+async def bulk_add_subscribers_to_channel(user = Depends(get_current_user)):
+    """Add all active subscribers to the default channel - one time fix"""
+    settings = await get_bot_settings()
+    channel_id = settings.get("telegram_channel_id", "")
+    bot_token = settings.get("telegram_bot_token", "")
     
-    end_date = datetime.now(timezone.utc) + timedelta(days=plan["duration_days"])
-    grace_end = end_date + timedelta(days=grace_days)
+    if not channel_id or not bot_token:
+        raise HTTPException(status_code=400, detail="Channel ID or Bot Token not configured")
     
-    subscriber_obj = Subscriber(
-        telegram_user_id=subscriber_create.telegram_user_id,
-        telegram_username=subscriber_create.telegram_username,
-        plan_id=subscriber_create.plan_id,
-        plan_name=plan["name"],
-        payment_method=subscriber_create.payment_method,
-        payment_id=subscriber_create.payment_id,
-        end_date=end_date,
-        grace_end_date=grace_end
-    )
+    active_subs = await db.subscribers.find({"status": "active"}, {"_id": 0}).to_list(1000)
     
-    doc = subscriber_obj.model_dump()
-    doc['start_date'] = doc['start_date'].isoformat()
-    doc['end_date'] = doc['end_date'].isoformat()
-    doc['grace_end_date'] = doc['grace_end_date'].isoformat()
-    doc['created_at'] = doc['created_at'].isoformat()
+    results = {"success": 0, "failed": 0, "total": len(active_subs), "details": []}
     
-    await db.subscribers.insert_one(doc)
-    await add_to_channel(subscriber_create.telegram_user_id, plan_channel, plan["name"])
+    for sub in active_subs:
+        user_id = sub.get("telegram_user_id", "")
+        if not user_id:
+            continue
+        
+        # Look up plan for channel override
+        plan = await db.plans.find_one({"id": sub.get("plan_id", "")}, {"_id": 0})
+        plan_channel = plan.get("channel_id", "") if plan else ""
+        plan_name = sub.get("plan_name", "")
+        
+        added = await add_to_channel(user_id, plan_channel, plan_name, use_default=True)
+        if added:
+            results["success"] += 1
+            results["details"].append({"user_id": user_id, "status": "invite_sent"})
+        else:
+            results["failed"] += 1
+            results["details"].append({"user_id": user_id, "error": "Failed - bot may not be admin in channel"})
+        
+        # Small delay to avoid Telegram rate limits
+        await asyncio.sleep(0.5)
+    
+    logger.info(f"Bulk add results: {results['success']} success, {results['failed']} failed out of {results['total']}")
+    return results
 
 # ============== SETTINGS ROUTES ==============
 
@@ -3270,6 +3408,76 @@ async def update_template(template_id: str, template: MessageTemplate, user = De
 async def delete_template(template_id: str, user = Depends(get_current_user)):
     await db.templates.delete_one({"id": template_id})
     return {"message": "Template deleted"}
+
+
+@api_router.post("/promote-plan")
+async def promote_plan_to_group(data: dict, user = Depends(get_current_user)):
+    """Promote a specific plan/service to a selected group"""
+    plan_id = data.get("plan_id", "")
+    group_id = data.get("group_id", "")
+    
+    if not plan_id or not group_id:
+        raise HTTPException(status_code=400, detail="plan_id and group_id required")
+    
+    plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="Bot token not configured")
+    
+    original_price = int(plan['price'])
+    discount_pct = plan.get('discount_percentage', 0)
+    if discount_pct > 0:
+        final_price = int(original_price * (100 - discount_pct) / 100)
+        price_display = f"<s>₹{original_price}</s> → ₹{final_price} 🔥"
+    else:
+        price_display = f"₹{original_price}"
+    
+    promo_msg = "🔥 <b>EXCLUSIVE OFFER!</b> 🔥\n\n"
+    promo_msg += f"📦 <b>{plan['name']}</b>\n"
+    promo_msg += f"💰 Price: {price_display}\n"
+    promo_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
+    
+    if plan.get('features'):
+        for feat in plan['features']:
+            promo_msg += f"✅ {feat}\n"
+        promo_msg += "\n"
+    
+    promo_msg += "🚀 <b>Grab this offer now!</b>"
+    
+    # Get bot username for deep link
+    try:
+        async with httpx.AsyncClient() as http_client:
+            me_response = await http_client.get(f"https://api.telegram.org/bot{bot_token}/getMe")
+            bot_username = me_response.json().get("result", {}).get("username", "")
+    except Exception:
+        bot_username = ""
+    
+    buttons = []
+    if bot_username:
+        buttons.append([{"text": "💳 Buy Now!", "url": f"https://t.me/{bot_username}?start=buy_{plan_id}"}])
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http_client:
+            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            payload = {
+                "chat_id": group_id,
+                "text": promo_msg,
+                "parse_mode": "HTML"
+            }
+            if buttons:
+                payload["reply_markup"] = {"inline_keyboard": buttons}
+            response = await http_client.post(url, json=payload)
+            if response.status_code == 200:
+                return {"message": "Plan promoted successfully", "success": True}
+            else:
+                return {"message": f"Failed: {response.text}", "success": False}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # ============== BROADCAST ROUTES ==============
 
@@ -4806,6 +5014,100 @@ async def send_telegram_message_with_buttons(chat_id: str, message: str, buttons
                 await asyncio.sleep(0.5)
     return False
 
+
+async def send_telegram_message_with_buttons_and_return(chat_id: str, message: str, buttons: list = None, bot_token: str = None):
+    """Send message with buttons and return the message_id for later editing"""
+    if not bot_token:
+        settings = await get_bot_settings()
+        bot_token = settings.get("telegram_bot_token", "")
+    if not bot_token:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http_client:
+            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": message,
+                "parse_mode": "HTML"
+            }
+            if buttons:
+                payload["reply_markup"] = {"inline_keyboard": buttons}
+            response = await http_client.post(url, json=payload)
+            if response.status_code == 200:
+                return response.json().get("result", {}).get("message_id")
+    except Exception as e:
+        logger.error(f"Failed to send message with return: {e}")
+    return None
+
+
+async def edit_telegram_message(chat_id: str, message_id: int, text: str, buttons: list = None, bot_token: str = None):
+    """Edit an existing Telegram message"""
+    if not bot_token:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http_client:
+            url = f"https://api.telegram.org/bot{bot_token}/editMessageText"
+            payload = {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text,
+                "parse_mode": "HTML"
+            }
+            if buttons:
+                payload["reply_markup"] = {"inline_keyboard": buttons}
+            response = await http_client.post(url, json=payload)
+            return response.status_code == 200
+    except Exception as e:
+        logger.error(f"Failed to edit message: {e}")
+    return False
+
+
+async def urgency_timer_task(chat_id: str, message_id: int, plan: dict, price_display: str, final_price: float, buttons: list, bot_token: str):
+    """Background task to update plan message with urgency timer"""
+    try:
+        plan_name = plan.get('name', '')
+        features_text = ""
+        if plan.get('features'):
+            features_text = "<b>Features:</b>\n"
+            for feat in plan['features']:
+                features_text += f"✅ {feat}\n"
+            features_text += "\n"
+        
+        base_msg = f"<b>📦 {plan_name}</b>\n\n"
+        base_msg += f"💰 Price: {price_display}\n"
+        base_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
+        base_msg += features_text
+        
+        payment_info = "━━━━━━━━━━━━━━━\n"
+        payment_info += "<b>💳 Payment Options:</b>\n\n"
+        payment_info += "1️⃣ <b>UPI/QR Code:</b> Pay via any UPI app\n"
+        payment_info += "2️⃣ After payment, send screenshot\n\n"
+        payment_info += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"
+        
+        # Wait 60 seconds, then show "Last chance"
+        await asyncio.sleep(60)
+        
+        urgency_msg = "⚡ <b>LAST CHANCE TO GRAB THIS OFFER!</b> ⚡\n\n"
+        urgency_msg += base_msg
+        urgency_msg += "🚨 <b>Hurry! This offer won't last long!</b>\n"
+        urgency_msg += payment_info
+        
+        await edit_telegram_message(chat_id, message_id, urgency_msg, buttons, bot_token)
+        
+        # Wait another 60 seconds (total 120s), then show expired
+        await asyncio.sleep(60)
+        
+        expired_msg = "⏰ <b>Offer timer ended!</b>\n\n"
+        expired_msg += base_msg
+        expired_msg += "💡 <b>Don't worry — you can still purchase!</b>\n"
+        expired_msg += payment_info
+        
+        await edit_telegram_message(chat_id, message_id, expired_msg, buttons, bot_token)
+        
+    except Exception as e:
+        logger.error(f"Error in urgency timer: {e}")
+
+
 # ============== PAID POSTS ADMIN APIs ==============
 
 @api_router.get("/paid-posts")
@@ -5328,7 +5630,8 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     # Show payment options
                     qr_code_url = settings.get("qr_code_url", "")
                     
-                    payment_msg = f"<b>📦 {plan['name']}</b>\n\n"
+                    payment_msg = f"🔥 <b>EXCLUSIVE OFFER!</b> 🔥\n\n"
+                    payment_msg += f"<b>📦 {plan['name']}</b>\n\n"
                     payment_msg += f"💰 Price: {price_display}\n"
                     payment_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
                     
@@ -5338,6 +5641,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             payment_msg += f"✅ {feat}\n"
                         payment_msg += "\n"
                     
+                    payment_msg += "⏰ <b>Offer expires in 60 seconds!</b>\n"
                     payment_msg += "━━━━━━━━━━━━━━━\n"
                     payment_msg += "<b>💳 Payment Options:</b>\n\n"
                     payment_msg += "1️⃣ <b>UPI/QR Code:</b>\n"
@@ -5352,7 +5656,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     buttons.append([{"text": "✅ I've Paid - Contact Admin", "callback_data": f"paid_{plan_id}"}])
                     buttons.append([{"text": "◀️ Back to Plans", "callback_data": "back_plans"}])
                     
-                    await send_telegram_message_with_buttons(chat_id, payment_msg, buttons, bot_token)
+                    # Send initial message with urgency timer
+                    msg_result = await send_telegram_message_with_buttons_and_return(chat_id, payment_msg, buttons, bot_token)
+                    
+                    if msg_result:
+                        # Schedule urgency timer edits in background
+                        asyncio.create_task(
+                            urgency_timer_task(chat_id, msg_result, plan, price_display, final_price, buttons, bot_token)
+                        )
             
             elif callback_data.startswith("qr_"):
                 # Send QR code image and wait for screenshot
@@ -7445,10 +7756,12 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 
                                 await send_telegram_message(chat_id, success_msg, bot_token)
                                 
-                                # Add user to premium channel ONLY if plan has a channel_id
+                                # Add user to premium channel (plan-specific or default)
                                 plan_channel = plan.get("channel_id", "")
-                                if plan_channel:
-                                    await add_to_channel(chat_id, plan_channel, plan['name'], use_default=False)
+                                await add_to_channel(chat_id, plan_channel, plan['name'], use_default=True)
+                                
+                                # Notify admin about new payment
+                                await notify_admin_new_payment(chat_id, username, plan['name'], final_price)
                             
                         else:
                             # AI/OCR couldn't auto-verify - check if AI explicitly rejected
@@ -7781,7 +8094,53 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 
                 return {"ok": True}
         
-        if text == "/start" or text == "/start subscribe" or text == "/plans":
+        if text == "/start" or text == "/start subscribe" or text == "/plans" or (text and text.startswith("/start buy_")):
+            # Check for /start buy_{plan_id} deep link (from promote button)
+            if text and text.startswith("/start buy_"):
+                plan_id = text.replace("/start buy_", "").strip()
+                plan = await db.plans.find_one({"id": plan_id, "is_active": True}, {"_id": 0})
+                if plan:
+                    # Simulate buy callback
+                    settings = await get_bot_settings()
+                    bot_token = settings.get("telegram_bot_token", "")
+                    original_price = int(plan['price'])
+                    discount_pct = plan.get('discount_percentage', 0)
+                    if discount_pct > 0:
+                        discounted_price = int(original_price * (100 - discount_pct) / 100)
+                        price_display = f"<s>₹{original_price}</s> → <b>₹{discounted_price}</b> 🔥"
+                        final_price = discounted_price
+                    else:
+                        price_display = f"<b>₹{original_price}</b>"
+                        final_price = original_price
+                    
+                    qr_code_url = settings.get("qr_code_url", "")
+                    
+                    payment_msg = f"🔥 <b>EXCLUSIVE OFFER!</b> 🔥\n\n"
+                    payment_msg += f"<b>📦 {plan['name']}</b>\n\n"
+                    payment_msg += f"💰 Price: {price_display}\n"
+                    payment_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
+                    
+                    if plan.get('features'):
+                        for feat in plan['features']:
+                            payment_msg += f"✅ {feat}\n"
+                        payment_msg += "\n"
+                    
+                    payment_msg += "⏰ <b>Offer expires in 60 seconds!</b>\n"
+                    payment_msg += "━━━━━━━━━━━━━━━\n"
+                    payment_msg += "<b>💳 Pay now to get instant access!</b>\n\n"
+                    payment_msg += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"
+                    
+                    buttons = []
+                    if qr_code_url:
+                        buttons.append([{"text": "📱 Show QR Code", "callback_data": f"qr_{plan_id}"}])
+                    buttons.append([{"text": "✅ I've Paid - Contact Admin", "callback_data": f"paid_{plan_id}"}])
+                    buttons.append([{"text": "◀️ Back to Plans", "callback_data": "back_plans"}])
+                    
+                    msg_result = await send_telegram_message_with_buttons_and_return(chat_id, payment_msg, buttons, bot_token)
+                    if msg_result:
+                        asyncio.create_task(urgency_timer_task(chat_id, msg_result, plan, price_display, final_price, buttons, bot_token))
+                    return {"ok": True}
+            
             # Show plans directly - fetch from database dynamically
             plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
             settings = await get_bot_settings()

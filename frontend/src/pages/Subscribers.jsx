@@ -59,6 +59,7 @@ export default function Subscribers() {
     plan_id: "",
     payment_method: "manual",
   });
+  const [bulkAdding, setBulkAdding] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -163,6 +164,20 @@ export default function Subscribers() {
     );
   }
 
+  const handleBulkAddToChannel = async () => {
+    if (!window.confirm("Sab active subscribers ko channel mein add karna hai? Ye sabko invite link bhejega.")) return;
+    setBulkAdding(true);
+    try {
+      const response = await axios.post(`${API}/subscribers/bulk-add-to-channel`, {}, getAuthHeaders());
+      const data = response.data;
+      toast.success(`Done! ${data.success} added, ${data.failed} failed out of ${data.total}`);
+    } catch (error) {
+      toast.error("Failed to bulk add subscribers");
+    } finally {
+      setBulkAdding(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -173,10 +188,21 @@ export default function Subscribers() {
             Manage your channel members and subscriptions
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) resetForm();
-        }}>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={handleBulkAddToChannel} 
+            disabled={bulkAdding}
+            data-testid="bulk-add-channel-btn"
+            className="border-green-600 text-green-500 hover:bg-green-900/30"
+          >
+            <Users className="w-4 h-4 mr-2" />
+            {bulkAdding ? "Adding..." : "Bulk Add to Channel"}
+          </Button>
+          <Dialog open={dialogOpen} onOpenChange={(open) => {
+            setDialogOpen(open);
+            if (!open) resetForm();
+          }}>
           <DialogTrigger asChild>
             <Button className="btn-hover" data-testid="add-subscriber-btn">
               <Plus className="w-4 h-4 mr-2" />
@@ -256,6 +282,7 @@ export default function Subscribers() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Filters */}
