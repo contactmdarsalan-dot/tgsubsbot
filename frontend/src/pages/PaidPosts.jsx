@@ -386,7 +386,11 @@ export default function PaidPosts() {
                           <p className="font-medium">
                             @{request.telegram_username || request.telegram_user_id}
                           </p>
-                          <Badge variant="outline">Pending</Badge>
+                          {request.ai_result?.is_valid_payment && request.ai_result?.confidence_score >= 85 ? (
+                            <Badge className="bg-green-500/20 text-green-400 border border-green-500/30">Verified</Badge>
+                          ) : (
+                            <Badge variant="outline">Pending</Badge>
+                          )}
                         </div>
                         
                         <p className="text-sm text-muted-foreground mb-2">
