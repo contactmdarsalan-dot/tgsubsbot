@@ -1907,7 +1907,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         
         # Track bot user (upsert)
         if chat_type == "private" and chat_id:
-            asyncio.create_task(db.bot_users.update_one(
+            await db.bot_users.update_one(
                 {"user_id": str(chat_id)},
                 {"$set": {
                     "user_id": str(chat_id),
@@ -1918,7 +1918,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }},
                 upsert=True
-            ))
+            )
         
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
