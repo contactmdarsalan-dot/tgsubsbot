@@ -33,10 +33,13 @@ import {
   Palette,
   Smartphone,
   Languages,
+  Building2,
+  Globe,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
-const navItems = [
+// Tenant Admin items (operational — what tenant admin sees)
+const tenantNavItems = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/dashboard/plans", label: "Plans", icon: Package },
   { path: "/dashboard/subscribers", label: "Subscribers", icon: Users },
@@ -61,15 +64,13 @@ const navItems = [
   { path: "/dashboard/miniapp-users", label: "Mini App Users", icon: Smartphone },
 ];
 
-const adminNavItems = [
-  { path: "/dashboard/admin-subs", label: "SaaS Subs", icon: Crown, adminOnly: true },
-];
-
-const superAdminNavItems = [
-  { path: "/dashboard/saas-management", label: "SaaS Management", icon: Crown, superAdminOnly: true },
-  { path: "/dashboard/branding", label: "Branding", icon: Palette, superAdminOnly: true },
-  { path: "/dashboard/super-admin", label: "Admin Support", icon: Shield, superAdminOnly: true },
-  { path: "/dashboard/user-management", label: "User Management", icon: Users, superAdminOnly: true },
+// Super Admin PLATFORM section (shown at top for super admins only)
+const platformNavItems = [
+  { path: "/dashboard/saas-management", label: "SaaS Management", icon: Building2 },
+  { path: "/dashboard/branding", label: "Branding", icon: Palette },
+  { path: "/dashboard/user-management", label: "User Management", icon: UserCog },
+  { path: "/dashboard/super-admin", label: "Admin Support", icon: Shield },
+  { path: "/dashboard/admin-subs", label: "SaaS Subscriptions", icon: Crown },
 ];
 
 export default function Layout() {
@@ -160,13 +161,7 @@ export default function Layout() {
     navigate("/login");
   };
 
-  let allNavItems = [...navItems];
-  if (isAdmin) {
-    allNavItems = [...allNavItems, ...adminNavItems];
-  }
-  if (isSuperAdmin) {
-    allNavItems = [...allNavItems, ...superAdminNavItems];
-  }
+  let allNavItems = [...tenantNavItems];
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -207,31 +202,65 @@ export default function Layout() {
           </div>
 
           {/* Navigation - scrollable */}
-          <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto scrollbar-thin">
-            {allNavItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setSidebarOpen(false)}
-                  data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
-                  className={`flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-all duration-150 ${
-                    isActive
-                      ? "bg-primary/15 text-primary border-l-2 border-primary font-medium"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                  } ${item.adminOnly ? "border border-dashed border-primary/20" : ""} 
-                  ${item.superAdminOnly ? "border border-dashed border-amber-500/30 bg-amber-500/5" : ""}`}
-                >
-                  <Icon className="w-4 h-4 flex-shrink-0" strokeWidth={1.5} />
-                  <span className="truncate">{item.label}</span>
-                  {item.superAdminOnly && (
-                    <Crown className="w-3 h-3 text-amber-500 ml-auto flex-shrink-0" />
-                  )}
-                </Link>
-              );
-            })}
+          <nav className="flex-1 px-3 py-3 overflow-y-auto scrollbar-thin">
+            {/* SUPER ADMIN: Platform Section at Top */}
+            {isSuperAdmin && (
+              <>
+                <div className="px-3 pt-1 pb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500/70">Platform</span>
+                </div>
+                <div className="space-y-0.5 mb-3">
+                  {platformNavItems.map((item) => {
+                    const isActive = location.pathname === item.path;
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        onClick={() => setSidebarOpen(false)}
+                        data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-all duration-150 ${
+                          isActive
+                            ? "bg-amber-500/15 text-amber-400 border-l-2 border-amber-500 font-medium"
+                            : "text-muted-foreground hover:text-foreground hover:bg-amber-500/5"
+                        }`}
+                      >
+                        <Icon className="w-4 h-4 flex-shrink-0" strokeWidth={1.5} />
+                        <span className="truncate">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+                <div className="border-t border-border/20 mb-3" />
+                <div className="px-3 pb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">Operations</span>
+                </div>
+              </>
+            )}
+
+            {/* Tenant Admin / Regular Items */}
+            <div className="space-y-0.5">
+              {allNavItems.map((item) => {
+                const isActive = location.pathname === item.path;
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setSidebarOpen(false)}
+                    data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                    className={`flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-all duration-150 ${
+                      isActive
+                        ? "bg-primary/15 text-primary border-l-2 border-primary font-medium"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 flex-shrink-0" strokeWidth={1.5} />
+                    <span className="truncate">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
           </nav>
         </div>
       </aside>
