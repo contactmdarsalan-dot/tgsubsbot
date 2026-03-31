@@ -2,7 +2,41 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 from datetime import datetime, timezone
+from enum import Enum
 import uuid
+
+
+# ============== ENUMS ==============
+class UserRole(str, Enum):
+    SUPER_ADMIN = "super_admin"
+    TENANT_OWNER = "tenant_owner"
+    TENANT_ADMIN = "tenant_admin"
+    ADMIN = "admin"
+    CREATOR = "creator"
+    CUSTOMER = "customer"
+    USER = "user"
+
+
+class PaymentStatus(str, Enum):
+    PENDING = "pending"
+    VERIFIED = "verified"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
+class SubscriptionStatus(str, Enum):
+    ACTIVE = "active"
+    EXPIRED = "expired"
+    GRACE = "grace"
+    CANCELLED = "cancelled"
+
+
+class LiveSessionStatus(str, Enum):
+    SCHEDULED = "scheduled"
+    ANNOUNCED = "announced"
+    LIVE = "live"
+    ENDED = "ended"
 
 
 # ============== USER MODELS ==============

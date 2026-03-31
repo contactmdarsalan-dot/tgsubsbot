@@ -2,7 +2,8 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from database import db
 from services.auth import get_current_user, hash_password, verify_password, create_token
-from config import logger, twilio_client, TWILIO_PHONE_NUMBER
+from services.permissions import is_super_admin
+from config import logger, twilio_client, TWILIO_PHONE_NUMBER, SUPER_ADMIN_EMAILS
 from rate_limiter import limiter
 from models import UserCreate, UserLogin, User
 from datetime import datetime, timezone, timedelta
@@ -11,8 +12,6 @@ import random
 import httpx
 
 router = APIRouter()
-
-SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"
 
 # ============== AUTH ROUTES ==============
 
@@ -531,7 +530,7 @@ async def add_user_message_to_ticket(ticket_id: str, data: dict, user = Depends(
 @router.get("/admin/support/tickets")
 async def get_all_support_tickets(user = Depends(get_current_user)):
     """Get all support tickets (super admin or admin only)"""
-    is_super_admin = user.get("email") == SUPER_ADMIN_EMAIL
+    is_super_admin = is_super_admin(user)
     is_admin = user.get("is_admin", False)
     
     if not is_super_admin and not is_admin:
@@ -543,7 +542,7 @@ async def get_all_support_tickets(user = Depends(get_current_user)):
 @router.post("/admin/support/tickets/{ticket_id}/reply")
 async def admin_reply_to_ticket(ticket_id: str, data: dict, user = Depends(get_current_user)):
     """Add admin reply to a ticket (can reply multiple times)"""
-    is_super_admin = user.get("email") == SUPER_ADMIN_EMAIL
+    is_super_admin = is_super_admin(user)
     is_admin = user.get("is_admin", False)
     
     if not is_super_admin and not is_admin:
@@ -577,7 +576,7 @@ async def admin_reply_to_ticket(ticket_id: str, data: dict, user = Depends(get_c
 @router.put("/admin/support/tickets/{ticket_id}/status")
 async def update_ticket_status(ticket_id: str, data: dict, user = Depends(get_current_user)):
     """Update ticket status (super admin or admin only)"""
-    is_super_admin = user.get("email") == SUPER_ADMIN_EMAIL
+    is_super_admin = is_super_admin(user)
     is_admin = user.get("is_admin", False)
     
     if not is_super_admin and not is_admin:
@@ -598,10 +597,11 @@ async def delete_ticket(ticket_id: str, user = Depends(get_current_user)):
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    is_admin = user.get("is_admin", False) or user.get("role") in ["admin", "super_admin"] or user.get("email") == SUPER_ADMIN_EMAIL
+    from services.permissions import is_any_admin
+    is_admin_user = is_any_admin(user)
     is_owner = ticket.get("user_id") == user.get("id")
 
-    if not is_admin and not is_owner:
+    if not is_admin_user and not is_owner:
         raise HTTPException(status_code=403, detail="Not authorized to delete this ticket")
 
     await db.support_tickets.delete_one({"id": ticket_id})

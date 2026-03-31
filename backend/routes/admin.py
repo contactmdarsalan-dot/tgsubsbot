@@ -2,7 +2,9 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from database import db
 from services.auth import get_current_user, hash_password
-from config import logger, RAZORPAY_KEY_ID, razorpay_client, DASHBOARD_PLANS
+from services.permissions import ensure_super_admin, is_super_admin, get_user_tenant
+from services.audit import log_action
+from config import logger, RAZORPAY_KEY_ID, razorpay_client, DASHBOARD_PLANS, SUPER_ADMIN_EMAILS
 from models import User
 from datetime import datetime, timezone, timedelta
 import uuid
@@ -10,13 +12,10 @@ import bcrypt
 
 router = APIRouter()
 
-SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"
 
 async def verify_super_admin(user: dict):
-    """Verify if user is super admin (by email OR role)"""
-    if user.get("email") == SUPER_ADMIN_EMAIL or user.get("role") == "super_admin" or user.get("is_admin"):
-        return True
-    raise HTTPException(status_code=403, detail="Super Admin access required")
+    """Verify user is a REAL super admin. Strict check — role-based only."""
+    ensure_super_admin(user)
 
 # ============== DASHBOARD SUBSCRIPTION ROUTES ==============
 
@@ -239,22 +238,18 @@ async def verify_dashboard_razorpay_payment(data: dict, user = Depends(get_curre
 
 @router.get("/auth/check-admin")
 async def check_if_admin(user = Depends(get_current_user)):
-    """Check if current user is admin/super_admin"""
-    is_admin = user.get("is_admin", False) or user.get("role") in ["admin", "super_admin"] or user.get("email") == SUPER_ADMIN_EMAIL
-    if not is_admin:
-        first_user = await db.users.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
-        is_admin = first_user and first_user["id"] == user["id"]
-    return {"is_admin": is_admin}
+    """Check if current user is admin/super_admin/tenant_admin"""
+    role = user.get("role", "user")
+    is_admin_user = role in ["admin", "super_admin", "tenant_admin"] or user.get("email") in SUPER_ADMIN_EMAILS
+    return {"is_admin": is_admin_user, "role": role}
 
 @router.get("/dashboard-subscription/requests")
 async def get_subscription_requests(user = Depends(get_current_user)):
-    """Get all subscription requests (admin/super_admin sees all)"""
-    is_admin = user.get("is_admin", False) or user.get("role") in ["admin", "super_admin"] or user.get("email") == SUPER_ADMIN_EMAIL
-    if not is_admin:
-        first_user = await db.users.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
-        is_admin = first_user and first_user["id"] == user["id"]
+    """Get all subscription requests (super_admin sees all)"""
+    role = user.get("role", "user")
+    is_platform_admin = role == "super_admin" or user.get("email") in SUPER_ADMIN_EMAILS
 
-    if is_admin:
+    if is_platform_admin:
         requests = await db.dashboard_subscriptions.find({}, {"_id": 0}).to_list(100)
     else:
         requests = await db.dashboard_subscriptions.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
@@ -311,15 +306,6 @@ async def get_platform_users(user = Depends(get_current_user)):
         bu["payment_count"] = payment_count
 
     return bot_users
-
-# Super Admin email
-SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"
-
-async def verify_super_admin(user: dict):
-    """Verify if user is super admin (by email OR role)"""
-    if user.get("email") == SUPER_ADMIN_EMAIL or user.get("role") == "super_admin" or user.get("is_admin"):
-        return True
-    raise HTTPException(status_code=403, detail="Super Admin access required")
 
 # ============== SUPER ADMIN ROUTES ==============
 
@@ -501,7 +487,7 @@ async def revoke_user_access(user_id: str, user = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="User not found")
     
     # Don't allow revoking super admin's own access
-    if target_user.get("email") == SUPER_ADMIN_EMAIL:
+    if target_user.get("email") in SUPER_ADMIN_EMAILS:
         raise HTTPException(status_code=400, detail="Cannot revoke super admin's access")
     
     await db.users.update_one(
@@ -523,13 +509,12 @@ async def make_user_admin(user_id: str, user = Depends(get_current_user)):
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Can't change super admin's status
-    if target_user.get("email") == SUPER_ADMIN_EMAIL:
+    if target_user.get("email") in SUPER_ADMIN_EMAILS:
         raise HTTPException(status_code=400, detail="Cannot modify super admin")
     
     await db.users.update_one(
         {"id": user_id},
-        {"$set": {"is_admin": True}}
+        {"$set": {"role": "admin", "is_admin": True}}
     )
     
     return {"message": "User is now an admin"}
@@ -543,13 +528,12 @@ async def remove_user_admin(user_id: str, user = Depends(get_current_user)):
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Can't change super admin's status
-    if target_user.get("email") == SUPER_ADMIN_EMAIL:
+    if target_user.get("email") in SUPER_ADMIN_EMAILS:
         raise HTTPException(status_code=400, detail="Cannot modify super admin")
     
     await db.users.update_one(
         {"id": user_id},
-        {"$set": {"is_admin": False}}
+        {"$set": {"role": "user", "is_admin": False}}
     )
     
     return {"message": "Admin status removed"}
@@ -586,12 +570,10 @@ async def change_user_subscription(user_id: str, data: dict, user = Depends(get_
 async def approve_subscription(request_id: str, user = Depends(get_current_user)):
     """Approve subscription request (admin only)"""
     # Check if admin (first user) or super admin
-    first_user = await db.users.find_one({}, {"_id": 0}, sort=[("created_at", 1)])
-    is_first_user = first_user and first_user["id"] == user["id"]
-    is_super_admin = user.get("email") == SUPER_ADMIN_EMAIL
+    is_super_admin = user.get("role") == "super_admin" or user.get("email") in SUPER_ADMIN_EMAILS
     
-    if not is_first_user and not is_super_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    if not is_super_admin:
+        raise HTTPException(status_code=403, detail="Super admin access required")
     
     request = await db.dashboard_subscriptions.find_one({"id": request_id}, {"_id": 0})
     if not request:
@@ -907,6 +889,7 @@ async def create_tenant_dashboard_admin(tenant_id: str, data: dict, user: dict =
     del user_doc["_id"]
 
     logger.info(f"Created tenant admin: {email} for tenant {tenant_id}")
+    await log_action(tenant_id, user["id"], user.get("email", ""), "tenant_admin_created", "user", user_doc["id"], {"email": email, "tenant_name": tenant.get("name", "")})
     return {
         "message": f"Tenant admin created: {email} for {tenant.get('name', tenant_id)}",
         "user_id": user_doc["id"],
@@ -1042,6 +1025,7 @@ async def migrate_data_to_tenant(data: dict, user: dict = Depends(get_current_us
     stats["revenue"] = rev[0]["total"] if rev else 0
 
     logger.info(f"Migration complete: {total} docs migrated to {target_tenant_id}")
+    await log_action("platform", user["id"], user.get("email", ""), "data_migration", "tenant", target_tenant_id, {"total_migrated": total, "target": target_tenant_name})
 
     return {
         "message": f"Migration complete! {total} documents migrated to '{target_tenant_name}'",

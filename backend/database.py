@@ -23,6 +23,44 @@ except Exception:
     pass
 
 
+async def ensure_indexes():
+    """Create MongoDB indexes for performance and security."""
+    try:
+        # Core indexes — tenant_id on all business collections
+        for coll_name in ["subscribers", "payments", "plans", "bot_users", "paid_posts",
+                          "live_sessions", "broadcasts", "referrals", "telegram_admins",
+                          "coupons", "paid_post_unlocks", "miniapp_users"]:
+            coll = db[coll_name]
+            await coll.create_index("tenant_id")
+            await coll.create_index("id", unique=True, sparse=True)
+            await coll.create_index("created_at")
+
+        # Compound indexes for common queries
+        await db.subscribers.create_index([("tenant_id", 1), ("status", 1)])
+        await db.subscribers.create_index([("tenant_id", 1), ("telegram_user_id", 1)])
+        await db.payments.create_index([("tenant_id", 1), ("status", 1)])
+        await db.payments.create_index([("tenant_id", 1), ("created_at", -1)])
+        await db.plans.create_index([("tenant_id", 1), ("id", 1)])
+        await db.bot_users.create_index([("tenant_id", 1), ("telegram_user_id", 1)])
+        await db.live_sessions.create_index([("tenant_id", 1), ("status", 1)])
+
+        # User indexes
+        await db.users.create_index("email", unique=True, sparse=True)
+        await db.users.create_index("id", unique=True)
+        await db.users.create_index([("tenant_id", 1), ("role", 1)])
+
+        # Tenant indexes
+        await db.tenants.create_index("tenant_id", unique=True)
+
+        # Audit log indexes
+        await db.audit_logs.create_index([("tenant_id", 1), ("created_at", -1)])
+        await db.audit_logs.create_index("action")
+
+        logger.info("MongoDB indexes created successfully")
+    except Exception as e:
+        logger.error(f"Error creating indexes: {e}")
+
+
 async def cache_get(key: str, default=None):
     if not redis_client:
         return default
