@@ -9,6 +9,73 @@ import json
 
 router = APIRouter(prefix="/miniapp")
 
+
+# ============== PHONE LOGIN ==============
+
+@router.post("/phone-login")
+async def miniapp_phone_login(data: dict):
+    """Register/login with phone number for Mini App, gives 20% discount"""
+    phone = data.get("phone", "").strip()
+    telegram_user_id = data.get("telegram_user_id", "")
+    telegram_username = data.get("telegram_username", "")
+
+    if not phone or len(phone) < 10:
+        return {"success": False, "error": "Enter a valid phone number"}
+
+    # Check if already registered
+    existing = await db.miniapp_users.find_one(
+        {"telegram_user_id": telegram_user_id}, {"_id": 0}
+    )
+    if existing:
+        return {
+            "success": True,
+            "discount": 20,
+            "already_registered": True,
+            "message": "Welcome back! Your 20% discount is active."
+        }
+
+    # Register new user
+    user_doc = {
+        "id": str(uuid.uuid4()),
+        "phone": phone,
+        "telegram_user_id": telegram_user_id,
+        "telegram_username": telegram_username,
+        "discount_percent": 20,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.miniapp_users.insert_one(user_doc)
+
+    return {
+        "success": True,
+        "discount": 20,
+        "already_registered": False,
+        "message": "You've unlocked 20% OFF on all plans!"
+    }
+
+
+@router.get("/user-discount/{telegram_user_id}")
+async def miniapp_get_user_discount(telegram_user_id: str):
+    """Check if user has phone login discount"""
+    user = await db.miniapp_users.find_one(
+        {"telegram_user_id": telegram_user_id}, {"_id": 0}
+    )
+    if user:
+        return {"has_discount": True, "discount_percent": 20, "phone": user.get("phone", "")}
+    return {"has_discount": False, "discount_percent": 0}
+
+
+# ============== UPI DETAILS ==============
+
+@router.get("/upi-details")
+async def miniapp_get_upi_details():
+    """Get UPI payment details for manual payment"""
+    settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
+    return {
+        "upi_id": settings.get("upi_id", ""),
+        "payment_message": settings.get("payment_message", "Send payment screenshot to the bot after paying via UPI.")
+    }
+
+
 # ============== PLANS ==============
 
 @router.get("/plans")
