@@ -30,7 +30,15 @@ next-env.d.ts
 dist/
 dist
 
-# Sensitive credentials (NOT .env - needed for Emergent deployment)
+# Environment files - NEVER commit secrets
+.env
+.env.*
+backend/.env
+frontend/.env
+*.env
+*.env.*
+
+# Sensitive credentials
 *token.json*
 *credentials.json*
 
@@ -74,10 +82,6 @@ agenthub/agents/youtube/db
 
 # Build caches
 .cache/
-frontend/node_modules/.cache/default-development/3.pack
 frontend/node_modules/.cache/default-development/11.pack
+frontend/node_modules/.cache/default-development/5.pack
 frontend/node_modules/.cache/default-development/21.pack
--e 
-# Environment files
-*.env
-*.env.*
