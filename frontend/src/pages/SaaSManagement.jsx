@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import {
   Package, Users, Shield, Plus, Trash2, Edit, UserPlus,
   IndianRupee, Eye, EyeOff, Crown, CheckCircle, XCircle,
+  ArrowRightLeft, Loader2,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -225,6 +226,26 @@ export default function SaaSManagement() {
     } catch (e) { toast.error("Failed"); }
   };
 
+  // ======= MIGRATE DATA =======
+  const [migrating, setMigrating] = useState(false);
+
+  const migrateData = async (tenant) => {
+    if (!window.confirm(`Migrate ALL unmapped data (default/empty tenant) to "${tenant.name}"?\n\nThis will move subscribers, payments, plans, posts etc. to this tenant.`)) return;
+    setMigrating(true);
+    try {
+      const { data } = await axios.post(`${API}/saas/migrate-to-tenant`, {
+        target_tenant_id: tenant.tenant_id,
+        target_tenant_name: tenant.name,
+      }, getAuth());
+      toast.success(`${data.total_migrated} documents migrated to ${tenant.name}!`);
+      fetchTenants();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Migration failed");
+    } finally {
+      setMigrating(false);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
 
   return (
@@ -346,9 +367,12 @@ export default function SaaSManagement() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openTenantDialog(t)} data-testid={`edit-tenant-${t.tenant_id}`}><Edit className="w-4 h-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => openTenantDialog(t)} data-testid={`edit-tenant-${t.tenant_id}`} title="Edit"><Edit className="w-4 h-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => migrateData(t)} disabled={migrating} data-testid={`migrate-${t.tenant_id}`} title="Migrate data to this tenant">
+                          {migrating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRightLeft className="w-4 h-4 text-amber-500" />}
+                        </Button>
                         {t.status !== "inactive" && (
-                          <Button variant="ghost" size="icon" onClick={() => deactivateTenant(t.tenant_id)} data-testid={`deactivate-${t.tenant_id}`}><XCircle className="w-4 h-4 text-destructive" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => deactivateTenant(t.tenant_id)} data-testid={`deactivate-${t.tenant_id}`} title="Deactivate"><XCircle className="w-4 h-4 text-destructive" /></Button>
                         )}
                       </div>
                     </TableCell>

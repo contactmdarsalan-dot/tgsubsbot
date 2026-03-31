@@ -851,3 +851,118 @@ async def remove_tenant_admin(tenant_id: str, admin_id: str, user: dict = Depend
     await verify_super_admin(user)
     result = await db.telegram_admins.delete_one({"id": admin_id, "tenant_id": tenant_id})
     return {"success": result.deleted_count > 0}
+
+
+
+# ============== DATA MIGRATION ENDPOINT ==============
+
+@router.post("/saas/migrate-to-tenant")
+async def migrate_data_to_tenant(data: dict, user: dict = Depends(get_current_user)):
+    """Migrate all data from 'default' (or no tenant) to a specific tenant. Super Admin only."""
+    await verify_super_admin(user)
+
+    target_tenant_id = data.get("target_tenant_id", "tenant_85ee971d0285")
+    target_tenant_name = data.get("target_tenant_name", "Anamika")
+
+    # Ensure target tenant exists
+    existing = await db.tenants.find_one({"tenant_id": target_tenant_id})
+    if not existing:
+        tenant = {
+            "id": str(uuid.uuid4()),
+            "tenant_id": target_tenant_id,
+            "name": target_tenant_name,
+            "email": data.get("email", ""),
+            "owner_telegram_id": data.get("owner_telegram_id", ""),
+            "bot_token": data.get("bot_token", ""),
+            "bot_username": data.get("bot_username", ""),
+            "upi_id": data.get("upi_id", ""),
+            "channel_id": data.get("channel_id", ""),
+            "status": "active",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.tenants.insert_one(tenant)
+    else:
+        await db.tenants.update_one(
+            {"tenant_id": target_tenant_id},
+            {"$set": {"name": target_tenant_name}}
+        )
+
+    # Ensure 'default' tenant exists as Kaloo
+    kaloo = await db.tenants.find_one({"tenant_id": "default"})
+    if not kaloo:
+        await db.tenants.insert_one({
+            "id": "default-tenant",
+            "tenant_id": "default",
+            "name": "Kaloo",
+            "status": "active",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "bot_token": "",
+            "bot_username": "KalooBot",
+            "owner_telegram_id": "",
+        })
+
+    # Collections to migrate
+    collections = [
+        "bot_users", "subscribers", "payments", "plans", "paid_posts",
+        "live_sessions", "paid_post_unlocks", "pending_screenshots",
+        "miniapp_users", "miniapp_support_chats", "referrals", "broadcasts",
+        "chat_messages", "chat_sessions", "bot_activity_logs", "bot_orders",
+        "telegram_admins",
+    ]
+
+    results = {}
+    total = 0
+
+    for coll_name in collections:
+        coll = db[coll_name]
+        migrated = 0
+
+        # Migrate 'default' tenant_id
+        r1 = await coll.update_many(
+            {"tenant_id": "default"},
+            {"$set": {"tenant_id": target_tenant_id}}
+        )
+        migrated += r1.modified_count
+
+        # Migrate docs without tenant_id
+        r2 = await coll.update_many(
+            {"tenant_id": {"$exists": False}},
+            {"$set": {"tenant_id": target_tenant_id}}
+        )
+        migrated += r2.modified_count
+
+        # Migrate empty tenant_id
+        r3 = await coll.update_many(
+            {"tenant_id": ""},
+            {"$set": {"tenant_id": target_tenant_id}}
+        )
+        migrated += r3.modified_count
+
+        if migrated > 0:
+            results[coll_name] = migrated
+            total += migrated
+
+    # Get post-migration stats
+    stats = {
+        "subscribers": await db.subscribers.count_documents({"tenant_id": target_tenant_id}),
+        "active_subs": await db.subscribers.count_documents({"tenant_id": target_tenant_id, "status": "active"}),
+        "payments": await db.payments.count_documents({"tenant_id": target_tenant_id}),
+        "bot_users": await db.bot_users.count_documents({"tenant_id": target_tenant_id}),
+    }
+
+    # Revenue
+    pipeline = [
+        {"$match": {"tenant_id": target_tenant_id, "status": {"$in": ["verified", "approved"]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    rev = await db.payments.aggregate(pipeline).to_list(1)
+    stats["revenue"] = rev[0]["total"] if rev else 0
+
+    logger.info(f"Migration complete: {total} docs migrated to {target_tenant_id}")
+
+    return {
+        "message": f"Migration complete! {total} documents migrated to '{target_tenant_name}'",
+        "total_migrated": total,
+        "details": results,
+        "post_migration_stats": stats
+    }
