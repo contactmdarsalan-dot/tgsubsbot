@@ -34,6 +34,7 @@ import BotActivityLogs from "./pages/BotActivityLogs";
 import Branding from "./pages/Branding";
 import BotLanguage from "./pages/BotLanguage";
 import MiniApp from "./pages/MiniApp";
+import MiniAppUsers from "./pages/MiniAppUsers";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -161,6 +162,7 @@ function AppRouter() {
         <Route path="creators" element={<Creators />} />
         <Route path="branding" element={<Branding />} />
         <Route path="bot-language" element={<BotLanguage />} />
+        <Route path="miniapp-users" element={<MiniAppUsers />} />
         <Route path="profile" element={<Profile />} />
       </Route>
     </Routes>

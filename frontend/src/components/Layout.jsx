@@ -31,6 +31,7 @@ import {
   User,
   ChevronDown,
   Palette,
+  Smartphone,
   Languages,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -57,6 +58,7 @@ const navItems = [
   { path: "/dashboard/settings", label: "Settings", icon: Settings },
   { path: "/dashboard/bot-language", label: "Bot Language", icon: Languages },
   { path: "/dashboard/support", label: "Support", icon: MessageSquare },
+  { path: "/dashboard/miniapp-users", label: "Mini App Users", icon: Smartphone },
 ];
 
 const adminNavItems = [

@@ -622,3 +622,22 @@ async def approve_subscription(request_id: str, user = Depends(get_current_user)
     return {"message": "Subscription approved"}
 
 # ============== PLANS ROUTES ==============
+
+
+
+# ============== MINI APP USERS ==============
+
+@router.get("/miniapp-users")
+async def get_miniapp_users(user: dict = Depends(get_current_user)):
+    """Get all phone numbers collected from Mini App"""
+    users = await db.miniapp_users.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return users
+
+
+@router.get("/miniapp-users/stats")
+async def get_miniapp_users_stats(user: dict = Depends(get_current_user)):
+    """Get Mini App user stats"""
+    total = await db.miniapp_users.count_documents({})
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_count = await db.miniapp_users.count_documents({"created_at": {"$gte": today.isoformat()}})
+    return {"total": total, "today": today_count}
