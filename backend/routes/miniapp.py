@@ -1147,6 +1147,7 @@ async def miniapp_admin_create_live(data: dict):
         "superchat_min_amount": data.get("superchat_min_amount", 50),
         "status": "scheduled",
         "tickets_sold": 0,
+        "started_at": "",
         "created_by": admin.get("name", "Admin"),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -1225,10 +1226,14 @@ async def miniapp_admin_create_paid_post(data: dict):
     post_id = str(uuid.uuid4())
     post = {
         "id": post_id,
+        "channel_id": data.get("channel_id", ""),
         "caption": data.get("caption", ""),
         "price": data.get("price", 0),
         "blur_level": data.get("blur_level", 10),
-        "content_type": "text",
+        "content_type": data.get("content_type", "text"),
+        "original_file_id": data.get("original_file_id", ""),
+        "original_message_id": data.get("original_message_id", 0),
+        "blurred_message_id": data.get("blurred_message_id", 0),
         "is_active": True,
         "unlock_count": 0,
         "created_by": admin.get("name", "Admin"),
@@ -1322,7 +1327,7 @@ async def miniapp_go_live(session_id: str, data: dict):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    await db.live_sessions.update_one({"id": session_id}, {"$set": {"status": "live"}})
+    await db.live_sessions.update_one({"id": session_id}, {"$set": {"status": "live", "started_at": datetime.now(timezone.utc).isoformat()}})
 
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")

@@ -638,6 +638,24 @@
   background: white; border: 2px solid var(--ma-accent); cursor: pointer;
 }
 
+/* Toggle & Meta */
+.ma-toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
+.ma-toggle-label { font-size: 13px; color: var(--ma-text); font-weight: 600; }
+.ma-toggle-btn {
+  padding: 5px 16px; border-radius: 20px; font-size: 12px; font-weight: 700;
+  border: 1px solid var(--ma-border); background: var(--ma-glass); color: var(--ma-text2);
+  cursor: pointer; transition: all 0.2s;
+}
+.ma-toggle-btn.on { background: var(--ma-accent-dim); color: var(--ma-accent); border-color: var(--ma-accent-30); }
+.ma-admin-item-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.ma-meta-tag {
+  font-size: 10px; padding: 2px 7px; border-radius: 6px; font-weight: 600;
+  background: var(--ma-glass2); color: var(--ma-text2); border: 1px solid var(--ma-border);
+}
+.ma-meta-tag.accent { color: var(--ma-accent); border-color: var(--ma-accent-30); }
+.ma-meta-tag a { color: var(--ma-accent); text-decoration: none; }
+select.ma-input { appearance: auto; }
+
 
 /* ===== SCREENSHOT UPLOAD ===== */
 .ma-upload-section { display: flex; flex-direction: column; gap: 10px; }

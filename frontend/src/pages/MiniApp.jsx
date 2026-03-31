@@ -62,10 +62,10 @@ export default function MiniApp() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminSubTab, setAdminSubTab] = useState("stats");
   const [showCreateLive, setShowCreateLive] = useState(false);
-  const [newLive, setNewLive] = useState({ title: "", description: "", scheduled_date: "", scheduled_time: "", price: 0, stream_link: "" });
+  const [newLive, setNewLive] = useState({ title: "", description: "", scheduled_date: "", scheduled_time: "", price: 0, stream_link: "", max_viewers: 100, superchat_enabled: false, superchat_min_amount: 50 });
   const [paidPosts, setPaidPosts] = useState([]);
   const [showCreatePost, setShowCreatePost] = useState(false);
-  const [newPost, setNewPost] = useState({ caption: "", price: 0, blur_level: 10 });
+  const [newPost, setNewPost] = useState({ caption: "", price: 0, blur_level: 10, channel_id: "", content_type: "text" });
 
   // Payment
   const [payProcessing, setPayProcessing] = useState(false);
@@ -1123,8 +1123,18 @@ export default function MiniApp() {
                           </div>
                           <div className="ma-form-row">
                             <input className="ma-input" type="number" placeholder="Price (0=free)" value={newLive.price} onChange={e => setNewLive(p => ({...p, price: parseInt(e.target.value) || 0}))} />
-                            <input className="ma-input" placeholder="Stream Link" value={newLive.stream_link} onChange={e => setNewLive(p => ({...p, stream_link: e.target.value}))} />
+                            <input className="ma-input" type="number" placeholder="Max Viewers" value={newLive.max_viewers} onChange={e => setNewLive(p => ({...p, max_viewers: parseInt(e.target.value) || 100}))} />
                           </div>
+                          <input className="ma-input" placeholder="Stream Link (optional)" value={newLive.stream_link} onChange={e => setNewLive(p => ({...p, stream_link: e.target.value}))} />
+                          <div className="ma-toggle-row">
+                            <label className="ma-toggle-label">Super Chat</label>
+                            <button className={`ma-toggle-btn ${newLive.superchat_enabled ? "on" : ""}`} onClick={() => setNewLive(p => ({...p, superchat_enabled: !p.superchat_enabled}))} data-testid="superchat-toggle">
+                              {newLive.superchat_enabled ? "ON" : "OFF"}
+                            </button>
+                          </div>
+                          {newLive.superchat_enabled && (
+                            <input className="ma-input" type="number" placeholder="Min Super Chat ₹" value={newLive.superchat_min_amount} onChange={e => setNewLive(p => ({...p, superchat_min_amount: parseInt(e.target.value) || 10}))} />
+                          )}
                           <button className="ma-btn-accent" onClick={createLiveSession} data-testid="save-live-btn">Create Session</button>
                         </div>
                       )}
@@ -1138,9 +1148,14 @@ export default function MiniApp() {
                             <span className={`ma-status-tag ${s.status}`}>{s.status}</span>
                           </div>
                           <p className="ma-admin-item-sub">
-                            {s.scheduled_date || "No date"} {s.scheduled_time || ""} &middot; {s.price > 0 ? `₹${s.price}` : "FREE"}
-                            {s.stream_link && <> &middot; <a href={s.stream_link} target="_blank" rel="noreferrer" style={{color: "var(--ma-accent)"}}>Link</a></>}
+                            {s.scheduled_date || "No date"} {s.scheduled_time || ""} &middot; {s.price > 0 ? `₹${s.price}` : "FREE"} &middot; Max: {s.max_viewers || 100}
                           </p>
+                          <div className="ma-admin-item-meta">
+                            {s.stream_link && <span className="ma-meta-tag"><a href={s.stream_link} target="_blank" rel="noreferrer">Stream Link</a></span>}
+                            {s.superchat_enabled && <span className="ma-meta-tag accent">SuperChat ₹{s.superchat_min_amount || 50}+</span>}
+                            <span className="ma-meta-tag">{s.tickets_sold || 0} tickets</span>
+                            {s.started_at && <span className="ma-meta-tag">Started: {s.started_at.split("T")[0]}</span>}
+                          </div>
                           <div className="ma-admin-actions">
                             {s.status === "scheduled" && <button className="ma-btn-approve" onClick={() => announceLive(s.id)} data-testid={`announce-${s.id}`}>Announce</button>}
                             {(s.status === "scheduled" || s.status === "announced") && <button className="ma-btn-go-live" onClick={() => goLive(s.id)} data-testid={`golive-${s.id}`}>Go Live</button>}
@@ -1161,10 +1176,19 @@ export default function MiniApp() {
                       {showCreatePost && (
                         <div className="ma-admin-create-form" data-testid="create-post-form">
                           <textarea className="ma-input ma-textarea" placeholder="Post content / caption..." value={newPost.caption} onChange={e => setNewPost(p => ({...p, caption: e.target.value}))} rows={3} />
-                          <input className="ma-input" type="number" placeholder="Price (0 = free)" value={newPost.price} onChange={e => setNewPost(p => ({...p, price: parseInt(e.target.value) || 0}))} />
+                          <div className="ma-form-row">
+                            <input className="ma-input" type="number" placeholder="Price (0 = free)" value={newPost.price} onChange={e => setNewPost(p => ({...p, price: parseInt(e.target.value) || 0}))} />
+                            <input className="ma-input" placeholder="Channel ID" value={newPost.channel_id} onChange={e => setNewPost(p => ({...p, channel_id: e.target.value}))} />
+                          </div>
+                          <select className="ma-input" value={newPost.content_type} onChange={e => setNewPost(p => ({...p, content_type: e.target.value}))}>
+                            <option value="text">Text</option>
+                            <option value="photo">Photo</option>
+                            <option value="video">Video</option>
+                            <option value="document">Document</option>
+                          </select>
                           <div className="ma-blur-control">
-                            <label>Blur Level: <strong>{newPost.blur_level || 10}</strong></label>
-                            <input type="range" min="0" max="50" value={newPost.blur_level || 10} onChange={e => setNewPost(p => ({...p, blur_level: parseInt(e.target.value)}))} className="ma-range" />
+                            <label>Blur Level: <strong>{newPost.blur_level}</strong></label>
+                            <input type="range" min="0" max="50" value={newPost.blur_level} onChange={e => setNewPost(p => ({...p, blur_level: parseInt(e.target.value)}))} className="ma-range" />
                             <div className="ma-blur-labels"><span>None</span><span>Heavy</span></div>
                           </div>
                           <button className="ma-btn-accent" onClick={createPaidPost} disabled={!newPost.caption.trim()} data-testid="save-post-btn">Create Post</button>
@@ -1180,10 +1204,14 @@ export default function MiniApp() {
                             <span className={`ma-status-tag ${p.is_active ? "active" : "completed"}`}>{p.is_active ? "Active" : "Off"}</span>
                           </div>
                           <p className="ma-admin-item-sub">
-                            {p.price > 0 ? `₹${p.price}` : "FREE"} &middot; {p.unlock_count || 0} unlocks &middot; Blur: {p.blur_level ?? 10}
+                            {p.price > 0 ? `₹${p.price}` : "FREE"} &middot; {p.content_type || "text"} &middot; {p.unlock_count || 0} unlocks
                           </p>
+                          <div className="ma-admin-item-meta">
+                            <span className="ma-meta-tag">Blur: {p.blur_level ?? 10}</span>
+                            {p.channel_id && <span className="ma-meta-tag">Ch: {p.channel_id}</span>}
+                            {p.original_file_id && <span className="ma-meta-tag accent">Has Media</span>}
+                          </div>
                           <div className="ma-blur-control compact">
-                            <label>Blur: {p.blur_level ?? 10}</label>
                             <input type="range" min="0" max="50" value={p.blur_level ?? 10} onChange={e => updateBlurLevel(p.id, parseInt(e.target.value))} className="ma-range" />
                           </div>
                           <div className="ma-admin-actions">
