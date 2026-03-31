@@ -35,6 +35,8 @@ import Branding from "./pages/Branding";
 import BotLanguage from "./pages/BotLanguage";
 import MiniApp from "./pages/MiniApp";
 import MiniAppUsers from "./pages/MiniAppUsers";
+import CreatorOnboard from "./pages/CreatorOnboard";
+import CreatorDashboard from "./pages/CreatorDashboard";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -125,6 +127,8 @@ function AppRouter() {
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/miniapp" element={<MiniApp />} />
+      <Route path="/creator-onboard" element={<CreatorOnboard />} />
+      <Route path="/creator-dashboard" element={<CreatorDashboard />} />
       <Route path="/login" element={<Login />} />
       <Route path="/pricing" element={<PricingRoute />} />
       <Route path="/renew" element={<RenewSubscription />} />

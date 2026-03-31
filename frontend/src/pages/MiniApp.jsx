@@ -99,6 +99,9 @@ export default function MiniApp() {
 
   const userId = getTelegramUser()?.id?.toString() || "";
 
+  // Tenant context from URL
+  const tenantParam = new URLSearchParams(window.location.search).get("tenant") || "";
+
   useEffect(() => {
     if (tg) {
       tg.ready();

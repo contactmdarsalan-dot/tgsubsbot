@@ -21,6 +21,7 @@ from routes.core import router as core_router
 from routes.features import router as features_router
 from routes.telegram_webhook import router as webhook_router
 from routes.miniapp import router as miniapp_router
+from routes.tenant import router as tenant_router
 
 # Import background tasks
 from services.background_tasks import (
@@ -46,6 +47,7 @@ app.include_router(core_router, prefix="/api")
 app.include_router(features_router, prefix="/api")
 app.include_router(webhook_router, prefix="/api")
 app.include_router(miniapp_router, prefix="/api")
+app.include_router(tenant_router, prefix="/api")
 
 # Mount static files for uploads (must be under /api/ for Kubernetes routing)
 uploads_dir = os.path.join(os.path.dirname(__file__), "uploads")
