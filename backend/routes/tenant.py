@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from database import db
 from services.tenant import DEFAULT_TENANT_ID
 from services.auth import get_current_user
+from services.permissions import ensure_tenant_access, is_super_admin
 from config import logger, SUPER_ADMIN_EMAILS
 from datetime import datetime, timezone
 import uuid
@@ -13,15 +14,8 @@ router = APIRouter(prefix="/tenant")
 
 
 async def _verify_tenant_access(user: dict, tenant_id: str):
-    """Verify user has access to this tenant (owner, tenant_admin, or super_admin)."""
-    role = user.get("role", "user")
-    # Super admin can access any tenant
-    if role == "super_admin" or user.get("email") in SUPER_ADMIN_EMAILS:
-        return True
-    # Tenant admin can access their own tenant
-    if role == "tenant_admin" and user.get("tenant_id") == tenant_id:
-        return True
-    raise HTTPException(status_code=403, detail="Access denied to this tenant")
+    """Verify user has access to this tenant."""
+    ensure_tenant_access(user, tenant_id)
 
 
 async def _validate_bot_token(bot_token: str) -> dict:

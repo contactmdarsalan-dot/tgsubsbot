@@ -13,6 +13,7 @@ from services.telegram import (
 from services.payment import create_blurred_image
 from services.bot_activity import log_bot_activity
 from services.tenant import DEFAULT_TENANT_ID, tenant_query
+from services.permissions import get_user_tenant, tq, is_super_admin, ensure_admin
 from config import logger, SUPER_ADMIN_EMAILS
 from models import MessageTemplate
 from pydantic import BaseModel
@@ -26,21 +27,6 @@ import json
 import re
 
 router = APIRouter()
-
-
-def get_user_tenant(user: dict) -> str:
-    """Get tenant_id from user. Super admins see all data."""
-    role = user.get("role", "user")
-    if role == "super_admin" or user.get("email") in SUPER_ADMIN_EMAILS:
-        return ""
-    return user.get("tenant_id", "")
-
-
-def tq(base_query: dict, tenant_id: str) -> dict:
-    """Add tenant_id filter if present."""
-    if tenant_id:
-        base_query["tenant_id"] = tenant_id
-    return base_query
 
 # ============== MESSAGE TEMPLATES ROUTES ==============
 

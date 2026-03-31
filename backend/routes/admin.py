@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from database import db
 from services.auth import get_current_user, hash_password
+from services.permissions import ensure_super_admin, is_super_admin, get_user_tenant
 from config import logger, RAZORPAY_KEY_ID, razorpay_client, DASHBOARD_PLANS, SUPER_ADMIN_EMAILS
 from models import User
 from datetime import datetime, timezone, timedelta
@@ -13,9 +14,7 @@ router = APIRouter()
 
 async def verify_super_admin(user: dict):
     """Verify user is a REAL super admin. Strict check — role-based only."""
-    if user.get("role") == "super_admin" or user.get("email") in SUPER_ADMIN_EMAILS:
-        return True
-    raise HTTPException(status_code=403, detail="Super Admin access required")
+    ensure_super_admin(user)
 
 # ============== DASHBOARD SUBSCRIPTION ROUTES ==============
 
@@ -533,7 +532,7 @@ async def remove_user_admin(user_id: str, user = Depends(get_current_user)):
     
     await db.users.update_one(
         {"id": user_id},
-        {"$set": {"is_admin": False}}
+        {"$set": {"role": "user", "is_admin": False}}
     )
     
     return {"message": "Admin status removed"}

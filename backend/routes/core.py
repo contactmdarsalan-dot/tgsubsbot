@@ -9,6 +9,7 @@ from services.telegram import (
 from services.payment import detect_payment_screenshot, analyze_payment_screenshot_with_ai
 from services.bot_activity import log_bot_activity
 from services.tenant import DEFAULT_TENANT_ID, tenant_query
+from services.permissions import is_super_admin, is_any_admin, get_user_tenant, tq, ensure_admin
 from config import logger, RAZORPAY_KEY_ID, razorpay_client, SUPER_ADMIN_EMAILS
 from models import (
     SubscriptionPlanCreate, SubscriptionPlan, SubscriberCreate, Subscriber,
@@ -25,24 +26,7 @@ import base64
 import json
 from io import BytesIO
 
-SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"
-
 router = APIRouter()
-
-
-def get_user_tenant(user: dict) -> str:
-    """Get tenant_id from user. Super admins see all data (empty string = no filter)."""
-    role = user.get("role", "user")
-    if role == "super_admin" or user.get("email") in SUPER_ADMIN_EMAILS:
-        return ""  # No filter - sees everything
-    return user.get("tenant_id", "")
-
-
-def tq(base_query: dict, tenant_id: str) -> dict:
-    """Add tenant_id filter if present."""
-    if tenant_id:
-        base_query["tenant_id"] = tenant_id
-    return base_query
 
 # ============== PLANS ROUTES ==============
 
@@ -905,9 +889,7 @@ async def reject_payment(payment_id: str, data: dict = None, user = Depends(get_
 @router.delete("/payments/{payment_id}")
 async def delete_payment(payment_id: str, user = Depends(get_current_user)):
     """Delete a payment record - Admin/Super Admin only"""
-    role = user.get("role", "user")
-    if role not in ["admin", "super_admin", "tenant_admin"] and user.get("email") not in SUPER_ADMIN_EMAILS:
-        raise HTTPException(status_code=403, detail="Only admin can delete payments")
+    ensure_admin(user)
     
     tenant_id = get_user_tenant(user)
     payment = await db.payments.find_one(tq({"id": payment_id}, tenant_id), {"_id": 0})
@@ -1004,9 +986,7 @@ async def bulk_reject_payments(data: dict, user = Depends(get_current_user)):
 @router.post("/payments/bulk-delete")
 async def bulk_delete_payments(data: dict, user = Depends(get_current_user)):
     """Delete multiple payments at once - Admin only"""
-    role = user.get("role", "user")
-    if role not in ["admin", "super_admin", "tenant_admin"] and user.get("email") not in SUPER_ADMIN_EMAILS:
-        raise HTTPException(status_code=403, detail="Only admin can delete payments")
+    ensure_admin(user)
     
     payment_ids = data.get("payment_ids", [])
     if not payment_ids:
@@ -1435,8 +1415,7 @@ async def get_branding(user = Depends(get_current_user)):
 @router.put("/branding")
 async def update_branding(data: dict, user = Depends(get_current_user)):
     """Update white-label branding settings (Super Admin only)"""
-    SUPER_ADMIN_EMAILS = ["gamerxboys8958@gmail.com", "contactmdarsalan@gmail.com"]
-    if user.get("role") != "super_admin" and user.get("email") not in SUPER_ADMIN_EMAILS:
+    if not is_super_admin(user):
         raise HTTPException(status_code=403, detail="Only super admins can update branding")
     
     allowed_fields = ["brand_name", "tagline", "primary_color", "secondary_color", "logo_url", "favicon_url", "custom_css", "footer_text"]
