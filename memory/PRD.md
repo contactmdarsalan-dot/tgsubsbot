@@ -1,63 +1,104 @@
-# TgSubsBot - Telegram Subscription Bot SaaS
+# TgSubsBot - Telegram Subscription Bot SaaS Platform
 
 ## Original Problem Statement
-Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product with multi-tenant architecture.
+Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product with multi-tenant isolation, RBAC, and enterprise-grade security.
+
+## Core Requirements
+1. Multi-Tenant SaaS isolation across database, backend, and webhooks
+2. RBAC: Super Admins (platform) vs Tenant Admins (dashboard) vs Bot Admins (Telegram Mini App)
+3. Security: JWT auth, CORS, Telegram initData HMAC verification, Audit Logging
+4. AI-powered payment verification (GPT-5.2 Vision)
+5. Telegram Bot with subscription management, payments, broadcasts, live sessions
+
+## What's Been Implemented
+
+### Phase 1: MVP (Complete)
+- Full Telegram bot with subscription management
+- Plans CRUD, Payments (manual + Razorpay), Subscribers management
+- Telegram Mini App for user subscriptions
+- Admin dashboard with analytics
+- AI payment screenshot verification (GPT-5.2)
+
+### Phase 2: Multi-Tenant SaaS (Complete)
+- Tenant isolation with tenant_id on all data
+- RBAC with centralized permissions (services/permissions.py)
+- Tenant Admin onboarding (isolated dashboard)
+- SaaS Management for Super Admins
+- Data migration tool for legacy data
+- Landing page with dark rose/crimson theme
+
+### Phase 3: Security Hardening (Complete - 2026-03-31)
+- **P0 Security**: Strict RBAC, JWT enforcement, MongoDB indexes, CORS, removed `is_admin` bypass, removed `DEFAULT_TENANT_ID` from writes
+- **P1 Security**: Telegram `initData` HMAC-SHA256 verification (`services/telegram_verify.py`), Audit logging (`services/audit.py`), Pydantic Enums, Query limits
+- All tested: Iteration 20 (P0, 29/29), Iteration 21 (P1, 39/39)
+
+### Phase 4: Backend Refactoring (Complete - 2026-03-31)
+- Split `core.py` (1513L) into: `plans.py`, `subscribers.py`, `payments.py`, `dashboard.py`
+- Split `features.py` (2255L) into: `broadcasts.py`, `engagement.py`, `live_content.py`, `analytics_exports.py`
+- Split `miniapp.py` (1690L) into: `miniapp_user.py`, `miniapp_admin.py`
+- **Result**: 3 giant files (5458L) → 10 domain files (4623L), removed 835 lines of dead code
+- All tested: Iteration 22 (51/51 passed)
 
 ## Architecture
-- Frontend: React + Framer Motion + Telegram WebApp SDK
-- Backend: FastAPI + Motor (async MongoDB) + APScheduler
-- Database: MongoDB with tenant isolation (tenant_id on all collections)
-- AI: OpenAI GPT-5.2 Vision (Payment Screenshot Verification)
 
-## Security Architecture
-- JWT auth with no fallback secret (hard fail if missing)
-- Centralized permissions service (`services/permissions.py`)
-- Role-based access: super_admin, tenant_owner, tenant_admin, admin, customer
-- SUPER_ADMIN_EMAILS env-driven allowlist
-- All tenant routes require JWT + tenant access verification
-- CORS strict allowlist (tgsubsbot.com + preview domain)
-- MongoDB compound indexes on (tenant_id, status), (tenant_id, telegram_user_id)
-- Frontend auth state from backend `/auth/me` only (no localStorage guessing)
+```
+/app/backend/
+├── server.py               # App setup, CORS, router inclusion
+├── config.py               # Environment config
+├── database.py             # MongoDB connection + cache
+├── models/                 # Pydantic models with Enums
+├── routes/
+│   ├── auth.py             # Login, registration
+│   ├── admin.py            # Super Admin routes
+│   ├── plans.py            # Plans CRUD (74L)
+│   ├── subscribers.py      # Subscribers + bulk (281L)
+│   ├── payments.py         # Payments + Razorpay + bulk (516L)
+│   ├── dashboard.py        # Settings + Channels + Analytics + Branding (596L)
+│   ├── broadcasts.py       # Templates + Broadcasts + Scheduled (466L)
+│   ├── engagement.py       # Coupons + Tags + Referrals + FAQs (424L)
+│   ├── live_content.py     # Live + Creators + Paid Posts (646L)
+│   ├── analytics_exports.py# Revenue + Exports + Chat Tracking (324L)
+│   ├── miniapp_user.py     # MiniApp user endpoints (770L)
+│   ├── miniapp_admin.py    # MiniApp admin endpoints (526L)
+│   ├── telegram_webhook.py # Bot webhook handler
+│   └── tenant.py           # Creator onboarding
+├── services/
+│   ├── permissions.py      # Centralized RBAC
+│   ├── audit.py            # Action logging
+│   ├── telegram_verify.py  # HMAC-SHA256 validator
+│   ├── telegram.py         # Telegram API helpers
+│   ├── payment.py          # AI screenshot analysis
+│   ├── chat_pool.py        # Chat group management
+│   └── background_tasks.py # Scheduled jobs
+/app/frontend/
+├── src/
+│   ├── components/Layout.jsx  # RBAC-aware sidebar
+│   ├── pages/
+│   │   ├── MiniApp.jsx        # Telegram Mini App (1540L - needs refactoring)
+│   │   ├── SaaSManagement.jsx # Platform management
+│   │   └── ... (other pages)
+```
 
-## Roles & Access
-- **Super Admin**: Platform section + all Operations + cross-tenant data
-- **Tenant Admin**: Operations only + own tenant data only
-- **Bot Admin**: Telegram Mini App admin panel (TG User ID based)
+## Prioritized Backlog
 
-## Completed Features (25)
-1-19. Core features (Mini App, Plans, Payments, AI Verify, Live, Paid Posts, etc.)
-20. Tenant Admin System
-21. Dashboard Tenant Filtering
-22. SaaS Management + Data Migration
-23. Landing Page with Pricing
-24. **P0 Security Hardening Round 1**: verify_super_admin strict, CORS, tenant auth, indexes
-25. **P0 Security Hardening Round 2**: Centralized permissions, remove is_admin bypass, /auth/me cleanup, branding protection
+### P1 (Next)
+- [ ] Refactor `MiniApp.jsx` (1540 lines) into subcomponents
 
-## Security Fixes Completed
-- ✅ JWT_SECRET with warning if not set (dev fallback only)
-- ✅ verify_super_admin() — role=="super_admin" or email in SUPER_ADMIN_EMAILS only
-- ✅ Removed is_admin bypass from all super admin checks
-- ✅ All /tenant/* routes require JWT auth
-- ✅ Object-level tenant_id authorization on writes
-- ✅ CORS strict allowlist
-- ✅ MongoDB indexes at startup
-- ✅ Frontend: removed localStorage admin guessing
-- ✅ Centralized services/permissions.py
-- ✅ Branding route protected (super_admin only)
-- ✅ Payment delete/bulk-delete uses role check
+### P2
+- [ ] Object Storage migration (local uploads → S3/Cloudflare R2)
+- [ ] Move APScheduler to separate worker/Redis queue
+- [ ] Subscription Analytics Dashboard (MRR, churn, revenue graphs)
 
-## Remaining Security Items (P1)
-- Telegram WebApp init data verification (miniapp routes)
-- Pagination on large queries (.to_list(10000) → paginated)
-- Encrypt sensitive tenant credentials (bot tokens)
-- Rate limiting on auth endpoints
-- Audit logs collection
-- File upload validation (MIME type, size)
+### P3
+- [ ] WhatsApp integration
+- [ ] Multi-language bot support
 
-## Remaining Feature Tasks
-- (P2) Subscription Analytics Dashboard
-- (P2) Resend domain verification
-- (P3) WhatsApp integration
-- (P3) Multi-language bot support
-- (P3) Route file splitting (core.py 1500L, features.py 2200L, miniapp.py 1600L)
-- (P3) Frontend file splitting (MiniApp.jsx 1400L)
+## 3rd Party Integrations
+- OpenAI GPT-5.2 Vision (Emergent LLM Key) - Payment verification
+- Razorpay - Online payments
+- Telegram Bot API - Core bot functionality
+- Resend (BLOCKED: domain verification pending) - Email OTPs
+
+## Known Issues
+- Resend email OTP: Domain verification pending by user
+- MiniApp.jsx still needs frontend refactoring (1540 lines)

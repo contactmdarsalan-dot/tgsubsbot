@@ -1,22 +1,16 @@
 # Test Credentials
 
-## Super Admin
-- **Email:** gamerxboys8958@gmail.com
-- **Password:** Sumit@8958
-- **Role:** super_admin (sees all data, SaaS Management)
+## Dashboard Login
+- **Super Admin:** gamerxboys8958@gmail.com / Sumit@8958
+- **Tenant Admin (Anamika):** anamika@test.com / Admin123
 
-## Tenant Admin (Anamika)
-- **Email:** anamika@test.com
-- **Password:** Admin123
-- **Role:** tenant_admin (sees only Anamika tenant data)
+## Bot / Mini App
 - **Tenant ID:** tenant_85ee971d0285
+- **Test Telegram User ID:** 123456789
+- **Mini App Test URL:** ?tg_id=123456789&tenant=tenant_85ee971d0285
 
-## Telegram Mini App Testing
-- **Test Admin TG ID:** 123456789 (pass via URL: `?tg_id=123456789&tenant=tenant_85ee971d0285`)
-- **Mini App URL:** /miniapp?tg_id=123456789&tenant=tenant_85ee971d0285
-
-## Webhook
-- **URL:** /api/telegram/webhook
+## Telegram Webhook
+- **Webhook URL:** https://tgsubsbot.com/api/telegram/webhook
 
 ## VPS
 - **IP:** 72.61.244.69
