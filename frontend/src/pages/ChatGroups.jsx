@@ -12,6 +12,13 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -20,7 +27,21 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { toast } from "sonner";
-import { Plus, Trash2, Users, Clock, RefreshCw, MessageCircle, User, Timer } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Users,
+  Clock,
+  RefreshCw,
+  MessageCircle,
+  User,
+  Timer,
+  Radio,
+  Hash,
+  Lock,
+  Globe,
+  Megaphone,
+} from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -31,11 +52,19 @@ const getAuthHeaders = () => ({
 export default function ChatGroups() {
   const [groups, setGroups] = useState([]);
   const [sessions, setSessions] = useState([]);
+  const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [channelDialogOpen, setChannelDialogOpen] = useState(false);
   const [groupId, setGroupId] = useState("");
   const [groupName, setGroupName] = useState("");
-  const [activeTab, setActiveTab] = useState("groups"); // groups or sessions
+  const [activeTab, setActiveTab] = useState("groups");
+  const [channelForm, setChannelForm] = useState({
+    channel_id: "",
+    channel_name: "",
+    channel_type: "private",
+    description: "",
+  });
 
   useEffect(() => {
     fetchData();
@@ -44,12 +73,14 @@ export default function ChatGroups() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [groupsRes, sessionsRes] = await Promise.all([
+      const [groupsRes, sessionsRes, channelsRes] = await Promise.all([
         axios.get(`${API}/chat-groups`, getAuthHeaders()),
         axios.get(`${API}/chat-sessions`, getAuthHeaders()),
+        axios.get(`${API}/channels`, getAuthHeaders()),
       ]);
       setGroups(groupsRes.data);
       setSessions(sessionsRes.data);
+      setChannels(channelsRes.data);
     } catch (error) {
       toast.error("Failed to fetch data");
     } finally {
@@ -63,7 +94,6 @@ export default function ChatGroups() {
       toast.error("Group ID is required");
       return;
     }
-
     try {
       await axios.post(
         `${API}/chat-groups`,
@@ -80,6 +110,23 @@ export default function ChatGroups() {
     }
   };
 
+  const handleAddChannel = async (e) => {
+    e.preventDefault();
+    if (!channelForm.channel_id.trim()) {
+      toast.error("Channel ID is required");
+      return;
+    }
+    try {
+      await axios.post(`${API}/channels`, channelForm, getAuthHeaders());
+      toast.success("Channel added!");
+      setChannelDialogOpen(false);
+      setChannelForm({ channel_id: "", channel_name: "", channel_type: "private", description: "" });
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to add channel");
+    }
+  };
+
   const handleDeleteGroup = async (gid) => {
     if (!window.confirm("Remove this group from pool?")) return;
     try {
@@ -88,6 +135,17 @@ export default function ChatGroups() {
       fetchData();
     } catch (error) {
       toast.error("Failed to remove group");
+    }
+  };
+
+  const handleDeleteChannel = async (cid) => {
+    if (!window.confirm("Remove this channel?")) return;
+    try {
+      await axios.delete(`${API}/channels/${cid}`, getAuthHeaders());
+      toast.success("Channel removed");
+      fetchData();
+    } catch (error) {
+      toast.error("Failed to remove channel");
     }
   };
 
@@ -102,15 +160,33 @@ export default function ChatGroups() {
     }
   };
 
+  const handleRefreshChannel = async (cid) => {
+    try {
+      const res = await axios.post(`${API}/channels/${cid}/refresh`, {}, getAuthHeaders());
+      toast.success(`Updated: ${res.data.channel_name} (${res.data.member_count} members)`);
+      fetchData();
+    } catch (error) {
+      toast.error("Failed to refresh channel info");
+    }
+  };
+
   const getStatusBadge = (status) => {
     const variants = {
       available: "bg-green-500/20 text-green-400 border-green-500/30",
       in_use: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
       needs_cleanup: "bg-red-500/20 text-red-400 border-red-500/30",
+      active: "bg-green-500/20 text-green-400 border-green-500/30",
+      inactive: "bg-red-500/20 text-red-400 border-red-500/30",
+    };
+    const labels = {
+      available: "Available",
+      in_use: "In Use",
+      active: "Active",
+      inactive: "Inactive",
     };
     return (
-      <Badge className={`${variants[status] || variants.available} border`}>
-        {status === "in_use" ? "In Use" : status === "available" ? "Available" : status}
+      <Badge className={`${variants[status] || variants.active} border`}>
+        {labels[status] || status}
       </Badge>
     );
   };
@@ -142,6 +218,7 @@ export default function ChatGroups() {
   const availableCount = groups.filter((g) => g.status === "available").length;
   const inUseCount = groups.filter((g) => g.status === "in_use").length;
   const activeSessionsCount = sessions.filter((s) => s.status === "active").length;
+  const totalMembers = channels.reduce((acc, c) => acc + (c.member_count || 0), 0);
 
   if (loading) {
     return (
@@ -156,29 +233,32 @@ export default function ChatGroups() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Groups Pool</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Groups & Channels</h1>
           <p className="text-muted-foreground mt-1">
-            Manage groups for plans with Auto Groups enabled or time-limited chat sessions
+            Manage Telegram groups for chat sessions and channels for subscriptions
           </p>
         </div>
         <div className="flex gap-3">
-          <Button
-            variant="outline"
-            onClick={fetchData}
-            data-testid="refresh-btn"
-          >
+          <Button variant="outline" onClick={fetchData} data-testid="refresh-btn">
             <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
           </Button>
-          <Button onClick={() => setDialogOpen(true)} data-testid="add-group-btn">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Group
-          </Button>
+          {activeTab === "channels" ? (
+            <Button onClick={() => setChannelDialogOpen(true)} data-testid="add-channel-btn">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Channel
+            </Button>
+          ) : activeTab === "groups" ? (
+            <Button onClick={() => setDialogOpen(true)} data-testid="add-group-btn">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Group
+            </Button>
+          ) : null}
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
@@ -192,7 +272,6 @@ export default function ChatGroups() {
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
@@ -206,7 +285,6 @@ export default function ChatGroups() {
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
@@ -220,7 +298,19 @@ export default function ChatGroups() {
             </div>
           </CardContent>
         </Card>
-
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-purple-500/10">
+                <Megaphone className="w-6 h-6 text-purple-500" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Channels</p>
+                <p className="text-2xl font-bold text-purple-500">{channels.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
@@ -250,6 +340,17 @@ export default function ChatGroups() {
           Groups Pool ({groups.length})
         </button>
         <button
+          onClick={() => setActiveTab("channels")}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === "channels"
+              ? "text-primary border-b-2 border-primary"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+          data-testid="tab-channels"
+        >
+          Channels ({channels.length})
+        </button>
+        <button
           onClick={() => setActiveTab("sessions")}
           className={`px-4 py-2 text-sm font-medium transition-colors ${
             activeTab === "sessions"
@@ -262,7 +363,7 @@ export default function ChatGroups() {
         </button>
       </div>
 
-      {/* Groups Table */}
+      {/* ==================== GROUPS TAB ==================== */}
       {activeTab === "groups" && (
         <Card>
           <CardHeader>
@@ -276,9 +377,6 @@ export default function ChatGroups() {
               <div className="text-center py-12">
                 <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground mb-4">No groups in pool yet</p>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Add Telegram groups to enable Auto Groups feature for plans
-                </p>
                 <Button onClick={() => setDialogOpen(true)}>
                   <Plus className="w-4 h-4 mr-2" />
                   Add First Group
@@ -328,7 +426,6 @@ export default function ChatGroups() {
                               variant="outline"
                               size="sm"
                               onClick={() => handleReleaseGroup(group.group_id)}
-                              data-testid={`release-${group.group_id}`}
                             >
                               <RefreshCw className="w-4 h-4 mr-1" />
                               Release
@@ -339,7 +436,6 @@ export default function ChatGroups() {
                             size="sm"
                             onClick={() => handleDeleteGroup(group.group_id)}
                             className="text-destructive hover:text-destructive"
-                            data-testid={`delete-${group.group_id}`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -354,7 +450,114 @@ export default function ChatGroups() {
         </Card>
       )}
 
-      {/* Sessions Table */}
+      {/* ==================== CHANNELS TAB ==================== */}
+      {activeTab === "channels" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Megaphone className="w-5 h-5" />
+              Telegram Channels
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {channels.length === 0 ? (
+              <div className="text-center py-12">
+                <Megaphone className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground mb-4">No channels added yet</p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Add your Telegram channels to manage subscriptions and members
+                </p>
+                <Button onClick={() => setChannelDialogOpen(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add First Channel
+                </Button>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Channel Name</TableHead>
+                    <TableHead>Channel ID</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Members</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {channels.map((channel) => (
+                    <TableRow key={channel.id}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          {channel.channel_type === "private" ? (
+                            <Lock className="w-4 h-4 text-yellow-500" />
+                          ) : (
+                            <Globe className="w-4 h-4 text-blue-500" />
+                          )}
+                          {channel.channel_name || "Unnamed Channel"}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <code className="text-xs bg-muted px-2 py-1 rounded">
+                          {channel.channel_id}
+                        </code>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={
+                            channel.channel_type === "private"
+                              ? "border-yellow-500/30 text-yellow-400"
+                              : "border-blue-500/30 text-blue-400"
+                          }
+                        >
+                          {channel.channel_type === "private" ? "Private" : "Public"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className="flex items-center gap-1">
+                          <Users className="w-4 h-4 text-muted-foreground" />
+                          {channel.member_count || 0}
+                        </span>
+                      </TableCell>
+                      <TableCell>{getStatusBadge(channel.status)}</TableCell>
+                      <TableCell>
+                        <span className="text-sm text-muted-foreground truncate max-w-[150px] block">
+                          {channel.description || "-"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRefreshChannel(channel.channel_id)}
+                            data-testid={`refresh-channel-${channel.channel_id}`}
+                          >
+                            <RefreshCw className="w-4 h-4 mr-1" />
+                            Sync
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteChannel(channel.channel_id)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ==================== SESSIONS TAB ==================== */}
       {activeTab === "sessions" && (
         <Card>
           <CardHeader>
@@ -368,9 +571,6 @@ export default function ChatGroups() {
               <div className="text-center py-12">
                 <Timer className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">No chat sessions yet</p>
-                <p className="text-sm text-muted-foreground">
-                  Sessions will appear here when users buy chat plans
-                </p>
               </div>
             ) : (
               <Table>
@@ -411,48 +611,91 @@ export default function ChatGroups() {
         </Card>
       )}
 
-      {/* How to Use Section */}
-      <Card className="border-dashed">
-        <CardHeader>
-          <CardTitle className="text-lg">How to Add Groups</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm text-muted-foreground">
-          <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <h4 className="font-medium text-foreground mb-2">Step 1: Create Group</h4>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Create a new Telegram group</li>
-                <li>Convert to Supergroup (Group Settings → Upgrade)</li>
-                <li>Name it like "Chat Room 1", "Chat Room 2"</li>
-              </ol>
+      {/* How to Use */}
+      {activeTab === "groups" && (
+        <Card className="border-dashed">
+          <CardHeader>
+            <CardTitle className="text-lg">How to Add Groups</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-muted-foreground">
+            <div className="grid md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="font-medium text-foreground mb-2">Step 1: Create Group</h4>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Create a new Telegram group</li>
+                  <li>Convert to Supergroup (Group Settings)</li>
+                  <li>Name it like "Chat Room 1", "Chat Room 2"</li>
+                </ol>
+              </div>
+              <div>
+                <h4 className="font-medium text-foreground mb-2">Step 2: Add Bot as Admin</h4>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Add your bot to the group</li>
+                  <li>Make bot an administrator</li>
+                  <li>Enable all permissions for bot</li>
+                </ol>
+              </div>
+              <div>
+                <h4 className="font-medium text-foreground mb-2">Step 3: Get Group ID</h4>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Add @RawDataBot to group</li>
+                  <li>Copy the Group ID (like -100123456789)</li>
+                </ol>
+              </div>
+              <div>
+                <h4 className="font-medium text-foreground mb-2">Step 4: Add to Pool</h4>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Click "Add Group" button</li>
+                  <li>Paste the Group ID</li>
+                  <li>Give it a name (optional)</li>
+                </ol>
+              </div>
             </div>
-            <div>
-              <h4 className="font-medium text-foreground mb-2">Step 2: Add Bot as Admin</h4>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Add your bot to the group</li>
-                <li>Make bot an administrator</li>
-                <li>Enable all permissions for bot</li>
-              </ol>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "channels" && (
+        <Card className="border-dashed">
+          <CardHeader>
+            <CardTitle className="text-lg">How to Add Channels</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-muted-foreground">
+            <div className="grid md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="font-medium text-foreground mb-2">Step 1: Create Channel</h4>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Create a private/public Telegram channel</li>
+                  <li>This is where subscribers get access</li>
+                </ol>
+              </div>
+              <div>
+                <h4 className="font-medium text-foreground mb-2">Step 2: Add Bot as Admin</h4>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Add your bot to the channel</li>
+                  <li>Make bot an administrator</li>
+                  <li>Enable "Invite Users via Link" permission</li>
+                </ol>
+              </div>
+              <div>
+                <h4 className="font-medium text-foreground mb-2">Step 3: Get Channel ID</h4>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Forward any message from channel to @RawDataBot</li>
+                  <li>Copy the Channel ID (starts with -100)</li>
+                </ol>
+              </div>
+              <div>
+                <h4 className="font-medium text-foreground mb-2">Step 4: Add Here</h4>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Click "Add Channel" button</li>
+                  <li>Paste Channel ID, set type and name</li>
+                  <li>Click "Sync" to fetch member count</li>
+                </ol>
+              </div>
             </div>
-            <div>
-              <h4 className="font-medium text-foreground mb-2">Step 3: Get Group ID</h4>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Add @RawDataBot or @userinfobot to group</li>
-                <li>It will show the Group ID (like -100123456789)</li>
-                <li>Copy the full ID including the minus sign</li>
-              </ol>
-            </div>
-            <div>
-              <h4 className="font-medium text-foreground mb-2">Step 4: Add to Pool</h4>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Click "Add Group" button above</li>
-                <li>Paste the Group ID</li>
-                <li>Give it a name (optional)</li>
-              </ol>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Add Group Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -471,7 +714,7 @@ export default function ChatGroups() {
                 data-testid="input-group-id"
               />
               <p className="text-xs text-muted-foreground">
-                Get this from @RawDataBot or @userinfobot in the group
+                Get this from @RawDataBot in the group
               </p>
             </div>
             <div className="space-y-2">
@@ -485,15 +728,78 @@ export default function ChatGroups() {
               />
             </div>
             <div className="flex justify-end gap-3 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setDialogOpen(false)}
-              >
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancel
               </Button>
               <Button type="submit" data-testid="submit-add-group">
                 Add Group
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Channel Dialog */}
+      <Dialog open={channelDialogOpen} onOpenChange={setChannelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Telegram Channel</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAddChannel} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="channelId">Channel ID *</Label>
+              <Input
+                id="channelId"
+                placeholder="-100123456789"
+                value={channelForm.channel_id}
+                onChange={(e) => setChannelForm({ ...channelForm, channel_id: e.target.value })}
+                data-testid="input-channel-id"
+              />
+              <p className="text-xs text-muted-foreground">
+                Forward a message from your channel to @RawDataBot to get the ID
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="channelName">Channel Name</Label>
+              <Input
+                id="channelName"
+                placeholder="Premium Members"
+                value={channelForm.channel_name}
+                onChange={(e) => setChannelForm({ ...channelForm, channel_name: e.target.value })}
+                data-testid="input-channel-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Channel Type</Label>
+              <Select
+                value={channelForm.channel_type}
+                onValueChange={(val) => setChannelForm({ ...channelForm, channel_type: val })}
+              >
+                <SelectTrigger data-testid="select-channel-type">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="private">Private Channel</SelectItem>
+                  <SelectItem value="public">Public Channel</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="channelDesc">Description (Optional)</Label>
+              <Input
+                id="channelDesc"
+                placeholder="Premium content for subscribers"
+                value={channelForm.description}
+                onChange={(e) => setChannelForm({ ...channelForm, description: e.target.value })}
+                data-testid="input-channel-desc"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button type="button" variant="outline" onClick={() => setChannelDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" data-testid="submit-add-channel">
+                Add Channel
               </Button>
             </div>
           </form>

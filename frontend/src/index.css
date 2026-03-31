@@ -255,6 +255,21 @@ code {
     background: hsl(346 70% 40%);
 }
 
+.scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(346 60% 30% / 0.3);
+    border-radius: 10px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: hsl(346 60% 40% / 0.5);
+}
+
+
 /* Status Colors - Romance Theme */
 .status-active {
     color: hsl(var(--success));

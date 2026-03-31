@@ -538,9 +538,21 @@ export default function LiveStream() {
                       <p className="text-sm text-muted-foreground">
                         Session: <span className="text-foreground">{ticket.session_title}</span>
                       </p>
-                      <p className="text-sm text-green-500">Amount: ₹{ticket.amount}</p>
+                      <p className="text-sm text-green-500">Amount: Rs.{ticket.amount}</p>
                       {ticket.screenshot_file_id && (
-                        <p className="text-xs text-blue-500 mt-1">📷 Payment screenshot attached</p>
+                        <div className="mt-2">
+                          <img
+                            src={`${API}/telegram/file/${ticket.screenshot_file_id}`}
+                            alt="Payment Screenshot"
+                            className="w-48 h-auto max-h-48 rounded-lg border border-border/50 object-contain cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={() => window.open(`${API}/telegram/file/${ticket.screenshot_file_id}`, '_blank')}
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.insertAdjacentHTML('afterend', '<p class="text-xs text-blue-500 mt-1">📷 Payment screenshot attached (click to view)</p>');
+                            }}
+                            data-testid={`ticket-screenshot-${ticket.id}`}
+                          />
+                        </div>
                       )}
                     </div>
                     

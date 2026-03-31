@@ -75,20 +75,9 @@ export default function Payments() {
   // Function to load screenshot with auth
   const loadScreenshot = async (payment) => {
     if (payment.screenshot_file_id) {
-      try {
-        const response = await axios.get(
-          `${API}/telegram/file/${payment.screenshot_file_id}`,
-          {
-            ...getAuthHeaders(),
-            responseType: 'blob'
-          }
-        );
-        const imageUrl = URL.createObjectURL(response.data);
-        setScreenshotModal({ open: true, url: imageUrl, payment, imageData: response.data });
-      } catch (error) {
-        console.error("Failed to load screenshot:", error);
-        setScreenshotModal({ open: true, url: payment.screenshot_url || "", payment, imageData: null });
-      }
+      // Use direct URL (same as list view thumbnails which work fine)
+      const directUrl = `${API}/telegram/file/${payment.screenshot_file_id}`;
+      setScreenshotModal({ open: true, url: directUrl, payment, imageData: null });
     } else if (payment.screenshot_url) {
       setScreenshotModal({ open: true, url: payment.screenshot_url, payment, imageData: null });
     } else {
@@ -101,14 +90,14 @@ export default function Payments() {
   const isAdmin = user.email === SUPER_ADMIN_EMAIL || user.is_admin;
 
   useEffect(() => {
-    fetchData();
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchData, 30000);
+    fetchData(true);
+    // Auto-refresh every 30 seconds (silent - no loading flash)
+    const interval = setInterval(() => fetchData(false), 30000);
     return () => clearInterval(interval);
   }, [filter]);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const [paymentsResponse, plansResponse] = await Promise.all([
         axios.get(`${API}/payments${filter !== "all" ? `?status=${filter}` : ""}`, getAuthHeaders()),
@@ -118,7 +107,7 @@ export default function Payments() {
       setPlans(plansResponse.data);
       setSelectedPayments([]); // Clear selection on refresh
     } catch (error) {
-      toast.error("Failed to fetch data");
+      if (showLoading) toast.error("Failed to fetch data");
     } finally {
       setLoading(false);
     }
@@ -634,16 +623,21 @@ export default function Payments() {
                       </TableCell>
                       <TableCell>
                         {(payment.screenshot_url || payment.screenshot_file_id) ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
+                          <div 
+                            className="w-12 h-12 rounded-lg overflow-hidden bg-muted cursor-pointer hover:opacity-80 transition-opacity border border-border/30"
                             onClick={() => loadScreenshot(payment)}
-                            className="gap-1"
                             data-testid={`view-screenshot-${payment.id}`}
                           >
-                            <Eye className="w-4 h-4" />
-                            View
-                          </Button>
+                            <img 
+                              src={`${API}/telegram/file/${payment.screenshot_file_id}`}
+                              alt="SS"
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.parentElement.innerHTML = '<div class="w-full h-full flex items-center justify-center"><svg class="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>';
+                              }}
+                            />
+                          </div>
                         ) : (
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Clock className="w-3 h-3" />
@@ -781,20 +775,27 @@ export default function Payments() {
             
             <div className="border rounded-lg overflow-hidden bg-muted/30">
               {screenshotModal.url ? (
-                <img 
-                  src={screenshotModal.url} 
-                  alt="Payment Screenshot" 
-                  className="w-full h-auto max-h-[400px] object-contain"
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                    e.target.nextSibling.style.display = 'flex';
-                  }}
-                />
-              ) : null}
-              <div className={`${screenshotModal.url ? 'hidden' : 'flex'} flex-col items-center justify-center py-8 text-muted-foreground`}>
-                <XCircle className="w-8 h-8 mb-2" />
-                <p>No screenshot available</p>
-              </div>
+                <>
+                  <img 
+                    src={screenshotModal.url} 
+                    alt="Payment Screenshot" 
+                    className="w-full h-auto max-h-[400px] object-contain"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
+                    }}
+                  />
+                  <div className="hidden flex-col items-center justify-center py-8 text-muted-foreground">
+                    <XCircle className="w-8 h-8 mb-2" />
+                    <p>Screenshot expired or unavailable on Telegram</p>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                  <XCircle className="w-8 h-8 mb-2" />
+                  <p>No screenshot available</p>
+                </div>
+              )}
             </div>
             
             {screenshotModal.payment?.status === "pending" && (

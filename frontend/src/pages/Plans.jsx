@@ -13,7 +13,14 @@ import {
 } from "../components/ui/dialog";
 import { Switch } from "../components/ui/switch";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Package, IndianRupee, Clock } from "lucide-react";
+import { Plus, Pencil, Trash2, Package, IndianRupee, Clock, Megaphone } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -26,6 +33,11 @@ export default function Plans() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
+  const [promoteDialogOpen, setPromoteDialogOpen] = useState(false);
+  const [promotePlan, setPromotePlan] = useState(null);
+  const [groups, setGroups] = useState([]);
+  const [channels, setChannels] = useState([]);
+  const [selectedGroup, setSelectedGroup] = useState("");
   const [form, setForm] = useState({
     name: "",
     price: "",
@@ -40,7 +52,27 @@ export default function Plans() {
 
   useEffect(() => {
     fetchPlans();
+    fetchGroups();
+    fetchChannels();
   }, []);
+
+  const fetchGroups = async () => {
+    try {
+      const response = await axios.get(`${API}/chat-groups`, getAuthHeaders());
+      setGroups(response.data);
+    } catch (error) {
+      console.error("Failed to fetch groups");
+    }
+  };
+
+  const fetchChannels = async () => {
+    try {
+      const response = await axios.get(`${API}/channels`, getAuthHeaders());
+      setChannels(response.data || []);
+    } catch (error) {
+      console.error("Failed to fetch channels");
+    }
+  };
 
   const fetchPlans = async () => {
     try {
@@ -135,6 +167,29 @@ export default function Plans() {
     setDialogOpen(open);
     if (!open) {
       resetForm();
+    }
+  };
+
+  const handlePromote = async () => {
+    if (!promotePlan || !selectedGroup) {
+      toast.error("Group select karo!");
+      return;
+    }
+    try {
+      const response = await axios.post(`${API}/promote-plan`, {
+        plan_id: promotePlan.id,
+        group_id: selectedGroup
+      }, getAuthHeaders());
+      if (response.data.success) {
+        toast.success("Plan promoted to group!");
+      } else {
+        toast.error(response.data.message || "Failed to promote");
+      }
+      setPromoteDialogOpen(false);
+      setPromotePlan(null);
+      setSelectedGroup("");
+    } catch (error) {
+      toast.error("Failed to promote plan");
     }
   };
 
@@ -252,18 +307,56 @@ export default function Plans() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="channel_id">Channel ID (Optional)</Label>
-              <Input
-                id="channel_id"
-                value={form.channel_id}
-                onChange={(e) => setForm({ ...form, channel_id: e.target.value })}
-                placeholder="-1001234567890"
-                data-testid="plan-channel-input"
-                className="bg-muted/50 border-transparent focus:border-primary font-mono text-sm"
-              />
-              <p className="text-xs text-muted-foreground">
-                Leave empty to use default channel. Each plan can have its own channel.
-              </p>
+              <Label htmlFor="channel_id" className="text-primary font-semibold">Channel / Group (for access after payment)</Label>
+              {channels.length > 0 || groups.length > 0 ? (
+                <Select
+                  value={form.channel_id || "__none__"}
+                  onValueChange={(val) => setForm({ ...form, channel_id: val === "__none__" ? "" : val })}
+                >
+                  <SelectTrigger data-testid="plan-channel-select" className="bg-muted/50 border-primary/30">
+                    <SelectValue placeholder="Select channel for this plan..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">-- No Channel (use default) --</SelectItem>
+                    {channels.filter(ch => (ch.telegram_channel_id || ch.channel_id)).map((ch) => (
+                      <SelectItem key={ch.id || ch.channel_id} value={ch.telegram_channel_id || ch.channel_id || ch.id}>
+                        {ch.channel_name || ch.name || "Channel"} ({ch.telegram_channel_id || ch.channel_id})
+                      </SelectItem>
+                    ))}
+                    {groups.filter(g => g.group_id && g.group_id !== "0").map((g) => (
+                      <SelectItem key={g.id || g.group_id} value={g.group_id}>
+                        {g.group_name || g.name || "Group"} ({g.group_id})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  id="channel_id"
+                  value={form.channel_id}
+                  onChange={(e) => setForm({ ...form, channel_id: e.target.value })}
+                  placeholder="-1001234567890 (Telegram channel/group ID)"
+                  data-testid="plan-channel-input"
+                  className="bg-muted/50 border-primary/30 focus:border-primary font-mono text-sm"
+                />
+              )}
+              <div className="space-y-1 mt-1">
+                <Label className="text-xs text-muted-foreground">Or enter Channel ID manually:</Label>
+                <Input
+                  value={form.channel_id}
+                  onChange={(e) => setForm({ ...form, channel_id: e.target.value })}
+                  placeholder="-1001234567890"
+                  data-testid="plan-channel-manual-input"
+                  className="bg-muted/50 border-transparent focus:border-primary font-mono text-sm"
+                />
+              </div>
+              {!form.channel_id && (
+                <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-md">
+                  <p className="text-xs text-amber-400 font-medium">
+                    Warning: No channel set! Set a channel ID for this plan.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -362,6 +455,18 @@ export default function Plans() {
                   <span className="text-sm">{plan.duration_days} days</span>
                 </div>
 
+                {!plan.channel_id && (
+                  <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-500/10 border border-amber-500/30 rounded-md">
+                    <span className="text-xs text-amber-400 font-medium">No channel set - using default</span>
+                  </div>
+                )}
+
+                {plan.channel_id && (
+                  <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-md">
+                    <span className="text-xs text-emerald-400 font-mono">{plan.channel_id}</span>
+                  </div>
+                )}
+
                 {plan.features && plan.features.length > 0 && (
                   <ul className="space-y-2 pt-2 border-t border-border">
                     {plan.features.map((feature, i) => (
@@ -374,6 +479,21 @@ export default function Plans() {
                 )}
 
                 <div className="flex gap-2 pt-4 relative z-10">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setPromotePlan(plan);
+                      setPromoteDialogOpen(true);
+                    }}
+                    data-testid={`promote-plan-${plan.id}`}
+                    className="flex-1 border-yellow-600 text-yellow-500 hover:bg-yellow-900/30"
+                  >
+                    <Megaphone className="w-4 h-4 mr-2" />
+                    Promote
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -421,6 +541,48 @@ export default function Plans() {
           </CardContent>
         </Card>
       )}
+
+      {/* Promote Plan Dialog */}
+      <Dialog open={promoteDialogOpen} onOpenChange={(open) => {
+        setPromoteDialogOpen(open);
+        if (!open) { setPromotePlan(null); setSelectedGroup(""); }
+      }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-xl font-bold flex items-center gap-2">
+              <Megaphone className="w-5 h-5 text-yellow-500" />
+              Promote Plan to Group
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            {promotePlan && (
+              <div className="bg-muted/50 rounded-lg p-3">
+                <p className="font-medium">{promotePlan.name}</p>
+                <p className="text-sm text-muted-foreground">₹{promotePlan.price} - {promotePlan.duration_days} days</p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Select Group</Label>
+              <Select value={selectedGroup} onValueChange={setSelectedGroup}>
+                <SelectTrigger data-testid="promote-group-select" className="bg-muted/50 border-transparent">
+                  <SelectValue placeholder="Select a group to promote in" />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups.map((group) => (
+                    <SelectItem key={group.group_id} value={group.group_id}>
+                      {group.group_name || group.group_id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={handlePromote} className="w-full btn-hover" data-testid="confirm-promote-btn">
+              <Megaphone className="w-4 h-4 mr-2" />
+              Send Promotion
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,0 +1,171 @@
+{
+  "summary": "Iteration 17 testing complete. All 10 features verified: 1) Plans tab shows 'Extend Subscription' title when user has active subscription, 2) Expiry warning banner appears when 3 or fewer days remaining, 3) Blue extend banner shows plan name and days remaining, 4) Payment button changes to 'Extend - Pay ₹X', 5) Extension note shows '+X days will be added', 6) Admin Live tab shows all sessions with proper status badges (SCHEDULED, ANNOUNCED, LIVE, ENDED), 7) Scheduled sessions show Announce + Go Live + Delete buttons, 8) POST /api/miniapp/admin/live-session/{id}/end endpoint works, 9) DELETE /api/miniapp/admin/live-session/{id} endpoint works, 10) Live sessions show description, metadata (stream link, superchat, tickets). Backend: 14/14 tests passed (100%). Frontend: All UI elements verified.",
+  
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  
+  "test_report_links": [
+    "/app/backend/tests/test_iteration17_features.py",
+    "/app/test_reports/pytest/iteration17_results.xml"
+  ],
+  
+  "action_items": [],
+  
+  "critical_code_review_comments": [
+    "Plans tab correctly shows 'Extend Subscription' title when subscription.is_active is true",
+    "Expiry warning (yellow) appears when days_remaining <= 3, extend banner (blue) appears when days_remaining > 3",
+    "Payment button text dynamically changes to 'Extend - Pay ₹X' when subscription is active",
+    "Extension note shows '+{plan.duration_days} days will be added to your current subscription'",
+    "Admin Live tab shows proper status badges: SCHEDULED (blue), ANNOUNCED (orange), LIVE (red), ENDED (purple)",
+    "Scheduled sessions correctly show Announce + Go Live + Delete buttons",
+    "Live sessions show LIVE NOW badge with animated red dot, End Stream button",
+    "Ended sessions show only Delete button",
+    "POST /api/miniapp/admin/live-session/{id}/end correctly updates status to 'ended' and sets ended_at timestamp",
+    "DELETE /api/miniapp/admin/live-session/{id} correctly removes session from database",
+    "Live sessions display description text and metadata tags (stream link, superchat amount, tickets sold)"
+  ],
+  
+  "updated_files": [
+    "/app/backend/tests/test_iteration17_features.py"
+  ],
+  
+  "success_rate": {
+    "backend": "100% (14/14 passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  
+  "test_credentials": {
+    "admin_telegram_id": "123456789",
+    "default_tenant_id": "default",
+    "miniapp_url": "https://bot-builder-93.preview.emergentagent.com/miniapp?tg_id=123456789&tg_name=Admin"
+  },
+  
+  "seed_data_creation": "Created test subscription for user 123456789 to verify extend subscription UI. Created TEST_ prefixed live sessions during testing (cleaned up).",
+  
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  
+  "context_for_next_testing_agent": "Iteration 17 verified all new features: 1) Plans tab shows 'Extend Subscription' title + blue extend banner (plan name, days remaining) when user has active subscription with >3 days. 2) Yellow expiry warning banner appears when subscription has 3 or fewer days remaining. 3) Payment section shows green extend note '+X days will be added' and button text changes to 'Extend - Pay ₹X'. 4) Admin Live tab at /miniapp?tg_id=123456789 > Admin > Live shows all sessions with status badges (SCHEDULED, ANNOUNCED, LIVE, ENDED). 5) Scheduled sessions have Announce + Go Live + Delete buttons. 6) Live sessions show LIVE NOW badge with animated red dot and End Stream button. 7) POST /api/miniapp/admin/live-session/{id}/end endpoint ends a live session. 8) DELETE /api/miniapp/admin/live-session/{id} endpoint deletes session. 9) Sessions display description text and metadata (stream link, superchat, tickets). User 123456789 has an active subscription (Weekly VIP Access, 5 days remaining).",
+  
+  "features_tested": {
+    "extend_subscription_title": {
+      "status": "PASS",
+      "details": [
+        "Plans tab title shows 'Extend Subscription' when subscription.is_active is true",
+        "Plans tab title shows 'Choose Your Plan' when no active subscription"
+      ]
+    },
+    "expiry_warning_banner": {
+      "status": "PASS",
+      "details": [
+        "Yellow warning banner appears when days_remaining <= 3",
+        "Warning shows 'Subscription Expiring Soon!' title",
+        "Warning shows 'Only X day(s) left. Renew now to keep access.' message",
+        "Warning icon (triangle with exclamation) is visible"
+      ]
+    },
+    "extend_banner": {
+      "status": "PASS",
+      "details": [
+        "Blue extend banner appears when subscription is active with >3 days",
+        "Banner shows plan name (e.g., 'Weekly VIP Access')",
+        "Banner shows days remaining (e.g., '4d remaining')",
+        "Banner shows hint text about extending subscription"
+      ]
+    },
+    "extend_payment_button": {
+      "status": "PASS",
+      "details": [
+        "Razorpay button shows 'Extend - Pay ₹X' when subscription is active",
+        "Razorpay button shows 'Pay ₹X Instantly' when no active subscription"
+      ]
+    },
+    "extend_note": {
+      "status": "PASS",
+      "details": [
+        "Green extend note appears in payment section when subscription is active",
+        "Note shows '+X days will be added to your current subscription'"
+      ]
+    },
+    "admin_live_status_badges": {
+      "status": "PASS",
+      "details": [
+        "SCHEDULED status badge (blue) for scheduled sessions",
+        "ANNOUNCED status badge (orange) for announced sessions",
+        "LIVE status badge (red) for live sessions",
+        "ENDED status badge (purple) for ended sessions"
+      ]
+    },
+    "scheduled_session_buttons": {
+      "status": "PASS",
+      "details": [
+        "Announce button visible for scheduled sessions",
+        "Go Live button visible for scheduled sessions",
+        "Delete button visible for scheduled sessions"
+      ]
+    },
+    "end_stream_endpoint": {
+      "status": "PASS",
+      "details": [
+        "POST /api/miniapp/admin/live-session/{id}/end returns success",
+        "Session status changes to 'ended'",
+        "ended_at timestamp is set",
+        "End Stream button visible for live sessions in UI"
+      ]
+    },
+    "delete_session_endpoint": {
+      "status": "PASS",
+      "details": [
+        "DELETE /api/miniapp/admin/live-session/{id} returns success",
+        "Session is removed from database",
+        "Delete button visible for ended/scheduled/announced sessions in UI"
+      ]
+    },
+    "live_session_metadata": {
+      "status": "PASS",
+      "details": [
+        "Description text displayed below session title",
+        "Stream Link metadata tag with clickable link",
+        "SuperChat metadata tag showing minimum amount",
+        "Tickets sold count displayed",
+        "Started date displayed for live/ended sessions"
+      ]
+    }
+  },
+  
+  "backend_tests_summary": {
+    "total": 14,
+    "passed": 14,
+    "failed": 0,
+    "skipped": 0,
+    "tests": [
+      "test_get_subscription_status_active - PASSED",
+      "test_get_subscription_status_non_existent_user - PASSED",
+      "test_get_plans - PASSED",
+      "test_admin_check - PASSED",
+      "test_get_admin_live_sessions - PASSED",
+      "test_create_live_session - PASSED",
+      "test_end_live_session - PASSED",
+      "test_delete_live_session - PASSED",
+      "test_live_session_status_transitions - PASSED",
+      "test_non_admin_cannot_access_live_sessions - PASSED",
+      "test_non_admin_cannot_end_session - PASSED",
+      "test_non_admin_cannot_delete_session - PASSED",
+      "test_get_public_live_sessions - PASSED",
+      "test_cleanup_test_sessions - PASSED"
+    ]
+  },
+  
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}

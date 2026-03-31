@@ -20,6 +20,7 @@ import {
   Edit,
   RefreshCcw,
   IndianRupee,
+  ShieldCheck,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -33,7 +34,7 @@ export default function PaidPosts() {
   const [unlockRequests, setUnlockRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingPost, setEditingPost] = useState(null);
-  const [activeTab, setActiveTab] = useState("posts"); // posts, requests
+  const [activeTab, setActiveTab] = useState("posts"); // posts, requests, unlocked
 
   useEffect(() => {
     fetchData();
@@ -110,6 +111,8 @@ export default function PaidPosts() {
   }
 
   const pendingRequests = unlockRequests.filter(r => r.status === "pending_admin");
+  const approvedRequests = unlockRequests.filter(r => r.status === "approved" || r.status === "verified" || r.status === "unlocked");
+  const rejectedRequests = unlockRequests.filter(r => r.status === "rejected");
   const totalUnlocks = paidPosts.reduce((sum, p) => sum + (p.unlock_count || 0), 0);
   const activePostsCount = paidPosts.filter(p => p.is_active).length;
 
@@ -130,7 +133,7 @@ export default function PaidPosts() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card className="border" data-testid="stat-total-posts">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -186,6 +189,20 @@ export default function PaidPosts() {
             </div>
           </CardContent>
         </Card>
+
+        <Card className="border" data-testid="stat-unlocked-success">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+                <ShieldCheck className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-emerald-600">{approvedRequests.length}</p>
+                <p className="text-sm text-muted-foreground">Unlocked Success</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Tabs */}
@@ -213,6 +230,20 @@ export default function PaidPosts() {
           Unlock Requests 
           {pendingRequests.length > 0 && (
             <Badge variant="destructive" className="ml-2">{pendingRequests.length}</Badge>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab("unlocked")}
+          data-testid="tab-unlocked"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === "unlocked"
+              ? "border-emerald-500 text-emerald-500"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Unlocked Success
+          {approvedRequests.length > 0 && (
+            <Badge className="ml-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">{approvedRequests.length}</Badge>
           )}
         </button>
       </div>
@@ -345,20 +376,24 @@ export default function PaidPosts() {
       {/* Unlock Requests Tab */}
       {activeTab === "requests" && (
         <div className="space-y-4">
-          {pendingRequests.length === 0 ? (
+          {unlockRequests.length === 0 ? (
             <Card className="border">
               <CardContent className="p-8 text-center">
                 <CheckCircle className="w-12 h-12 mx-auto text-green-500 mb-4" />
-                <h3 className="text-lg font-medium mb-2">All Caught Up!</h3>
+                <h3 className="text-lg font-medium mb-2">No Requests Yet</h3>
                 <p className="text-muted-foreground">
-                  No pending unlock requests to review.
+                  No unlock requests received.
                 </p>
               </CardContent>
             </Card>
           ) : (
             <div className="grid gap-4">
-              {pendingRequests.map((request) => (
-                <Card key={request.id} className="border" data-testid={`unlock-request-${request.id}`}>
+              {unlockRequests.map((request) => {
+                const isApproved = request.status === "approved" || request.status === "verified" || request.status === "unlocked";
+                const isRejected = request.status === "rejected";
+                const isPending = request.status === "pending_admin";
+                return (
+                <Card key={request.id} className={`border ${isApproved ? 'border-emerald-500/30' : isRejected ? 'border-red-500/30 opacity-60' : ''}`} data-testid={`unlock-request-${request.id}`}>
                   <CardContent className="p-4">
                     <div className="flex items-start gap-4">
                       {/* Screenshot Preview */}
@@ -386,11 +421,21 @@ export default function PaidPosts() {
                           <p className="font-medium">
                             @{request.telegram_username || request.telegram_user_id}
                           </p>
-                          <Badge variant="outline">Pending</Badge>
+                          {isApproved && (
+                            <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Approved</Badge>
+                          )}
+                          {isRejected && (
+                            <Badge className="bg-red-500/20 text-red-400 border border-red-500/30">Rejected</Badge>
+                          )}
+                          {isPending && request.ai_result?.is_valid_payment && request.ai_result?.confidence_score >= 85 ? (
+                            <Badge className="bg-green-500/20 text-green-400 border border-green-500/30">AI Verified</Badge>
+                          ) : isPending ? (
+                            <Badge variant="outline" className="text-amber-500 border-amber-500/30">Pending</Badge>
+                          ) : null}
                         </div>
                         
                         <p className="text-sm text-muted-foreground mb-2">
-                          Requested unlock for post • Expected: ₹{request.expected_amount || "N/A"}
+                          Requested unlock for post - Expected: Rs.{request.expected_amount || "N/A"}
                         </p>
 
                         {request.ai_result && (
@@ -399,13 +444,6 @@ export default function PaidPosts() {
                             {request.ai_result.is_valid_payment && 
                               <Badge variant="secondary" className="ml-2 text-xs">Valid Payment</Badge>
                             }
-                            {request.ai_result.extracted_data && (
-                              <div className="mt-1 text-xs bg-muted p-2 rounded">
-                                <p>Detected Amount: {request.ai_result.extracted_data.amount || 'N/A'}</p>
-                                <p>UPI: {request.ai_result.extracted_data.upi_id || 'N/A'}</p>
-                                <p>Status: {request.ai_result.extracted_data.status || 'N/A'}</p>
-                              </div>
-                            )}
                           </div>
                         )}
 
@@ -424,27 +462,120 @@ export default function PaidPosts() {
                             data-testid={`view-screenshot-${request.id}`}
                           >
                             <Eye className="w-4 h-4 mr-1" />
-                            View Full
+                            View
                           </Button>
                         )}
-                        <Button
-                          size="sm"
-                          onClick={() => handleApproveUnlock(request.id)}
-                          data-testid={`approve-unlock-${request.id}`}
-                        >
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-red-500"
-                          onClick={() => handleRejectUnlock(request.id)}
-                          data-testid={`reject-unlock-${request.id}`}
-                        >
-                          <XCircle className="w-4 h-4 mr-1" />
-                          Reject
-                        </Button>
+                        {isPending ? (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => handleApproveUnlock(request.id)}
+                              data-testid={`approve-unlock-${request.id}`}
+                            >
+                              <CheckCircle className="w-4 h-4 mr-1" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-500"
+                              onClick={() => handleRejectUnlock(request.id)}
+                              data-testid={`reject-unlock-${request.id}`}
+                            >
+                              <XCircle className="w-4 h-4 mr-1" />
+                              Reject
+                            </Button>
+                          </>
+                        ) : isApproved ? (
+                          <Button size="sm" variant="outline" disabled className="text-emerald-500 border-emerald-500/30 cursor-default" data-testid={`status-approved-${request.id}`}>
+                            <ShieldCheck className="w-4 h-4 mr-1" />
+                            Verified
+                          </Button>
+                        ) : isRejected ? (
+                          <Button size="sm" variant="outline" disabled className="text-red-400 border-red-500/30 cursor-default" data-testid={`status-rejected-${request.id}`}>
+                            <XCircle className="w-4 h-4 mr-1" />
+                            Rejected
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Unlocked Success Tab */}
+      {activeTab === "unlocked" && (
+        <div className="space-y-4">
+          {approvedRequests.length === 0 ? (
+            <Card className="border">
+              <CardContent className="p-8 text-center">
+                <Unlock className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
+                <h3 className="text-lg font-medium mb-2">No Unlocked Posts Yet</h3>
+                <p className="text-muted-foreground">
+                  Approved unlock requests will appear here.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {approvedRequests.map((request) => (
+                <Card key={request.id} className="border border-emerald-500/20 bg-emerald-500/5" data-testid={`unlocked-success-${request.id}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-4">
+                      {request.screenshot_file_id ? (
+                        <div className="w-20 h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                          <img
+                            src={`${API}/telegram/file/${request.screenshot_file_id}`}
+                            alt="Payment"
+                            className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={() => window.open(`${API}/telegram/file/${request.screenshot_file_id}`, '_blank')}
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.parentElement.innerHTML = '<div class="w-full h-full flex items-center justify-center text-muted-foreground text-xs">No img</div>';
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-20 h-20 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                          <ShieldCheck className="w-8 h-8 text-emerald-500" />
+                        </div>
+                      )}
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="font-medium">
+                            @{request.telegram_username || request.telegram_user_id}
+                          </p>
+                          <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            <ShieldCheck className="w-3 h-3 mr-1" />
+                            Unlocked
+                          </Badge>
+                        </div>
+                        
+                        <p className="text-sm text-muted-foreground">
+                          Paid Rs.{request.expected_amount || "N/A"} - Content delivered
+                        </p>
+
+                        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                          <span>
+                            <Clock className="w-3 h-3 inline mr-1" />
+                            {new Date(request.created_at).toLocaleString()}
+                          </span>
+                          {request.ai_result?.confidence_score && (
+                            <span>AI: {request.ai_result.confidence_score}%</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex-shrink-0">
+                        <div className="px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 text-sm font-medium">
+                          Rs.{request.expected_amount || "0"}
+                        </div>
                       </div>
                     </div>
                   </CardContent>
@@ -477,9 +608,9 @@ export default function PaidPosts() {
             <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">4</div>
             <p>Payment verified → Original content sent to user's DM</p>
           </div>
-          <div className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
-            <p className="text-purple-800">
-              💡 <strong>Tip:</strong> Add price in caption like <code className="bg-purple-100 px-1 rounded">/paid 99</code> for ₹99 unlock. 
+          <div className="mt-4 p-3 bg-primary/10 border border-primary/20 rounded-lg">
+            <p className="text-primary/80">
+              <strong>Tip:</strong> Add price in caption like <code className="bg-primary/10 px-1 rounded">/paid 99</code> for Rs.99 unlock. 
               Active subscribers can unlock for free!
             </p>
           </div>

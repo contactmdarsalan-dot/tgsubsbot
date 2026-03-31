@@ -154,11 +154,11 @@ export default function VideoCalls() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                       <div className="flex items-center gap-2 text-gray-400">
                         <Calendar className="w-4 h-4" />
-                        <span>{booking.scheduled_date}</span>
+                        <span>{booking.scheduled_date || "Not set"}</span>
                       </div>
                       <div className="flex items-center gap-2 text-gray-400">
                         <Clock className="w-4 h-4" />
-                        <span>{booking.scheduled_time}</span>
+                        <span>{booking.scheduled_time || "Not set"}</span>
                       </div>
                       <div className="text-gray-400">
                         Duration: {booking.duration_minutes} min
@@ -167,6 +167,12 @@ export default function VideoCalls() {
                         Rs {booking.price}
                       </div>
                     </div>
+                    
+                    {booking.notes && (
+                      <div className="mt-2 text-sm text-gray-500">
+                        Notes: {booking.notes}
+                      </div>
+                    )}
 
                     {booking.status === 'pending_payment' && (
                       <div className="mt-3">

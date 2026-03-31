@@ -26,7 +26,18 @@ import LiveStream from "./pages/LiveStream";
 import PaidPosts from "./pages/PaidPosts";
 import UserManagement from "./pages/UserManagement";
 import Creators from "./pages/Creators";
+import Profile from "./pages/Profile";
 import LandingPage from "./pages/LandingPage";
+import RevenueDashboard from "./pages/RevenueDashboard";
+import TelegramAdmins from "./pages/TelegramAdmins";
+import BotActivityLogs from "./pages/BotActivityLogs";
+import Branding from "./pages/Branding";
+import BotLanguage from "./pages/BotLanguage";
+import MiniApp from "./pages/MiniApp";
+import MiniAppUsers from "./pages/MiniAppUsers";
+import CreatorOnboard from "./pages/CreatorOnboard";
+import CreatorDashboard from "./pages/CreatorDashboard";
+import SaaSManagement from "./pages/SaaSManagement";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -116,6 +127,9 @@ function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
+      <Route path="/miniapp" element={<MiniApp />} />
+      <Route path="/creator-onboard" element={<CreatorOnboard />} />
+      <Route path="/creator-dashboard" element={<CreatorDashboard />} />
       <Route path="/login" element={<Login />} />
       <Route path="/pricing" element={<PricingRoute />} />
       <Route path="/renew" element={<RenewSubscription />} />
@@ -143,11 +157,19 @@ function AppRouter() {
         <Route path="referrals" element={<Referrals />} />
         <Route path="faqs" element={<FAQs />} />
         <Route path="analytics" element={<Analytics />} />
+        <Route path="revenue" element={<RevenueDashboard />} />
+        <Route path="telegram-admins" element={<TelegramAdmins />} />
+        <Route path="bot-activity" element={<BotActivityLogs />} />
         <Route path="video-calls" element={<VideoCalls />} />
         <Route path="live-stream" element={<LiveStream />} />
         <Route path="paid-posts" element={<PaidPosts />} />
         <Route path="user-management" element={<UserManagement />} />
         <Route path="creators" element={<Creators />} />
+        <Route path="branding" element={<Branding />} />
+        <Route path="bot-language" element={<BotLanguage />} />
+        <Route path="miniapp-users" element={<MiniAppUsers />} />
+        <Route path="profile" element={<Profile />} />
+        <Route path="saas-management" element={<SaaSManagement />} />
       </Route>
     </Routes>
   );

@@ -1,0 +1,139 @@
+{
+  "summary": "Completed testing of Mini App new features (iteration 8): Phone login screen with 20% discount, Skip button, Discount popup, UPI Manual payment bottom sheet, and glassmorphism UI. All 11 backend tests passed (100%). All frontend UI tests passed.",
+  
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  
+  "test_report_links": [
+    "/app/backend/tests/test_miniapp_new_features.py",
+    "/app/test_reports/pytest/miniapp_new_features_results.xml"
+  ],
+  
+  "action_items": [],
+  
+  "critical_code_review_comments": [
+    "Phone login screen implementation is clean with proper data-testid attributes",
+    "20% discount logic correctly applied to all plan prices",
+    "UPI Manual payment bottom sheet shows all required details (UPI ID, amount, steps)",
+    "Background is pure black (#0e0e0e) - no brown border visible",
+    "Glassmorphism UI with proper blur effects and transparency"
+  ],
+  
+  "updated_files": [
+    "/app/backend/tests/test_miniapp_new_features.py"
+  ],
+  
+  "success_rate": {
+    "backend": "100% (11/11 tests passed)",
+    "frontend": "100% (all new features verified)"
+  },
+  
+  "test_credentials": {
+    "email": "gamerxboys8958@gmail.com",
+    "password": "Sumit@8958"
+  },
+  
+  "seed_data_creation": "Created test users for phone login testing (test_phone_*, test_disc_*, test_existing_*)",
+  
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  
+  "context_for_next_testing_agent": "Mini App new features fully tested. Phone login screen appears first at /miniapp, user can enter phone for 20% discount or skip. After phone login, discount popup shows and all plan prices display discounted amounts in green. UPI Manual payment button opens bottom sheet with UPI ID, amount, and payment steps. All navigation tabs working.",
+  
+  "new_features_tested": {
+    "phone_login_screen": {
+      "status": "✅ PASS",
+      "details": [
+        "Phone login screen appears first at /miniapp",
+        "20% OFF badge displayed prominently",
+        "Phone input with +91 prefix",
+        "Unlock 20% OFF button (disabled until 10 digits entered)",
+        "Skip for now button works"
+      ]
+    },
+    "phone_login_api": {
+      "status": "✅ PASS",
+      "details": [
+        "POST /api/miniapp/phone-login - creates user and returns 20% discount",
+        "Invalid phone (< 10 digits) rejected",
+        "Empty phone rejected",
+        "Already registered users handled gracefully"
+      ]
+    },
+    "user_discount_api": {
+      "status": "✅ PASS",
+      "details": [
+        "GET /api/miniapp/user-discount/{id} - returns discount status",
+        "Returns has_discount: true, discount_percent: 20 for registered users",
+        "Returns has_discount: false for non-registered users"
+      ]
+    },
+    "discount_popup": {
+      "status": "✅ PASS",
+      "details": [
+        "Popup appears after successful phone login",
+        "Shows 20% badge and 'Discount Unlocked!' message",
+        "Got it! button closes popup",
+        "Auto-closes after 4 seconds"
+      ]
+    },
+    "discounted_prices": {
+      "status": "✅ PASS",
+      "details": [
+        "20% OFF badge shows in header after login",
+        "All plan cards show discounted prices in green",
+        "Payment section shows -20% discount tag",
+        "Final amount correctly calculated with discount"
+      ]
+    },
+    "upi_manual_sheet": {
+      "status": "✅ PASS",
+      "details": [
+        "GET /api/miniapp/upi-details - returns UPI ID and payment message",
+        "UPI Manual Payment button opens bottom sheet",
+        "Sheet shows UPI ID with Copy button",
+        "Sheet shows Amount to Pay",
+        "Sheet shows Plan name",
+        "Sheet shows 4 payment steps",
+        "I've Paid, Send Screenshot button",
+        "Cancel button closes sheet"
+      ]
+    },
+    "background_color": {
+      "status": "✅ PASS",
+      "details": [
+        "Background color is rgb(14, 14, 14) - pure black",
+        "No brown border visible",
+        "Border is 0px (no visible border)"
+      ]
+    },
+    "skip_button": {
+      "status": "✅ PASS",
+      "details": [
+        "Skip for now button visible on phone login screen",
+        "Clicking skip bypasses login and goes to plans",
+        "No discount applied when skipped"
+      ]
+    }
+  },
+  
+  "existing_features_verified": {
+    "plans_tab": "✅ Shows 7 active plans with prices",
+    "status_tab": "✅ Shows subscription status",
+    "support_chat": "✅ AI chat working with GPT-5.2",
+    "payment_history": "✅ Shows payment records",
+    "referral_program": "✅ Generates referral code",
+    "notifications": "✅ Shows notifications",
+    "help_faq": "✅ How It Works + FAQ",
+    "bottom_navigation": "✅ All 4 tabs working",
+    "more_menu": "✅ All 4 options working"
+  }
+}

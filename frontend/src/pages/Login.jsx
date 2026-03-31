@@ -20,6 +20,9 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
+  const [forgotPassword, setForgotPassword] = useState(false);
+  const [resetStep, setResetStep] = useState(1); // 1=email, 2=otp+newpw
+  const [resetForm, setResetForm] = useState({ email: "", otp: "", new_password: "" });
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -76,6 +79,50 @@ export default function Login() {
       }
     } catch (error) {
       toast.error(error.response?.data?.detail || "Authentication failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendResetOTP = async () => {
+    if (!resetForm.email) {
+      toast.error("Please enter your email");
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await axios.post(`${API}/auth/forgot-password`, { email: resetForm.email });
+      toast.success("Reset code sent to your email!");
+      if (response.data.test_otp) {
+        toast.info(`Reset Code: ${response.data.test_otp}`, { duration: 15000 });
+      }
+      setResetStep(2);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to send reset code");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (!resetForm.otp || !resetForm.new_password) {
+      toast.error("Please enter the code and new password");
+      return;
+    }
+    if (resetForm.new_password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    setLoading(true);
+    try {
+      await axios.post(`${API}/auth/reset-password`, resetForm);
+      toast.success("Password reset successful! Please login.");
+      setForgotPassword(false);
+      setResetStep(1);
+      setResetForm({ email: "", otp: "", new_password: "" });
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to reset password");
     } finally {
       setLoading(false);
     }
@@ -213,7 +260,9 @@ export default function Login() {
           </div>
 
           {/* Login Method Toggle */}
-          <div className="flex gap-2 p-1.5 bg-muted/50 rounded-2xl border border-border/50">
+          {!forgotPassword ? (
+            <>
+            <div className="flex gap-2 p-1.5 bg-muted/50 rounded-2xl border border-border/50">
             <Button
               type="button"
               variant={loginMethod === "email" ? "default" : "ghost"}
@@ -403,6 +452,19 @@ export default function Login() {
                 </div>
               </div>
 
+              {isLogin && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => { setForgotPassword(true); setResetForm({ ...resetForm, email: form.email }); }}
+                    className="text-xs text-primary hover:text-primary/80 transition-colors"
+                    data-testid="forgot-password-btn"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+              )}
+
               <Button
                 type="submit"
                 className="w-full btn-romance h-12 text-base font-medium"
@@ -468,6 +530,97 @@ export default function Login() {
                 {isLogin ? "Sign up" : "Sign in"}
               </button>
             </p>
+          )}
+          </>
+          ) : (
+            /* Forgot Password Flow */
+            <>
+              <div className="text-center space-y-2">
+                <h2 className="font-serif text-3xl font-semibold tracking-tight">Reset Password</h2>
+                <p className="text-muted-foreground">
+                  {resetStep === 1 ? "Enter your email to receive a reset code" : "Enter the code and your new password"}
+                </p>
+              </div>
+
+              {resetStep === 1 ? (
+                <div className="space-y-5">
+                  <div className="space-y-2">
+                    <Label htmlFor="reset-email" className="text-sm font-medium">Email Address</Label>
+                    <Input
+                      id="reset-email"
+                      type="email"
+                      placeholder="you@example.com"
+                      value={resetForm.email}
+                      onChange={(e) => setResetForm({ ...resetForm, email: e.target.value })}
+                      className="bg-muted/30 border-border/50 rounded-xl h-12 focus:border-primary/50"
+                      data-testid="reset-email-input"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={handleSendResetOTP}
+                    className="w-full btn-romance h-12 text-base font-medium"
+                    disabled={loading || !resetForm.email}
+                    data-testid="send-reset-code-btn"
+                  >
+                    {loading ? "Sending..." : "Send Reset Code"}
+                  </Button>
+                </div>
+              ) : (
+                <form onSubmit={handleResetPassword} className="space-y-5">
+                  <div className="p-4 bg-muted/30 rounded-2xl text-center border border-border/50">
+                    <p className="text-sm text-muted-foreground">Reset code sent to</p>
+                    <p className="font-medium text-foreground">{resetForm.email}</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="reset-otp" className="text-sm font-medium">Reset Code</Label>
+                    <Input
+                      id="reset-otp"
+                      type="text"
+                      placeholder="123456"
+                      value={resetForm.otp}
+                      onChange={(e) => setResetForm({ ...resetForm, otp: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                      className="bg-muted/30 border-border/50 rounded-xl h-14 text-center text-2xl tracking-[0.5em] font-mono focus:border-primary/50"
+                      maxLength={6}
+                      data-testid="reset-otp-input"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="reset-new-password" className="text-sm font-medium">New Password</Label>
+                    <Input
+                      id="reset-new-password"
+                      type="password"
+                      placeholder="Enter new password (min 6 chars)"
+                      value={resetForm.new_password}
+                      onChange={(e) => setResetForm({ ...resetForm, new_password: e.target.value })}
+                      className="bg-muted/30 border-border/50 rounded-xl h-12 focus:border-primary/50"
+                      data-testid="reset-new-password-input"
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full btn-romance h-12 text-base font-medium"
+                    disabled={loading || resetForm.otp.length !== 6 || !resetForm.new_password}
+                    data-testid="reset-password-btn"
+                  >
+                    {loading ? "Resetting..." : "Reset Password"}
+                  </Button>
+                </form>
+              )}
+
+              <p className="text-center text-sm text-muted-foreground">
+                <button
+                  type="button"
+                  onClick={() => { setForgotPassword(false); setResetStep(1); }}
+                  className="text-primary hover:text-primary/80 font-medium transition-colors"
+                >
+                  Back to Login
+                </button>
+              </p>
+            </>
           )}
         </div>
       </div>
