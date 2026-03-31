@@ -24,6 +24,8 @@ import base64
 import json
 from io import BytesIO
 
+SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"
+
 router = APIRouter()
 
 # ============== PLANS ROUTES ==============

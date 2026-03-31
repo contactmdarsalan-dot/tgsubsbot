@@ -2140,8 +2140,8 @@ async def delete_paid_post(post_id: str, user = Depends(get_current_user)):
 
 @router.get("/unlock-requests")
 async def get_unlock_requests(user = Depends(get_current_user)):
-    """Get pending unlock requests for admin approval"""
-    requests = await db.unlock_requests.find({"status": "pending_admin"}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    """Get all unlock requests for admin (pending, approved, rejected)"""
+    requests = await db.unlock_requests.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return requests
 
 @router.post("/unlock-requests/{request_id}/approve")
