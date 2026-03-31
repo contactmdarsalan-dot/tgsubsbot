@@ -38,6 +38,7 @@ const FeatureIcon = ({ type }) => {
 export default function LandingPage() {
   const navigate = useNavigate();
   const [plans, setPlans] = useState([]);
+  const isLoggedIn = !!localStorage.getItem("token");
 
   useEffect(() => {
     axios.get(`${API}/api/dashboard-plans`).then(r => setPlans(r.data.plans || [])).catch(() => {});
@@ -57,8 +58,14 @@ export default function LandingPage() {
             <a href="#how">How It Works</a>
           </div>
           <div className="lp-nav-actions">
-            <button className="lp-btn-ghost" onClick={() => navigate("/login")} data-testid="nav-login">Login</button>
-            <button className="lp-btn-primary lp-btn-sm" onClick={goOnboard} data-testid="nav-cta">Launch Bot</button>
+            {isLoggedIn ? (
+              <button className="lp-btn-primary lp-btn-sm" onClick={() => navigate("/dashboard")} data-testid="nav-dashboard">Dashboard</button>
+            ) : (
+              <>
+                <button className="lp-btn-ghost" onClick={() => navigate("/login")} data-testid="nav-login">Login</button>
+                <button className="lp-btn-primary lp-btn-sm" onClick={goOnboard} data-testid="nav-cta">Launch Bot</button>
+              </>
+            )}
           </div>
         </div>
       </nav>

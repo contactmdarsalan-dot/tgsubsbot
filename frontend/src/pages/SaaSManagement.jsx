@@ -323,7 +323,41 @@ export default function SaaSManagement() {
         <TabsContent value="tenants" className="space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-semibold">Tenants ({tenants.length})</h2>
-            <Button onClick={() => openTenantDialog()} data-testid="create-tenant-btn"><Plus className="w-4 h-4 mr-1" /> New Tenant</Button>
+            <div className="flex gap-2">
+              {tenants.length === 0 && (
+                <Button variant="outline" onClick={async () => {
+                  if (!window.confirm("Create Anamika & Kaloo tenants and migrate all existing data to Anamika?")) return;
+                  setMigrating(true);
+                  try {
+                    // Create Anamika tenant
+                    await axios.post(`${API}/saas/tenants`, {
+                      name: "Anamika", owner_telegram_id: "999888777666",
+                      bot_token: "8275964628:AAH8U7ECRII7eyAySt7U2pyDQhLcnZunTnY",
+                      bot_username: "anamikatgsubs_bot", upi_id: "", channel_id: "",
+                    }, getAuth());
+                    // Create Kaloo tenant
+                    await axios.post(`${API}/saas/tenants`, {
+                      name: "Kaloo", bot_username: "KalooBot",
+                    }, getAuth());
+                    // Migrate data
+                    const tenantsList = await axios.get(`${API}/saas/tenants`, getAuth());
+                    const anamika = tenantsList.data.find(t => t.name === "Anamika");
+                    if (anamika) {
+                      const { data } = await axios.post(`${API}/saas/migrate-to-tenant`, {
+                        target_tenant_id: anamika.tenant_id, target_tenant_name: "Anamika",
+                      }, getAuth());
+                      toast.success(`Setup complete! ${data.total_migrated} docs migrated to Anamika`);
+                    }
+                    fetchTenants();
+                  } catch (e) { toast.error(e.response?.data?.detail || "Setup failed"); }
+                  finally { setMigrating(false); }
+                }} disabled={migrating} data-testid="quick-setup-btn">
+                  {migrating ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <ArrowRightLeft className="w-4 h-4 mr-1" />}
+                  Quick Setup (Anamika + Kaloo)
+                </Button>
+              )}
+              <Button onClick={() => openTenantDialog()} data-testid="create-tenant-btn"><Plus className="w-4 h-4 mr-1" /> New Tenant</Button>
+            </div>
           </div>
 
           <Card>
