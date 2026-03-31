@@ -1,15 +1,16 @@
 # Test Credentials
 
-## Super Admin
+## Dashboard Admin
 - **Email:** gamerxboys8958@gmail.com
 - **Password:** Sumit@8958
 
-## Bot Token
-- **Token:** 8275964628:AAH8U7ECRII7eyAySt7U2pyDQhLcnZunTnY
+## Mini App Testing
+- **Admin TG ID:** 123456789 (use via URL: `?tg_id=123456789`)
+- **Non-Admin TG ID:** 9999999
 
-## Webhook URLs
-- **Production:** https://api.tgsubsbot.com/api/telegram/webhook
-- **Preview:** https://glassmorphism-web-1.preview.emergentagent.com/api/telegram/webhook
+## Telegram Bot
+- **Bot Token:** 8275964628:AAH8U7ECRII7eyAySt7U2pyDQhLcnZunTnY
+- **Webhook URL:** /api/telegram/webhook
 
 ## VPS
 - **IP:** 72.61.244.69
