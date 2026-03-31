@@ -2239,3 +2239,107 @@ async def get_telegram_file(file_id: str):
         headers={"Cache-Control": "public, max-age=86400"}
     )
 
+
+
+
+# ============== MINI APP ENDPOINTS ==============
+
+@router.get("/miniapp/plans")
+async def miniapp_get_plans():
+    """Get active plans for Mini App (public, no auth)"""
+    plans = await db.plans.find({"is_active": True}, {"_id": 0}).sort("price", 1).to_list(50)
+    return plans
+
+@router.get("/miniapp/status/{telegram_user_id}")
+async def miniapp_get_status(telegram_user_id: str):
+    """Get user subscription status for Mini App (public, identified by TG ID)"""
+    # Find active subscription
+    sub = await db.subscribers.find_one(
+        {"telegram_user_id": telegram_user_id, "status": "active"},
+        {"_id": 0}
+    )
+    
+    if sub:
+        # Calculate days remaining
+        end_date = sub.get("end_date", "")
+        days_remaining = 0
+        total_days = 30
+        if end_date:
+            try:
+                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+                now = datetime.now(timezone.utc)
+                days_remaining = max(0, (end_dt - now).days)
+                start_date = sub.get("start_date", "")
+                if start_date:
+                    start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+                    total_days = max(1, (end_dt - start_dt).days)
+            except Exception:
+                pass
+        
+        return {
+            "is_active": True,
+            "plan_id": sub.get("plan_id", ""),
+            "plan_name": sub.get("plan_name", "N/A"),
+            "start_date": sub.get("start_date"),
+            "end_date": sub.get("end_date"),
+            "days_remaining": days_remaining,
+            "total_days": total_days,
+        }
+    
+    return {"is_active": False}
+
+@router.post("/miniapp/set-menu-button")
+async def set_miniapp_menu_button(data: dict, user = Depends(get_current_user)):
+    """Set the bot's menu button to open the Mini App"""
+    import httpx
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="Bot token not configured")
+    
+    webapp_url = data.get("url", "")
+    button_text = data.get("text", "Menu")
+    
+    if not webapp_url:
+        raise HTTPException(status_code=400, detail="WebApp URL required")
+    
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        # Set chat menu button (appears for all users)
+        resp = await client.post(
+            f"https://api.telegram.org/bot{bot_token}/setChatMenuButton",
+            json={
+                "menu_button": {
+                    "type": "web_app",
+                    "text": button_text,
+                    "web_app": {"url": webapp_url}
+                }
+            }
+        )
+        result = resp.json()
+        
+        if not result.get("ok"):
+            raise HTTPException(status_code=400, detail=result.get("description", "Failed to set menu button"))
+    
+    return {"message": "Menu button set!", "url": webapp_url, "text": button_text}
+
+@router.get("/miniapp/menu-button-status")
+async def get_menu_button_status(user = Depends(get_current_user)):
+    """Check current menu button status"""
+    import httpx
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    
+    if not bot_token:
+        return {"status": "not_configured", "reason": "Bot token not set"}
+    
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.post(
+            f"https://api.telegram.org/bot{bot_token}/getChatMenuButton",
+            json={}
+        )
+        result = resp.json()
+    
+    return {"status": "ok", "menu_button": result.get("result", {})}

@@ -613,6 +613,64 @@ export default function Settings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Mini App / WebApp Settings */}
+      <Card className="border border-border/50">
+        <CardHeader>
+          <CardTitle className="font-serif text-xl flex items-center gap-2">
+            <ExternalLink className="w-5 h-5 text-primary" />
+            Telegram Mini App
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Add a menu button to your bot that opens a Mini App inside Telegram. Users can view plans, check status, and more.
+            </p>
+            <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg">
+              <span className="text-sm font-mono text-primary break-all">
+                {window.location.origin}/miniapp
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/miniapp`);
+                  toast.success("URL copied!");
+                }}
+              >
+                <Copy className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={async () => {
+                  try {
+                    const prodUrl = settings?.production_url || window.location.origin;
+                    await axios.post(`${API}/miniapp/set-menu-button`, {
+                      url: `${prodUrl}/miniapp`,
+                      text: "Menu"
+                    }, getAuthHeaders());
+                    toast.success("Mini App menu button set!");
+                  } catch (err) {
+                    toast.error(err.response?.data?.detail || "Failed to set menu button");
+                  }
+                }}
+                data-testid="set-miniapp-btn"
+              >
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Set Menu Button
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => window.open(`${window.location.origin}/miniapp`, '_blank')}
+              >
+                Preview Mini App
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

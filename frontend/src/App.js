@@ -33,6 +33,7 @@ import TelegramAdmins from "./pages/TelegramAdmins";
 import BotActivityLogs from "./pages/BotActivityLogs";
 import Branding from "./pages/Branding";
 import BotLanguage from "./pages/BotLanguage";
+import MiniApp from "./pages/MiniApp";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -122,6 +123,7 @@ function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
+      <Route path="/miniapp" element={<MiniApp />} />
       <Route path="/login" element={<Login />} />
       <Route path="/pricing" element={<PricingRoute />} />
       <Route path="/renew" element={<RenewSubscription />} />
