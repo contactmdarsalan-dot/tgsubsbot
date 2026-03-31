@@ -115,11 +115,9 @@ export default function Settings() {
         },
       });
 
-      // Construct full URL
-      const baseUrl = process.env.REACT_APP_BACKEND_URL.replace("/api", "");
-      const fullUrl = `${baseUrl}${response.data.url}`;
-      
-      setSettings({ ...settings, qr_code_url: fullUrl });
+      // Store the API-relative URL (works across environments)
+      const apiUrl = response.data.url;
+      setSettings({ ...settings, qr_code_url: apiUrl });
       toast.success("QR code uploaded! Click Save to apply.");
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to upload QR code");
@@ -623,10 +621,57 @@ export default function Settings() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className="space-y-5">
             <p className="text-sm text-muted-foreground">
-              Add a menu button to your bot that opens a Mini App inside Telegram. Users can view plans, check status, and more.
+              Configure and control your Mini App inside Telegram.
             </p>
+
+            {/* UPI ID for Mini App */}
+            <div className="space-y-2">
+              <Label htmlFor="miniapp_upi_id" className="text-sm font-medium">UPI ID (shown in Mini App)</Label>
+              <Input
+                id="miniapp_upi_id"
+                value={settings.payment_upi_id || ""}
+                onChange={(e) => setSettings({ ...settings, payment_upi_id: e.target.value })}
+                placeholder="yourname@upi"
+                data-testid="miniapp-upi-input"
+              />
+              <p className="text-xs text-muted-foreground">This UPI ID will be shown to users in Mini App for manual payments</p>
+            </div>
+
+            {/* QR Code for Mini App */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Payment QR Code (shown in Mini App)</Label>
+              <div className="flex items-start gap-4">
+                {settings.qr_code_url ? (
+                  <div className="w-24 h-24 rounded-lg border border-border overflow-hidden bg-white flex items-center justify-center flex-shrink-0">
+                    <img
+                      src={settings.qr_code_url?.startsWith("http") ? settings.qr_code_url : `${process.env.REACT_APP_BACKEND_URL?.replace(/\/api\/?$/, "")}${settings.qr_code_url}`}
+                      alt="QR Code"
+                      className="w-full h-full object-contain"
+                      data-testid="miniapp-qr-preview"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-24 h-24 rounded-lg border border-dashed border-border flex items-center justify-center text-xs text-muted-foreground flex-shrink-0">
+                    No QR
+                  </div>
+                )}
+                <div className="space-y-2 flex-1">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleQRUpload}
+                    className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer"
+                    data-testid="miniapp-qr-upload"
+                  />
+                  <p className="text-xs text-muted-foreground">Upload your UPI QR code. Max 5MB. Users will scan this in Mini App.</p>
+                  {uploading && <p className="text-xs text-primary animate-pulse">Uploading...</p>}
+                </div>
+              </div>
+            </div>
+
+            {/* Mini App URL */}
             <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg">
               <span className="text-sm font-mono text-primary break-all">
                 {window.location.origin}/miniapp
