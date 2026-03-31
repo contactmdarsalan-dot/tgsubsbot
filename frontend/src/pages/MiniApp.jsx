@@ -49,6 +49,21 @@ export default function MiniApp() {
   const chatEndRef = useRef(null);
   const sessionIdRef = useRef(`support-${Date.now()}`);
 
+  // Admin Panel
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminPerms, setAdminPerms] = useState([]);
+  const [adminName, setAdminName] = useState("");
+  const [adminStats, setAdminStats] = useState(null);
+  const [pendingPayments, setPendingPayments] = useState([]);
+  const [adminSubs, setAdminSubs] = useState([]);
+  const [liveSessions, setLiveSessions] = useState([]);
+  const [broadcastMsg, setBroadcastMsg] = useState("");
+  const [broadcastSending, setBroadcastSending] = useState(false);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminSubTab, setAdminSubTab] = useState("stats");
+  const [showCreateLive, setShowCreateLive] = useState(false);
+  const [newLive, setNewLive] = useState({ title: "", description: "", scheduled_date: "", scheduled_time: "", price: 0, stream_link: "" });
+
   // Payment
   const [payProcessing, setPayProcessing] = useState(false);
   const [paySuccess, setPaySuccess] = useState(null);
@@ -58,6 +73,10 @@ export default function MiniApp() {
 
   const getTelegramUser = useCallback(() => {
     if (tg?.initDataUnsafe?.user) return tg.initDataUnsafe.user;
+    // Fallback for testing: ?tg_id=123456789
+    const params = new URLSearchParams(window.location.search);
+    const testId = params.get("tg_id");
+    if (testId) return { id: parseInt(testId), first_name: params.get("tg_name") || "Tester" };
     return null;
   }, []);
 
@@ -94,6 +113,19 @@ export default function MiniApp() {
       }
 
       await fetchData();
+      
+      // Check if user is admin
+      if (uid) {
+        try {
+          const adminRes = await fetch(`${API}/miniapp/admin/check/${uid}`);
+          const adminData = await adminRes.json();
+          if (adminData.is_admin) {
+            setIsAdmin(true);
+            setAdminPerms(adminData.permissions || []);
+            setAdminName(adminData.name || "Admin");
+          }
+        } catch (e) { console.error("Admin check error:", e); }
+      }
     } catch (err) {
       console.error("Init error:", err);
     } finally {
@@ -337,6 +369,87 @@ export default function MiniApp() {
     setMoreOpen(false);
     if (tab === "referral") fetchReferral();
     if (tab === "history") fetchPayments();
+    if (tab === "admin") fetchAdminData();
+  };
+
+  // ---- Admin Data ----
+  const fetchAdminData = async () => {
+    if (!userId) return;
+    setAdminLoading(true);
+    try {
+      const [statsRes, paymentsRes, subsRes, liveRes] = await Promise.all([
+        fetch(`${API}/miniapp/admin/stats/${userId}`),
+        adminPerms.includes("verify_payments") ? fetch(`${API}/miniapp/admin/pending-payments/${userId}`) : null,
+        fetch(`${API}/miniapp/admin/subscribers/${userId}`),
+        adminPerms.includes("live_streams") ? fetch(`${API}/miniapp/admin/live-sessions/${userId}`) : null,
+      ]);
+      setAdminStats(await statsRes.json());
+      if (paymentsRes) setPendingPayments(await paymentsRes.json());
+      setAdminSubs(await subsRes.json());
+      if (liveRes) setLiveSessions(await liveRes.json());
+    } catch (e) { console.error("Admin fetch error:", e); }
+    finally { setAdminLoading(false); }
+  };
+
+  const handlePaymentAction = async (paymentId, action) => {
+    try {
+      const res = await fetch(`${API}/miniapp/admin/payment-action`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telegram_user_id: userId, payment_id: paymentId, action }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPendingPayments(prev => prev.filter(p => p.id !== paymentId));
+        setAdminStats(prev => prev ? { ...prev, pending_payments: prev.pending_payments - 1 } : prev);
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const sendBroadcast = async () => {
+    if (!broadcastMsg.trim() || broadcastSending) return;
+    setBroadcastSending(true);
+    try {
+      const res = await fetch(`${API}/miniapp/admin/broadcast`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telegram_user_id: userId, message: broadcastMsg }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBroadcastMsg("");
+        alert(`Broadcast sent to ${data.total_recipients} users!`);
+      }
+    } catch (e) { console.error(e); }
+    finally { setBroadcastSending(false); }
+  };
+
+  const createLiveSession = async () => {
+    if (!newLive.title.trim()) return;
+    try {
+      const res = await fetch(`${API}/miniapp/admin/live-session`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...newLive, telegram_user_id: userId }),
+      });
+      const data = await res.json();
+      if (data.id) {
+        setLiveSessions(prev => [data, ...prev]);
+        setShowCreateLive(false);
+        setNewLive({ title: "", description: "", scheduled_date: "", scheduled_time: "", price: 0, stream_link: "" });
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const announceLive = async (sessionId) => {
+    try {
+      const res = await fetch(`${API}/miniapp/admin/announce-live/${sessionId}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telegram_user_id: userId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLiveSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: "announced" } : s));
+        alert(`Announced to ${data.sent_to} users!`);
+      }
+    } catch (e) { console.error(e); }
   };
 
   // ===== LOADING SCREEN =====
@@ -736,6 +849,151 @@ export default function MiniApp() {
               ))}
             </motion.div>
           )}
+
+          {/* ===== ADMIN TAB ===== */}
+          {activeTab === "admin" && isAdmin && (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} data-testid="miniapp-admin-panel">
+              <h2 className="ma-title">Admin Panel</h2>
+              <p className="ma-subtitle">Welcome, {adminName}</p>
+
+              {/* Admin Sub-Tabs */}
+              <div className="ma-admin-tabs" data-testid="admin-sub-tabs">
+                {[
+                  { id: "stats", label: "Stats", perm: null },
+                  ...(adminPerms.includes("verify_payments") ? [{ id: "payments", label: "Payments", perm: "verify_payments" }] : []),
+                  ...(adminPerms.includes("broadcast") ? [{ id: "broadcast", label: "Broadcast", perm: "broadcast" }] : []),
+                  ...(adminPerms.includes("live_streams") ? [{ id: "live", label: "Live", perm: "live_streams" }] : []),
+                  { id: "subs", label: "Users", perm: null },
+                ].map(t => (
+                  <button key={t.id} className={`ma-admin-tab ${adminSubTab === t.id ? "active" : ""}`} onClick={() => setAdminSubTab(t.id)} data-testid={`admin-tab-${t.id}`}>
+                    {t.label}
+                    {t.id === "payments" && pendingPayments.length > 0 && <span className="ma-count-dot">{pendingPayments.length}</span>}
+                  </button>
+                ))}
+              </div>
+
+              {adminLoading ? (
+                <div className="ma-loader"><div className="ma-spinner" /><p>Loading...</p></div>
+              ) : (
+                <>
+                  {/* STATS */}
+                  {adminSubTab === "stats" && adminStats && (
+                    <div className="ma-admin-stats" data-testid="admin-stats">
+                      <div className="ma-stat-card green">
+                        <span className="ma-stat-value">{adminStats.total_revenue?.toLocaleString?.() || 0}</span>
+                        <span className="ma-stat-label">Revenue</span>
+                      </div>
+                      <div className="ma-stat-card blue">
+                        <span className="ma-stat-value">{adminStats.active_subscribers}</span>
+                        <span className="ma-stat-label">Active Subs</span>
+                      </div>
+                      <div className="ma-stat-card purple">
+                        <span className="ma-stat-value">{adminStats.total_subscribers}</span>
+                        <span className="ma-stat-label">Total Users</span>
+                      </div>
+                      <div className="ma-stat-card orange">
+                        <span className="ma-stat-value">{adminStats.pending_payments}</span>
+                        <span className="ma-stat-label">Pending</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* PENDING PAYMENTS */}
+                  {adminSubTab === "payments" && (
+                    <div className="ma-admin-list" data-testid="admin-payments-list">
+                      {pendingPayments.length === 0 ? (
+                        <div className="ma-empty">No pending payments</div>
+                      ) : pendingPayments.map(p => (
+                        <div key={p.id} className="ma-admin-item" data-testid={`payment-${p.id}`}>
+                          <div className="ma-admin-item-top">
+                            <strong>{p.telegram_username || p.telegram_user_id}</strong>
+                            <span className="ma-amt-tag">{p.amount}</span>
+                          </div>
+                          <p className="ma-admin-item-sub">{p.plan_name || "Unknown Plan"} &middot; {p.created_at?.split("T")[0] || ""}</p>
+                          {p.screenshot_file_id && (
+                            <img src={`${API}/telegram/file/${p.screenshot_file_id}`} alt="Screenshot" className="ma-admin-screenshot" loading="lazy" />
+                          )}
+                          <div className="ma-admin-actions">
+                            <button className="ma-btn-approve" onClick={() => handlePaymentAction(p.id, "approve")} data-testid={`approve-${p.id}`}>Approve</button>
+                            <button className="ma-btn-reject" onClick={() => handlePaymentAction(p.id, "reject")} data-testid={`reject-${p.id}`}>Reject</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* BROADCAST */}
+                  {adminSubTab === "broadcast" && (
+                    <div className="ma-admin-broadcast" data-testid="admin-broadcast">
+                      <textarea className="ma-input ma-textarea" placeholder="Type your broadcast message..." value={broadcastMsg} onChange={e => setBroadcastMsg(e.target.value)} rows={4} data-testid="broadcast-input" />
+                      <button className="ma-btn-accent" onClick={sendBroadcast} disabled={broadcastSending || !broadcastMsg.trim()} data-testid="broadcast-send-btn">
+                        {broadcastSending ? "Sending..." : "Send Broadcast"}
+                      </button>
+                      <p className="ma-pay-hint">Message will be sent to all bot users.</p>
+                    </div>
+                  )}
+
+                  {/* LIVE SESSIONS */}
+                  {adminSubTab === "live" && (
+                    <div className="ma-admin-list" data-testid="admin-live-sessions">
+                      <button className="ma-btn-outline" onClick={() => setShowCreateLive(!showCreateLive)} data-testid="create-live-btn">
+                        {showCreateLive ? "Cancel" : "+ Create Live Session"}
+                      </button>
+
+                      {showCreateLive && (
+                        <div className="ma-admin-create-form" data-testid="create-live-form">
+                          <input className="ma-input" placeholder="Session Title" value={newLive.title} onChange={e => setNewLive(p => ({...p, title: e.target.value}))} />
+                          <textarea className="ma-input ma-textarea" placeholder="Description" value={newLive.description} onChange={e => setNewLive(p => ({...p, description: e.target.value}))} rows={2} />
+                          <div className="ma-form-row">
+                            <input className="ma-input" type="date" value={newLive.scheduled_date} onChange={e => setNewLive(p => ({...p, scheduled_date: e.target.value}))} />
+                            <input className="ma-input" type="time" value={newLive.scheduled_time} onChange={e => setNewLive(p => ({...p, scheduled_time: e.target.value}))} />
+                          </div>
+                          <div className="ma-form-row">
+                            <input className="ma-input" type="number" placeholder="Price (0=free)" value={newLive.price} onChange={e => setNewLive(p => ({...p, price: parseInt(e.target.value) || 0}))} />
+                            <input className="ma-input" placeholder="Stream Link" value={newLive.stream_link} onChange={e => setNewLive(p => ({...p, stream_link: e.target.value}))} />
+                          </div>
+                          <button className="ma-btn-accent" onClick={createLiveSession} data-testid="save-live-btn">Create Session</button>
+                        </div>
+                      )}
+
+                      {liveSessions.length === 0 && !showCreateLive ? (
+                        <div className="ma-empty">No live sessions</div>
+                      ) : liveSessions.map(s => (
+                        <div key={s.id} className="ma-admin-item" data-testid={`live-${s.id}`}>
+                          <div className="ma-admin-item-top">
+                            <strong>{s.title}</strong>
+                            <span className={`ma-status-tag ${s.status}`}>{s.status}</span>
+                          </div>
+                          <p className="ma-admin-item-sub">
+                            {s.scheduled_date || "No date"} {s.scheduled_time || ""} &middot; {s.price > 0 ? `₹${s.price}` : "FREE"}
+                          </p>
+                          {s.status !== "announced" && (
+                            <button className="ma-btn-sm" onClick={() => announceLive(s.id)} data-testid={`announce-${s.id}`}>Announce</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* SUBSCRIBERS */}
+                  {adminSubTab === "subs" && (
+                    <div className="ma-admin-list" data-testid="admin-subs-list">
+                      <p className="ma-subtitle">{adminSubs.length} subscribers</p>
+                      {adminSubs.map((s, i) => (
+                        <div key={i} className="ma-admin-item" data-testid={`sub-${i}`}>
+                          <div className="ma-admin-item-top">
+                            <strong>{s.telegram_username || s.telegram_user_id}</strong>
+                            <span className={`ma-status-tag ${s.status}`}>{s.status}</span>
+                          </div>
+                          <p className="ma-admin-item-sub">{s.plan_name || "Unknown"} &middot; Paid: ₹{s.amount_paid || 0}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </motion.div>
+          )}
         </AnimatePresence>
       </div>
 
@@ -744,6 +1002,7 @@ export default function MiniApp() {
         {[
           { id: "plans", label: "Plans", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> },
           { id: "status", label: "Status", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> },
+          ...(isAdmin ? [{ id: "admin", label: "Admin", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg> }] : []),
           { id: "support", label: "Support", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
           { id: "more", label: "More", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg> },
         ].map((tab) => (
@@ -755,6 +1014,7 @@ export default function MiniApp() {
           >
             {tab.icon}
             <span>{tab.label}</span>
+            {tab.id === "admin" && adminStats?.pending_payments > 0 && <span className="ma-admin-badge">{adminStats.pending_payments}</span>}
           </button>
         ))}
       </div>

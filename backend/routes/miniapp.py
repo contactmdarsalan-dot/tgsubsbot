@@ -750,3 +750,310 @@ async def get_menu_button_status():
             btn = result.get("result", {})
             return {"status": "configured", "button": btn}
     return {"status": "unknown"}
+
+
+# ============== ADMIN PANEL ENDPOINTS ==============
+
+async def _verify_miniapp_admin(telegram_user_id: str):
+    """Check if a telegram user is a registered admin, return admin doc or None"""
+    admin = await db.telegram_admins.find_one(
+        {"telegram_user_id": str(telegram_user_id), "is_active": True}, {"_id": 0}
+    )
+    return admin
+
+
+@router.get("/admin/check/{telegram_user_id}")
+async def miniapp_admin_check(telegram_user_id: str):
+    """Check if user is an admin and return their permissions"""
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        return {"is_admin": False, "permissions": [], "name": ""}
+    return {
+        "is_admin": True,
+        "name": admin.get("name", "Admin"),
+        "permissions": admin.get("permissions", []),
+        "role": admin.get("role", "admin"),
+    }
+
+
+@router.get("/admin/stats/{telegram_user_id}")
+async def miniapp_admin_stats(telegram_user_id: str):
+    """Get quick dashboard stats for admin"""
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+
+    total_subs = await db.subscribers.count_documents({})
+    active_subs = await db.subscribers.count_documents({"status": "active"})
+    pending_payments = await db.payments.count_documents({"status": "pending"})
+    
+    # Calculate revenue
+    pipeline = [
+        {"$match": {"status": {"$in": ["verified", "approved"]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    rev_result = await db.payments.aggregate(pipeline).to_list(1)
+    total_revenue = rev_result[0]["total"] if rev_result else 0
+
+    return {
+        "total_subscribers": total_subs,
+        "active_subscribers": active_subs,
+        "pending_payments": pending_payments,
+        "total_revenue": total_revenue,
+    }
+
+
+@router.get("/admin/pending-payments/{telegram_user_id}")
+async def miniapp_admin_pending_payments(telegram_user_id: str):
+    """Get pending payments for admin to verify"""
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+    if "verify_payments" not in admin.get("permissions", []):
+        raise HTTPException(status_code=403, detail="No payment verification permission")
+
+    payments_list = await db.payments.find(
+        {"status": "pending"}, {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    return payments_list
+
+
+@router.post("/admin/payment-action")
+async def miniapp_admin_payment_action(data: dict):
+    """Approve or reject a payment"""
+    telegram_user_id = data.get("telegram_user_id", "")
+    payment_id = data.get("payment_id", "")
+    action = data.get("action", "")  # "approve" or "reject"
+
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+    if "verify_payments" not in admin.get("permissions", []):
+        raise HTTPException(status_code=403, detail="No permission")
+
+    if action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="Invalid action")
+
+    payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    new_status = "verified" if action == "approve" else "rejected"
+    await db.payments.update_one(
+        {"id": payment_id},
+        {"$set": {"status": new_status, "verified_by": admin.get("name", "Admin"), "verified_at": datetime.now(timezone.utc).isoformat()}}
+    )
+
+    # Notify user via Telegram
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    user_chat_id = payment.get("telegram_user_id", "")
+
+    if bot_token and user_chat_id:
+        if action == "approve":
+            msg = f"✅ <b>Payment Approved!</b>\n\n"
+            msg += f"Amount: ₹{payment.get('amount', 0)}\n"
+            msg += f"Plan: {payment.get('plan_name', '')}\n\n"
+            msg += f"Your subscription is now active! 🎉"
+            await send_telegram_message(user_chat_id, msg, bot_token)
+
+            # Add to channel
+            plan = await db.plans.find_one({"id": payment.get("plan_id")}, {"_id": 0})
+            channel_id = ""
+            if plan:
+                channel_id = plan.get("channel_id", "") or settings.get("telegram_channel_id", "")
+            else:
+                channel_id = settings.get("telegram_channel_id", "")
+            if channel_id:
+                await add_to_channel(user_chat_id, channel_id, bot_token)
+
+            # Create/update subscription
+            await db.subscribers.update_one(
+                {"telegram_user_id": user_chat_id},
+                {"$set": {
+                    "telegram_user_id": user_chat_id,
+                    "telegram_username": payment.get("telegram_username", ""),
+                    "plan_id": payment.get("plan_id", ""),
+                    "plan_name": payment.get("plan_name", ""),
+                    "amount_paid": payment.get("amount", 0),
+                    "status": "active",
+                    "start_date": datetime.now(timezone.utc).isoformat(),
+                    "end_date": (datetime.now(timezone.utc) + timedelta(days=plan.get("duration_days", 30) if plan else 30)).isoformat(),
+                    "payment_id": payment_id,
+                }},
+                upsert=True
+            )
+        else:
+            msg = f"❌ <b>Payment Rejected</b>\n\n"
+            msg += f"Amount: ₹{payment.get('amount', 0)}\n"
+            msg += f"Plan: {payment.get('plan_name', '')}\n\n"
+            msg += f"Please try again or contact support."
+            await send_telegram_message(user_chat_id, msg, bot_token)
+
+    return {"success": True, "new_status": new_status}
+
+
+@router.get("/admin/subscribers/{telegram_user_id}")
+async def miniapp_admin_subscribers(telegram_user_id: str):
+    """Get subscribers list for admin"""
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+
+    subs = await db.subscribers.find(
+        {}, {"_id": 0}
+    ).sort("start_date", -1).to_list(100)
+    return subs
+
+
+@router.post("/admin/broadcast")
+async def miniapp_admin_broadcast(data: dict, background_tasks: BackgroundTasks):
+    """Send broadcast message from Mini App"""
+    telegram_user_id = data.get("telegram_user_id", "")
+    message = data.get("message", "").strip()
+
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+    if "broadcast" not in admin.get("permissions", []):
+        raise HTTPException(status_code=403, detail="No broadcast permission")
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is required")
+
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="Bot token not configured")
+
+    # Get all bot users
+    bot_users = await db.bot_users.find({}, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+    user_ids = [u["telegram_user_id"] for u in bot_users if u.get("telegram_user_id")]
+
+    # Also get subscribers
+    subs = await db.subscribers.find({}, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+    sub_ids = [s["telegram_user_id"] for s in subs if s.get("telegram_user_id")]
+    
+    all_ids = list(set(user_ids + sub_ids))
+
+    # Send in background
+    broadcast_id = str(uuid.uuid4())
+    await db.broadcasts.insert_one({
+        "id": broadcast_id,
+        "message": message,
+        "sent_by": admin.get("name", "Admin"),
+        "sent_by_id": telegram_user_id,
+        "total_recipients": len(all_ids),
+        "sent": 0,
+        "failed": 0,
+        "status": "sending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    async def _send_broadcast():
+        sent = 0
+        failed = 0
+        for uid in all_ids:
+            try:
+                await send_telegram_message(uid, message, bot_token)
+                sent += 1
+            except Exception:
+                failed += 1
+        await db.broadcasts.update_one(
+            {"id": broadcast_id},
+            {"$set": {"sent": sent, "failed": failed, "status": "completed"}}
+        )
+
+    background_tasks.add_task(_send_broadcast)
+
+    return {"success": True, "broadcast_id": broadcast_id, "total_recipients": len(all_ids)}
+
+
+@router.get("/admin/live-sessions/{telegram_user_id}")
+async def miniapp_admin_live_sessions(telegram_user_id: str):
+    """Get live sessions for admin"""
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+    if "live_streams" not in admin.get("permissions", []):
+        raise HTTPException(status_code=403, detail="No live stream permission")
+
+    sessions = await db.live_sessions.find(
+        {}, {"_id": 0}
+    ).sort("created_at", -1).to_list(20)
+    return sessions
+
+
+@router.post("/admin/live-session")
+async def miniapp_admin_create_live(data: dict):
+    """Create a live session from Mini App"""
+    telegram_user_id = data.get("telegram_user_id", "")
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+    if "live_streams" not in admin.get("permissions", []):
+        raise HTTPException(status_code=403, detail="No live stream permission")
+
+    session_id = str(uuid.uuid4())
+    session = {
+        "id": session_id,
+        "title": data.get("title", "Live Session"),
+        "description": data.get("description", ""),
+        "scheduled_date": data.get("scheduled_date", ""),
+        "scheduled_time": data.get("scheduled_time", ""),
+        "price": data.get("price", 0),
+        "max_viewers": data.get("max_viewers", 100),
+        "stream_link": data.get("stream_link", ""),
+        "superchat_enabled": data.get("superchat_enabled", False),
+        "superchat_min_amount": data.get("superchat_min_amount", 50),
+        "status": "scheduled",
+        "tickets_sold": 0,
+        "created_by": admin.get("name", "Admin"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.live_sessions.insert_one(session)
+    del session["_id"]
+    return session
+
+
+@router.post("/admin/announce-live/{session_id}")
+async def miniapp_admin_announce_live(session_id: str, data: dict):
+    """Announce a live session to all users"""
+    telegram_user_id = data.get("telegram_user_id", "")
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+
+    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+
+    # Build announcement message
+    msg = f"🔴 <b>LIVE SESSION ANNOUNCED!</b>\n\n"
+    msg += f"📺 <b>{session.get('title', 'Live')}</b>\n"
+    if session.get("description"):
+        msg += f"{session['description']}\n\n"
+    msg += f"📅 Date: {session.get('scheduled_date', 'TBA')}\n"
+    msg += f"⏰ Time: {session.get('scheduled_time', 'TBA')}\n"
+    if session.get("price", 0) > 0:
+        msg += f"💰 Price: ₹{session['price']}\n"
+    else:
+        msg += f"💰 Price: FREE\n"
+    msg += f"\n🔗 Don't miss it!"
+
+    # Get all users
+    bot_users = await db.bot_users.find({}, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+    sent = 0
+    for u in bot_users:
+        uid = u.get("telegram_user_id")
+        if uid:
+            try:
+                await send_telegram_message(uid, msg, bot_token)
+                sent += 1
+            except Exception:
+                pass
+
+    await db.live_sessions.update_one({"id": session_id}, {"$set": {"status": "announced"}})
+    return {"success": True, "sent_to": sent}
