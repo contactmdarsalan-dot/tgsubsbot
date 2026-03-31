@@ -1,141 +1,121 @@
 {
-  "theme_and_archetype": {
-    "domain": "Adult Content / Romance Dashboard",
-    "theme": "Dark",
-    "archetype": "Archetype 5 (Jewel & Luxury)",
-    "description": "A premium, romantic, and sensual admin dashboard for adult content creators. It utilizes deep reds, rose gold accents, soft pinks, and warm dark backgrounds. The vibe is expensive, cinematic, and moody with a focus on 'Soft UI Evolution'."
+  "theme": "Dark",
+  "archetype": "7 (Electric & Neon) modified with Crystal Glassmorphism",
+  "design_philosophy": "A high-energy, premium SaaS landing page for creators. Uses a base of deep tinted void black, intersected by hot pink and deep purple neon accents. Relies heavily on Crystal Glassmorphism (sharp 1px white/10 borders, heavy background blurs, saturated light bleed) to create an edgy, lucrative, and trustworthy environment for influencers launching their Telegram bots.",
+  "colors": {
+    "background": "#05050A",
+    "surface": "rgba(255, 255, 255, 0.03)",
+    "surface_glass": "rgba(255, 255, 255, 0.05)",
+    "border": "rgba(255, 255, 255, 0.1)",
+    "primary": "#FF007F",
+    "primary_hover": "#FF3399",
+    "secondary": "#7000FF",
+    "text_primary": "#FFFFFF",
+    "text_secondary": "rgba(255, 255, 255, 0.7)",
+    "text_muted": "rgba(255, 255, 255, 0.4)",
+    "gradient_accent": "linear-gradient(135deg, #FF007F 0%, #7000FF 100%)"
   },
   "typography": {
-    "imports": [
-      "@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Poppins:wght@300;400;500;600&display=swap');"
-    ],
-    "font_families": {
-      "heading": "'Playfair Display', serif",
-      "body": "'Poppins', sans-serif",
-      "mono": "'JetBrains Mono', monospace"
-    },
-    "hierarchy": {
-      "h1": "text-4xl sm:text-5xl font-serif font-semibold tracking-tight text-foreground",
-      "h2": "text-2xl sm:text-3xl font-serif font-medium tracking-tight text-foreground",
-      "h3": "text-xl sm:text-2xl font-serif font-medium text-foreground",
-      "h4": "text-lg sm:text-xl font-sans font-medium text-foreground",
-      "body": "text-sm sm:text-base font-sans font-normal text-muted-foreground",
-      "small_accent": "text-xs font-sans font-medium tracking-[0.1em] uppercase text-accent"
-    }
-  },
-  "colors": {
-    "css_variables": {
-      "light": {
-        "--background": "0 0% 100%",
-        "--foreground": "340 50% 10%",
-        "--card": "340 20% 98%",
-        "--card-foreground": "340 50% 10%",
-        "--popover": "340 20% 98%",
-        "--popover-foreground": "340 50% 10%",
-        "--primary": "346 80% 50%",
-        "--primary-foreground": "0 0% 100%",
-        "--secondary": "340 30% 90%",
-        "--secondary-foreground": "340 50% 20%",
-        "--muted": "340 20% 92%",
-        "--muted-foreground": "340 10% 40%",
-        "--accent": "350 80% 70%",
-        "--accent-foreground": "340 50% 10%",
-        "--destructive": "0 84.2% 60.2%",
-        "--destructive-foreground": "0 0% 100%",
-        "--border": "340 20% 85%",
-        "--input": "340 20% 85%",
-        "--ring": "346 80% 50%",
-        "--radius": "1rem"
-      },
-      "dark": {
-        "--background": "340 50% 4%",
-        "--foreground": "340 30% 96%",
-        "--card": "340 40% 7%",
-        "--card-foreground": "340 30% 96%",
-        "--popover": "340 40% 7%",
-        "--popover-foreground": "340 30% 96%",
-        "--primary": "346 80% 50%",
-        "--primary-foreground": "0 0% 100%",
-        "--secondary": "340 40% 15%",
-        "--secondary-foreground": "340 30% 90%",
-        "--muted": "340 30% 12%",
-        "--muted-foreground": "340 20% 65%",
-        "--accent": "350 80% 75%",
-        "--accent-foreground": "340 50% 10%",
-        "--destructive": "0 62.8% 30.6%",
-        "--destructive-foreground": "340 30% 96%",
-        "--border": "340 40% 15%",
-        "--input": "340 40% 15%",
-        "--ring": "346 80% 50%",
-        "--radius": "1rem"
-      }
-    },
-    "description": "The palette revolves around extremely dark burgundy/wine (#0A0406) backgrounds, deeply saturated but soft crimson reds for actions (#E11D48), and rose gold/pink accents. The tone is strictly warm. No harsh cold grays; all grays must have a red/pink tint."
-  },
-  "layout_and_spacing": {
-    "container": "Use generous padding: p-6 to p-10 inside cards. Use gap-6 or gap-8 between widgets.",
-    "dashboard_grid": "Bento-style grids with slight asymmetry where possible. Instead of a rigid 3-column equal grid, use a 4-column base with span-2 and span-1 variations to create visual tension.",
-    "borders_and_radius": "Use rounded-2xl or rounded-3xl for a softer, organic feel. Hard edges should be avoided. Borders should be 1px and very subtle (border-white/5 in dark mode)."
-  },
-  "surfaces_and_materials": {
-    "glassmorphism": {
-      "usage": "Headers, floating navigation, modals, and sticky action bars.",
-      "classes": "bg-background/60 backdrop-blur-2xl border border-white/5 shadow-[0_8px_32px_rgba(225,29,72,0.05)]"
-    },
-    "cards": {
-      "usage": "Data widgets, subscriber lists, revenue charts.",
-      "classes": "bg-card border border-border/50 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300"
-    },
-    "buttons_primary": {
-      "usage": "Main CTAs like 'Go Live', 'Save Plan', 'Verify Payment'.",
-      "classes": "bg-gradient-to-r from-rose-600 to-red-600 text-white rounded-xl shadow-[0_0_15px_rgba(225,29,72,0.2)] hover:shadow-[0_0_20px_rgba(225,29,72,0.4)] hover:-translate-y-0.5 transition-all duration-300 border-none"
-    }
-  },
-  "animations_and_interactions": {
-    "hover_states": "All interactive elements must shift visually. Cards should have a slight border color shift to a deep red, and a very subtle y-axis lift (-translate-y-1).",
-    "transitions": "Use 300ms duration for layout shifts and 200ms for color/opacity changes. Avoid snappy/abrupt animations. Sensual means smooth and deliberate.",
-    "loading": "Use slow pulsating opacities or soft sweeping gradient lines rather than fast spinning loaders."
-  },
-  "components": {
-    "icons": {
-      "library": "lucide-react",
-      "style": "Use stroke-width 1.5 for a delicate, premium feel. Avoid chunky icons."
-    },
-    "shadcn_overrides": {
-      "Card": "Override default borders to be softer. Use rounded-2xl.",
-      "Button": "Use rounded-xl, avoid default Vercel stark look.",
-      "Input": "Soft dark backgrounds (bg-muted/50), 1px subtle border, focus-visible:ring-primary/50, rounded-xl.",
-      "Tabs": "Use pill-shaped indicators rather than underline for a softer feel. bg-muted/50 for the tab list."
-    }
-  },
-  "media": {
-    "image_urls": [
-      {
-        "url": "https://images.pexels.com/photos/4722583/pexels-photo-4722583.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-        "category": "background",
-        "description": "Deep red velvet theater curtain, perfect for the login page background or an elegant hero section behind a glassmorphism card."
-      },
-      {
-        "url": "https://images.unsplash.com/photo-1651651441982-b69f52985ff6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwyfHxzZW5zdWFsJTIwcG9ydHJhaXQlMjBkYXJrfGVufDB8fHx8MTc3NDU2NTQ1Nnww&ixlib=rb-4.1.0&q=85",
-        "category": "avatar_creator",
-        "description": "Sensual portrait of a woman with red hair, suitable for creator profile pictures or 'Top Creator' showcase widgets."
-      },
-      {
-        "url": "https://images.pexels.com/photos/7738064/pexels-photo-7738064.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-        "category": "content_placeholder",
-        "description": "Alluring dark studio photo, excellent for showcasing 'blurred paid posts' or premium video call previews."
-      }
+    "heading_font": "Unbounded, sans-serif",
+    "body_font": "Manrope, sans-serif",
+    "h1": "text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter leading-none text-white",
+    "h2": "text-3xl sm:text-4xl font-bold tracking-tight text-white",
+    "h3": "text-xl sm:text-2xl font-bold tracking-tight text-white",
+    "body_large": "text-lg sm:text-xl font-medium text-white/70 leading-relaxed",
+    "body": "text-base text-white/70 leading-relaxed",
+    "label": "text-xs font-bold uppercase tracking-[0.2em] text-white/50",
+    "rules": [
+      "Headings MUST use tight tracking (tracking-tighter).",
+      "No Inter or generic sans for headings. Unbounded gives a futuristic, premium tech vibe.",
+      "Labels must be uppercase with wide tracking."
     ]
   },
-  "testing": {
-    "requirements": "All interactive elements (buttons, nav links, form inputs, table rows) must include `data-testid` attributes using kebab-case role-based naming (e.g., `data-testid=\"go-live-button\"`)."
+  "layout_and_surfaces": {
+    "spacing": "Generous spacing. Sections use py-24 to py-32. Components use p-6 to p-8.",
+    "glassmorphism_rules": "Use 'Crystal Glass' style. Containers: bg-white/5 backdrop-blur-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]. Text over glass MUST be high contrast.",
+    "bento_grid": "Mode A ('Tetris' Grid). Use grid-cols-1 md:grid-cols-8 lg:grid-cols-12 with gap-6. Mix span sizes (e.g., col-span-12 md:col-span-8 row-span-2) to create asymmetry and tension."
   },
-  "instructions_to_main_agent": [
-    "1. Replace font imports in index.css with Playfair Display and Poppins.",
-    "2. Apply the custom colors defined in this JSON to the Tailwind base layer.",
-    "3. Build the sidebar/navigation using glassmorphism if it floats, or a very dark solid background if fixed.",
-    "4. Use generous border radiuses (rounded-2xl/3xl) to achieve the 'Soft UI' look.",
-    "5. When displaying stats or revenue, use serif fonts for the numbers (Playfair Display) to convey luxury and wealth.",
-    "6. Do not use generic blue or purple gradients. Stick to the red/rose/burgundy palette."
-  ]
+  "components_strategy": {
+    "buttons": {
+      "primary": "Solid #FF007F background, text-white, rounded-full, px-8 py-4, font-bold transition-all hover:scale-105 hover:bg-[#FF3399] hover:shadow-[0_0_20px_rgba(255,0,127,0.4)]",
+      "glass": "bg-white/5 backdrop-blur-md border border-white/10 text-white rounded-full px-8 py-4 font-bold hover:bg-white/10 transition-all"
+    },
+    "cards": {
+      "base": "Rounded-2xl or rounded-3xl bg-white/5 backdrop-blur-xl border border-white/10 p-8 overflow-hidden relative group transition-all hover:border-white/20",
+      "glow_effect": "Add absolute inset-0 bg-gradient-to-br from-[#FF007F]/10 to-[#7000FF]/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
+    },
+    "icons": "lucide-react (use default imports)",
+    "animations": "Framer Motion for entrance (y: 20, opacity: 0 -> y: 0, opacity: 1). Staggered children in grids."
+  },
+  "pages": {
+    "LandingPage": {
+      "sections": [
+        {
+          "name": "Header",
+          "description": "Sticky nav. bg-[#05050A]/80 backdrop-blur-md border-b border-white/10. Logo on left, links center, Primary CTA 'Launch Bot' on right leading to /creator-onboard."
+        },
+        {
+          "name": "Hero",
+          "description": "Massive top margin. Background has dark overlay over abstract purple neon image to ensure text pops (bg-black/60). Tagline label: 'THE ULTIMATE CREATOR TOOL'. H1: 'Launch your Telegram subscription bot in 2 minutes'. Subtitle: 'Monetize your audience with AI payments, auto QR codes, and exclusive content gates.' CTA: Primary button redirecting to /creator-onboard. Optional secondary CTA 'View Demo'. Use staggered Framer Motion entrance."
+        },
+        {
+          "name": "SocialProofMarquee",
+          "description": "Use react-fast-marquee. 'Trusted by 10,000+ creators across'. Display logos in grayscale/white with opacity-50, hover:opacity-100."
+        },
+        {
+          "name": "FeaturesBento",
+          "description": "Asymmetric bento grid. Card 1 (Large): AI-Powered Payment Verification (show a mock scanning UI). Card 2 (Tall): Paid Posts with Blur (glassmorphism blurred text visual). Card 3 (Square): Automatic QR Codes (use QR hologram image). Card 4 (Square): Live Streaming Tickets."
+        },
+        {
+          "name": "HowItWorks",
+          "description": "Vertical timeline or 3-step horizontal cards. Step 1: Connect Telegram. Step 2: Set Pricing & Tiers. Step 3: Share Link & Earn. Use neon gradient connecting lines."
+        },
+        {
+          "name": "Testimonials",
+          "description": "Glassmorphism cards featuring creator portraits. Quotes emphasizing speed of setup and increased revenue."
+        },
+        {
+          "name": "BottomCTA",
+          "description": "Massive py-32 section. Background uses gradient accent with heavy blur or glass image. H2: 'Ready to own your audience?'. Big CTA button to /creator-onboard."
+        },
+        {
+          "name": "Footer",
+          "description": "Dark background. Large Brand text. Links to Legal, Terms, Support. Very minimal and clean."
+        }
+      ]
+    }
+  },
+  "image_urls": {
+    "hero_background": {
+      "url": "https://images.unsplash.com/photo-1762278804729-13d330fad71a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTN8MHwxfHNlYXJjaHw0fHxwdXJwbGUlMjBuZW9uJTIwbGlnaHRzJTIwZGFyayUyMGFic3RyYWN0fGVufDB8fHx8MTc3NDk3MDYwOHww&ixlib=rb-4.1.0&q=85",
+      "description": "Abstract purple and pink light streaks on black. Use with heavy bg-black/70 overlay."
+    },
+    "feature_qr_bg": {
+      "url": "https://images.unsplash.com/photo-1641427858305-6811d70f0c8b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MDV8MHwxfHNlYXJjaHwzfHxjeWJlcnB1bmslMjBwaG9uZSUyMGRhcmslMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3NDk3MDYwOXww&ixlib=rb-4.1.0&q=85",
+      "description": "Cyberpunk dark phone aesthetic. Use inside the Automatic QR Codes feature card."
+    },
+    "feature_glass_bg": {
+      "url": "https://images.unsplash.com/photo-1633856384682-cff3b9f06682?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTF8MHwxfHNlYXJjaHw0fHxwaW5rJTIwcHVycGxlJTIwZ2xhc3MlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3NDk3MDYxMnww&ixlib=rb-4.1.0&q=85",
+      "description": "Shiny purple glass object. Use for the 'Paid posts with blur' or 'Multi-tenant isolation' cards."
+    },
+    "creator_1": {
+      "url": "https://images.pexels.com/photos/33786445/pexels-photo-33786445.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Creator portrait for testimonial."
+    },
+    "creator_2": {
+      "url": "https://images.unsplash.com/photo-1620779040904-b39694c620dd?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzl8MHwxfHNlYXJjaHwxfHxjcmVhdG9yJTIwcG9ydHJhaXQlMjBkYXJrJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzQ5NzA2MDN8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Creator portrait for testimonial."
+    },
+    "logo_1": {
+      "url": "https://images.unsplash.com/photo-1705988142466-e468bc654eeb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwxfHxjb21wYW55JTIwbG9nbyUyMHdoaXRlJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzQ5NTAwNTB8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Abstract white logo for marquee."
+    },
+    "logo_2": {
+      "url": "https://images.unsplash.com/photo-1764344815160-0e2afc6939a0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwyfHxjb21wYW55JTIwbG9nbyUyMHdoaXRlJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzQ5NTAwNTB8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Abstract white logo for marquee."
+    }
+  },
+  "testing": {
+    "requirements": "All interactive elements MUST have data-testid. E.g., data-testid='hero-cta-button', data-testid='nav-creator-onboard'."
+  }
 }

@@ -1244,7 +1244,7 @@ async def miniapp_admin_paid_posts(telegram_user_id: str):
 
 @router.post("/admin/paid-post")
 async def miniapp_admin_create_paid_post(data: dict):
-    """Create a paid post from Mini App"""
+    """Create a paid post from Mini App (JSON without file)"""
     telegram_user_id = data.get("telegram_user_id", "")
     admin = await _verify_miniapp_admin(telegram_user_id)
     if not admin:
@@ -1259,8 +1259,76 @@ async def miniapp_admin_create_paid_post(data: dict):
         "blur_level": data.get("blur_level", 10),
         "content_type": data.get("content_type", "text"),
         "original_file_id": data.get("original_file_id", ""),
+        "media_url": data.get("media_url", ""),
         "original_message_id": data.get("original_message_id", 0),
         "blurred_message_id": data.get("blurred_message_id", 0),
+        "is_active": True,
+        "unlock_count": 0,
+        "created_by": admin.get("name", "Admin"),
+        "tenant_id": admin.get("tenant_id", DEFAULT_TENANT_ID),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.paid_posts.insert_one(post)
+    del post["_id"]
+    return post
+
+
+@router.post("/admin/paid-post-with-media")
+async def miniapp_admin_create_paid_post_with_media(
+    file: UploadFile = File(...),
+    telegram_user_id: str = Form(""),
+    caption: str = Form(""),
+    price: int = Form(0),
+    blur_level: int = Form(10),
+    channel_id: str = Form(""),
+    content_type: str = Form("photo"),
+):
+    """Create a paid post with an uploaded image or video"""
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+
+    if not file:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+
+    # Read file
+    file_bytes = await file.read()
+    if len(file_bytes) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 50MB)")
+
+    # Save file
+    uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+    os.makedirs(uploads_path, exist_ok=True)
+    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"post_{uuid.uuid4().hex[:10]}.{ext}"
+    filepath = os.path.join(uploads_path, filename)
+    with open(filepath, "wb") as f:
+        f.write(file_bytes)
+
+    media_url = f"/api/uploads/{filename}"
+
+    # Detect content type
+    if content_type == "auto":
+        if ext.lower() in ("mp4", "mov", "avi", "mkv", "webm"):
+            content_type = "video"
+        elif ext.lower() in ("jpg", "jpeg", "png", "gif", "webp"):
+            content_type = "photo"
+        else:
+            content_type = "document"
+
+    post_id = str(uuid.uuid4())
+    post = {
+        "id": post_id,
+        "channel_id": channel_id,
+        "caption": caption,
+        "price": price,
+        "blur_level": blur_level,
+        "content_type": content_type,
+        "original_file_id": "",
+        "media_url": media_url,
+        "media_filename": filename,
+        "original_message_id": 0,
+        "blurred_message_id": 0,
         "is_active": True,
         "unlock_count": 0,
         "created_by": admin.get("name", "Admin"),

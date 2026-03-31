@@ -66,6 +66,9 @@ export default function MiniApp() {
   const [paidPosts, setPaidPosts] = useState([]);
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [newPost, setNewPost] = useState({ caption: "", price: 0, blur_level: 10, channel_id: "", content_type: "text" });
+  const [postMediaFile, setPostMediaFile] = useState(null);
+  const [postMediaPreview, setPostMediaPreview] = useState(null);
+  const postFileRef = useRef(null);
 
   // Payment
   const [payProcessing, setPayProcessing] = useState(false);
@@ -480,13 +483,13 @@ export default function MiniApp() {
         fetch(`${API}/miniapp/admin/stats/${userId}`),
         adminPerms.includes("verify_payments") ? fetch(`${API}/miniapp/admin/pending-payments/${userId}`) : null,
         fetch(`${API}/miniapp/admin/subscribers/${userId}`),
-        adminPerms.includes("live_streams") ? fetch(`${API}/miniapp/admin/live-sessions/${userId}`) : null,
+        fetch(`${API}/miniapp/admin/live-sessions/${userId}`),
         fetch(`${API}/miniapp/admin/paid-posts/${userId}`),
       ]);
       setAdminStats(await statsRes.json());
       if (paymentsRes) setPendingPayments(await paymentsRes.json());
       setAdminSubs(await subsRes.json());
-      if (liveRes) setLiveSessions(await liveRes.json());
+      setLiveSessions(await liveRes.json());
       if (postsRes) setPaidPosts(await postsRes.json());
     } catch (e) { console.error("Admin fetch error:", e); }
     finally { setAdminLoading(false); }
@@ -570,15 +573,31 @@ export default function MiniApp() {
   const createPaidPost = async () => {
     if (!newPost.caption.trim()) return;
     try {
-      const res = await fetch(`${API}/miniapp/admin/paid-post`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...newPost, telegram_user_id: userId }),
-      });
+      let res;
+      if (postMediaFile) {
+        // Upload with file
+        const formData = new FormData();
+        formData.append("file", postMediaFile);
+        formData.append("telegram_user_id", userId);
+        formData.append("caption", newPost.caption);
+        formData.append("price", newPost.price);
+        formData.append("blur_level", newPost.blur_level);
+        formData.append("channel_id", newPost.channel_id);
+        formData.append("content_type", newPost.content_type);
+        res = await fetch(`${API}/miniapp/admin/paid-post-with-media`, { method: "POST", body: formData });
+      } else {
+        res = await fetch(`${API}/miniapp/admin/paid-post`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...newPost, telegram_user_id: userId }),
+        });
+      }
       const data = await res.json();
       if (data.id) {
         setPaidPosts(prev => [data, ...prev]);
         setShowCreatePost(false);
-        setNewPost({ caption: "", price: 0 });
+        setNewPost({ caption: "", price: 0, blur_level: 10, channel_id: "", content_type: "text" });
+        setPostMediaFile(null);
+        setPostMediaPreview(null);
       }
     } catch (e) { console.error(e); }
   };
@@ -1178,7 +1197,7 @@ export default function MiniApp() {
                 {[
                   { id: "stats", label: "Stats", perm: null },
                   ...(adminPerms.includes("broadcast") ? [{ id: "broadcast", label: "Broadcast", perm: "broadcast" }] : []),
-                  ...(adminPerms.includes("live_streams") ? [{ id: "live", label: "Live", perm: "live_streams" }] : []),
+                  { id: "live", label: "Live", perm: null },
                   { id: "posts", label: "Paid Posts", perm: null },
                   { id: "subs", label: "Users", perm: null },
                 ].map(t => (
@@ -1296,7 +1315,7 @@ export default function MiniApp() {
                         <div className="ma-admin-create-form" data-testid="create-post-form">
                           <textarea className="ma-input ma-textarea" placeholder="Post content / caption..." value={newPost.caption} onChange={e => setNewPost(p => ({...p, caption: e.target.value}))} rows={3} />
                           <div className="ma-form-row">
-                            <input className="ma-input" type="number" placeholder="Price (0 = free)" value={newPost.price} onChange={e => setNewPost(p => ({...p, price: parseInt(e.target.value) || 0}))} />
+                            <input className="ma-input" type="number" placeholder="Price (0 = free)" value={newPost.price} onChange={e => setNewPost(p => ({...p, price: parseInt(e.target.value) || 0}))} data-testid="post-price-input" />
                             <input className="ma-input" placeholder="Channel ID" value={newPost.channel_id} onChange={e => setNewPost(p => ({...p, channel_id: e.target.value}))} />
                           </div>
                           <select className="ma-input" value={newPost.content_type} onChange={e => setNewPost(p => ({...p, content_type: e.target.value}))}>
@@ -1305,6 +1324,47 @@ export default function MiniApp() {
                             <option value="video">Video</option>
                             <option value="document">Document</option>
                           </select>
+
+                          {/* Image/Video Upload */}
+                          {(newPost.content_type === "photo" || newPost.content_type === "video") && (
+                            <div className="ma-media-upload" data-testid="post-media-upload">
+                              <input type="file" ref={postFileRef} style={{ display: "none" }}
+                                accept={newPost.content_type === "photo" ? "image/*" : "video/*"}
+                                onChange={(e) => {
+                                  const f = e.target.files[0];
+                                  if (f) {
+                                    setPostMediaFile(f);
+                                    if (f.type.startsWith("image/")) {
+                                      setPostMediaPreview(URL.createObjectURL(f));
+                                    } else {
+                                      setPostMediaPreview("video");
+                                    }
+                                  }
+                                }}
+                              />
+                              {postMediaPreview && postMediaPreview !== "video" ? (
+                                <div className="ma-media-preview">
+                                  <img src={postMediaPreview} alt="preview" style={{ width: "100%", maxHeight: "180px", objectFit: "contain", borderRadius: "8px" }} />
+                                  <button className="ma-media-remove" onClick={() => { setPostMediaFile(null); setPostMediaPreview(null); }}>Remove</button>
+                                </div>
+                              ) : postMediaPreview === "video" && postMediaFile ? (
+                                <div className="ma-media-preview">
+                                  <div style={{ padding: "16px", textAlign: "center", background: "rgba(255,255,255,0.04)", borderRadius: "8px" }}>
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                                    <p style={{ color: "#ccc", fontSize: "12px", marginTop: "6px" }}>{postMediaFile.name}</p>
+                                    <p style={{ color: "#888", fontSize: "11px" }}>{(postMediaFile.size / 1024 / 1024).toFixed(1)} MB</p>
+                                  </div>
+                                  <button className="ma-media-remove" onClick={() => { setPostMediaFile(null); setPostMediaPreview(null); }}>Remove</button>
+                                </div>
+                              ) : (
+                                <button className="ma-btn-ghost ma-upload-btn" onClick={() => postFileRef.current?.click()} data-testid="post-pick-media">
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                  {newPost.content_type === "photo" ? "Upload Image" : "Upload Video"}
+                                </button>
+                              )}
+                            </div>
+                          )}
+
                           <div className="ma-blur-control">
                             <label>Blur Level: <strong>{newPost.blur_level}</strong></label>
                             <input type="range" min="0" max="50" value={newPost.blur_level} onChange={e => setNewPost(p => ({...p, blur_level: parseInt(e.target.value)}))} className="ma-range" />
