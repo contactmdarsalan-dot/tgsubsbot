@@ -50,6 +50,7 @@ export default function MiniApp() {
   const sessionIdRef = useRef(`support-${Date.now()}`);
 
   // Payment
+  const [payProcessing, setPayProcessing] = useState(false);
   const [paySuccess, setPaySuccess] = useState(null);
 
   // More menu
@@ -179,6 +180,65 @@ export default function MiniApp() {
       base = Math.max(1, Math.round(base - (base * loginDiscount) / 100));
     }
     return base;
+  };
+
+  // ---- Razorpay ----
+  const handleRazorpay = async () => {
+    if (!selectedPlan || payProcessing) return;
+    setPayProcessing(true);
+    try {
+      const res = await fetch(`${API}/miniapp/create-order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan_id: selectedPlan.id,
+          telegram_user_id: userId,
+          telegram_username: user?.username || "",
+          amount: getPayAmount(),
+          coupon_code: couponResult?.valid ? couponResult.coupon_code : null,
+        }),
+      });
+      const order = await res.json();
+      if (order.order_id) {
+        const options = {
+          key: order.key_id,
+          amount: order.amount * 100,
+          currency: order.currency || "INR",
+          name: "TGSubsBot",
+          description: `${order.plan_name} Subscription`,
+          order_id: order.order_id,
+          handler: async (response) => {
+            try {
+              const vRes = await fetch(`${API}/miniapp/verify-payment`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                  telegram_user_id: userId,
+                }),
+              });
+              const result = await vRes.json();
+              if (result.success) { setPaySuccess(result); fetchData(); }
+              else alert("Payment verification failed");
+            } catch { alert("Verification error"); }
+            finally { setPayProcessing(false); }
+          },
+          prefill: { name: user?.first_name || "", contact: phoneNum || "" },
+          theme: { color: "#e8365d" },
+          modal: { ondismiss: () => setPayProcessing(false) },
+        };
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      } else {
+        alert(order.detail || "Failed to create order");
+        setPayProcessing(false);
+      }
+    } catch {
+      alert("Payment error. Try again.");
+      setPayProcessing(false);
+    }
   };
 
   // ---- Manual Payment (UPI QR + ID) ----
@@ -512,11 +572,15 @@ export default function MiniApp() {
                     <span className="ma-pay-final">&#8377;{getPayAmount()}</span>
                   </div>
 
-                  <button className="ma-btn-accent" onClick={handlePayNow} disabled={qrLoading} data-testid="miniapp-pay-btn">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
-                    {qrLoading ? "Loading..." : `Pay ₹${getPayAmount()} via UPI`}
+                  <button className="ma-btn-accent" onClick={handleRazorpay} disabled={payProcessing} data-testid="miniapp-razorpay-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    {payProcessing ? "Processing..." : `Pay ₹${getPayAmount()} Instantly`}
                   </button>
-                  <p className="ma-pay-hint">Scan QR or copy UPI ID to pay. Then send screenshot to bot.</p>
+                  <button className="ma-btn-outline" onClick={handlePayNow} disabled={qrLoading} data-testid="miniapp-pay-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+                    {qrLoading ? "Loading..." : "UPI Manual Payment"}
+                  </button>
+                  <p className="ma-pay-hint">Razorpay = instant activation. UPI = admin verification.</p>
                 </motion.div>
               )}
             </motion.div>
