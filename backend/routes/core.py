@@ -10,6 +10,7 @@ from services.payment import detect_payment_screenshot, analyze_payment_screensh
 from services.bot_activity import log_bot_activity
 from services.tenant import DEFAULT_TENANT_ID, tenant_query
 from services.permissions import is_super_admin, is_any_admin, get_user_tenant, tq, ensure_admin
+from services.audit import log_action
 from config import logger, RAZORPAY_KEY_ID, razorpay_client, SUPER_ADMIN_EMAILS
 from models import (
     SubscriptionPlanCreate, SubscriptionPlan, SubscriberCreate, Subscriber,

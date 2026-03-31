@@ -52,6 +52,10 @@ async def ensure_indexes():
         # Tenant indexes
         await db.tenants.create_index("tenant_id", unique=True)
 
+        # Audit log indexes
+        await db.audit_logs.create_index([("tenant_id", 1), ("created_at", -1)])
+        await db.audit_logs.create_index("action")
+
         logger.info("MongoDB indexes created successfully")
     except Exception as e:
         logger.error(f"Error creating indexes: {e}")

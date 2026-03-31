@@ -55,7 +55,7 @@ os.makedirs(uploads_dir, exist_ok=True)
 app.mount("/api/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 # CORS middleware — strict allowlist
-_default_origins = "https://tgsubsbot.com,https://www.tgsubsbot.com,https://bot-builder-93.preview.emergentagent.com"
+_default_origins = "https://tgsubsbot.com,https://www.tgsubsbot.com,https://bot-creator-platform.preview.emergentagent.com"
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,

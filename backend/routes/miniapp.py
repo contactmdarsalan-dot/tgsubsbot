@@ -1,8 +1,9 @@
 """Mini App endpoints - Plans, Payments, Support AI, Referral, Notifications"""
-from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Form, Query
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Form, Query, Header
 from database import db
 from services.telegram import get_bot_settings, send_telegram_message, send_telegram_photo, add_to_channel
 from services.payment import analyze_payment_screenshot_with_ai
+from services.telegram_verify import validate_telegram_init_data
 from services.tenant import (
     DEFAULT_TENANT_ID, resolve_tenant_from_admin_tg_id, tenant_query
 )
@@ -17,6 +18,23 @@ from io import BytesIO
 from PIL import Image
 
 router = APIRouter(prefix="/miniapp")
+
+
+async def _get_verified_tg_user(
+    tg_id: str = "",
+    x_telegram_init_data: str = Header(default="", alias="X-Telegram-Init-Data"),
+) -> str:
+    """Get verified Telegram user ID. Checks initData first, falls back to tg_id param for dev."""
+    if x_telegram_init_data:
+        settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
+        bot_token = settings.get("telegram_bot_token", "")
+        if bot_token:
+            user = validate_telegram_init_data(x_telegram_init_data, bot_token)
+            if user:
+                return str(user.get("id", ""))
+            logger.warning(f"Invalid Telegram initData received")
+    # Fallback to tg_id param (dev/browser testing)
+    return tg_id
 
 
 # ============== PHONE LOGIN ==============

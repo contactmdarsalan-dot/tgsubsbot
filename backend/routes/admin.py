@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from database import db
 from services.auth import get_current_user, hash_password
 from services.permissions import ensure_super_admin, is_super_admin, get_user_tenant
+from services.audit import log_action
 from config import logger, RAZORPAY_KEY_ID, razorpay_client, DASHBOARD_PLANS, SUPER_ADMIN_EMAILS
 from models import User
 from datetime import datetime, timezone, timedelta
@@ -888,6 +889,7 @@ async def create_tenant_dashboard_admin(tenant_id: str, data: dict, user: dict =
     del user_doc["_id"]
 
     logger.info(f"Created tenant admin: {email} for tenant {tenant_id}")
+    await log_action(tenant_id, user["id"], user.get("email", ""), "tenant_admin_created", "user", user_doc["id"], {"email": email, "tenant_name": tenant.get("name", "")})
     return {
         "message": f"Tenant admin created: {email} for {tenant.get('name', tenant_id)}",
         "user_id": user_doc["id"],
@@ -1023,6 +1025,7 @@ async def migrate_data_to_tenant(data: dict, user: dict = Depends(get_current_us
     stats["revenue"] = rev[0]["total"] if rev else 0
 
     logger.info(f"Migration complete: {total} docs migrated to {target_tenant_id}")
+    await log_action("platform", user["id"], user.get("email", ""), "data_migration", "tenant", target_tenant_id, {"total_migrated": total, "target": target_tenant_name})
 
     return {
         "message": f"Migration complete! {total} documents migrated to '{target_tenant_name}'",

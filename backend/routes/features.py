@@ -1598,10 +1598,10 @@ async def get_revenue_analytics(user = Depends(get_current_user)):
     payments = await db.payments.find(
         tq({"status": "verified"}, tenant_id),
         {"_id": 0, "amount": 1, "created_at": 1, "plan_id": 1, "plan_name": 1}
-    ).to_list(100000)
+    ).to_list(50000)
     
     # Get all subscribers
-    subscribers = await db.subscribers.find(tq({}, tenant_id), {"_id": 0}).to_list(100000)
+    subscribers = await db.subscribers.find(tq({}, tenant_id), {"_id": 0}).to_list(50000)
     
     # Get all plans
     plans = await db.plans.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
@@ -1752,7 +1752,8 @@ async def get_revenue_analytics(user = Depends(get_current_user)):
 @router.get("/analytics/users")
 async def get_user_analytics(user = Depends(get_current_user)):
     """Get user growth analytics"""
-    users = await db.bot_users.find({}, {"_id": 0, "created_at": 1}).to_list(100000)
+    tenant_id = get_user_tenant(user)
+    users = await db.bot_users.find(tq({}, tenant_id), {"_id": 0, "created_at": 1}).to_list(50000)
     
     # Group by date
     daily_users = {}
@@ -1782,7 +1783,8 @@ async def get_user_analytics(user = Depends(get_current_user)):
 @router.get("/export/subscribers")
 async def export_subscribers(user = Depends(get_current_user)):
     """Export subscribers as CSV data"""
-    subscribers = await db.subscribers.find({}, {"_id": 0}).to_list(100000)
+    tenant_id = get_user_tenant(user)
+    subscribers = await db.subscribers.find(tq({}, tenant_id), {"_id": 0}).to_list(50000)
     
     # Convert to CSV format
     csv_data = "telegram_user_id,username,plan_name,start_date,end_date,status\n"
@@ -1794,7 +1796,8 @@ async def export_subscribers(user = Depends(get_current_user)):
 @router.get("/export/payments")
 async def export_payments(user = Depends(get_current_user)):
     """Export payments as CSV data"""
-    payments = await db.payments.find({}, {"_id": 0}).to_list(100000)
+    tenant_id = get_user_tenant(user)
+    payments = await db.payments.find(tq({}, tenant_id), {"_id": 0}).to_list(50000)
     
     # Convert to CSV format
     csv_data = "id,telegram_user_id,username,amount,plan_name,status,payment_method,created_at,verified_at\n"
@@ -1914,8 +1917,8 @@ async def get_bot_activity_stats(user = Depends(get_current_user)):
 @router.get("/export/revenue-report")
 async def export_revenue_report(user = Depends(get_current_user)):
     """Export full revenue report as CSV"""
-    payments = await db.payments.find({"status": "verified"}, {"_id": 0}).to_list(100000)
-    subscribers = await db.subscribers.find({}, {"_id": 0}).to_list(100000)
+    payments = await db.payments.find({"status": "verified"}, {"_id": 0}).to_list(50000)
+    subscribers = await db.subscribers.find({}, {"_id": 0}).to_list(50000)
     
     # Revenue CSV
     revenue_csv = "Date,User ID,Username,Plan,Amount,Payment Method,Status\n"
