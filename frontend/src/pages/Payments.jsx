@@ -75,20 +75,9 @@ export default function Payments() {
   // Function to load screenshot with auth
   const loadScreenshot = async (payment) => {
     if (payment.screenshot_file_id) {
-      try {
-        const response = await axios.get(
-          `${API}/telegram/file/${payment.screenshot_file_id}`,
-          {
-            ...getAuthHeaders(),
-            responseType: 'blob'
-          }
-        );
-        const imageUrl = URL.createObjectURL(response.data);
-        setScreenshotModal({ open: true, url: imageUrl, payment, imageData: response.data });
-      } catch (error) {
-        console.error("Failed to load screenshot:", error);
-        setScreenshotModal({ open: true, url: payment.screenshot_url || "", payment, imageData: null });
-      }
+      // Use direct URL (same as list view thumbnails which work fine)
+      const directUrl = `${API}/telegram/file/${payment.screenshot_file_id}`;
+      setScreenshotModal({ open: true, url: directUrl, payment, imageData: null });
     } else if (payment.screenshot_url) {
       setScreenshotModal({ open: true, url: payment.screenshot_url, payment, imageData: null });
     } else {
@@ -786,20 +775,27 @@ export default function Payments() {
             
             <div className="border rounded-lg overflow-hidden bg-muted/30">
               {screenshotModal.url ? (
-                <img 
-                  src={screenshotModal.url} 
-                  alt="Payment Screenshot" 
-                  className="w-full h-auto max-h-[400px] object-contain"
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                    e.target.nextSibling.style.display = 'flex';
-                  }}
-                />
-              ) : null}
-              <div className={`${screenshotModal.url ? 'hidden' : 'flex'} flex-col items-center justify-center py-8 text-muted-foreground`}>
-                <XCircle className="w-8 h-8 mb-2" />
-                <p>No screenshot available</p>
-              </div>
+                <>
+                  <img 
+                    src={screenshotModal.url} 
+                    alt="Payment Screenshot" 
+                    className="w-full h-auto max-h-[400px] object-contain"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
+                    }}
+                  />
+                  <div className="hidden flex-col items-center justify-center py-8 text-muted-foreground">
+                    <XCircle className="w-8 h-8 mb-2" />
+                    <p>Screenshot expired or unavailable on Telegram</p>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                  <XCircle className="w-8 h-8 mb-2" />
+                  <p>No screenshot available</p>
+                </div>
+              )}
             </div>
             
             {screenshotModal.payment?.status === "pending" && (
