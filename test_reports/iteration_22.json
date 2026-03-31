@@ -1,0 +1,142 @@
+{
+  "summary": "Backend refactoring regression testing completed successfully. All 51 backend API tests passed (100%). Frontend RBAC verified: Super Admin sees PLATFORM section, Tenant Admin does NOT. The refactoring from 3 monolithic files (core.py 1513L, features.py 2255L, miniapp.py 1690L) into 10 domain-specific route files is working correctly with no broken endpoints.",
+
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+
+  "test_report_links": [
+    "/app/backend/tests/test_refactoring_regression.py",
+    "/app/test_reports/pytest/iteration22_refactoring_results.xml"
+  ],
+
+  "action_items": [],
+
+  "critical_code_review_comments": [
+    "All 10 route files properly imported and included in server.py (lines 17-64)",
+    "Plans CRUD (routes/plans.py) - 74 lines, all endpoints working",
+    "Subscribers CRUD (routes/subscribers.py) - 281 lines, all endpoints working",
+    "Payments CRUD + bulk (routes/payments.py) - 516 lines, all endpoints working",
+    "Dashboard routes (routes/dashboard.py) - 596 lines, channels/chat-groups/settings/analytics/branding/bot-language all working",
+    "Broadcasts routes (routes/broadcasts.py) - 466 lines, templates/broadcasts/scheduled all working",
+    "Engagement routes (routes/engagement.py) - 424 lines, coupons/tags/blocked/referrals/faqs/video-calls all working",
+    "Live Content routes (routes/live_content.py) - 646 lines, creators/tg-admins/live-sessions/paid-posts/unlock-requests all working",
+    "Analytics Exports routes (routes/analytics_exports.py) - 324 lines, revenue/users/exports/chat-messages/bot-activity all working",
+    "MiniApp User routes (routes/miniapp_user.py) - 770 lines, all public endpoints working",
+    "MiniApp Admin routes (routes/miniapp_admin.py) - 526 lines, admin check and permission-based access working"
+  ],
+
+  "updated_files": [
+    "/app/backend/tests/test_refactoring_regression.py"
+  ],
+
+  "success_rate": {
+    "backend": "100% (51/51 passed)",
+    "frontend": "100% (login, dashboard, RBAC all verified)"
+  },
+
+  "test_credentials": {
+    "super_admin_email": "gamerxboys8958@gmail.com",
+    "super_admin_password": "Sumit@8958",
+    "tenant_admin_email": "anamika@test.com",
+    "tenant_admin_password": "Admin123",
+    "tenant_id": "tenant_85ee971d0285",
+    "test_tg_id": "123456789"
+  },
+
+  "seed_data_creation": "No new seed data created. Used existing test credentials.",
+
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+
+  "context_for_next_testing_agent": "Iteration 22 verified backend refactoring regression: All 10 domain-specific route files are working correctly after splitting from 3 monolithic files. Tested endpoints: Auth (login, check-admin), Plans CRUD, Subscribers CRUD, Payments CRUD + bulk, Dashboard (analytics, settings, channels, chat-groups, branding, bot-language), Broadcasts (templates, broadcasts, scheduled), Engagement (coupons, referrals, blocked-users, tags, faqs, video-calls), Live Content (live-sessions, creators, telegram-admins, paid-posts, unlock-requests), Analytics Exports (revenue, users, exports, chat-messages, bot-activity), MiniApp User (plans, status, upi-details, notifications, live-sessions-public, apply-coupon), MiniApp Admin (check, stats, pending-payments, subscribers, paid-posts). Frontend RBAC verified: Super Admin sees PLATFORM section with SaaS Management, Branding, User Management, Admin Support, SaaS Subscriptions. Tenant Admin does NOT see PLATFORM section.",
+
+  "features_tested": {
+    "auth_routes": {
+      "status": "PASS",
+      "details": ["Super Admin login returns token", "Tenant Admin login returns token with tenant_id", "Unauthenticated requests blocked (403)"]
+    },
+    "plans_routes": {
+      "status": "PASS",
+      "details": ["GET /api/plans - authenticated", "GET /api/plans/active - public", "Plans CRUD working"]
+    },
+    "subscribers_routes": {
+      "status": "PASS",
+      "details": ["GET /api/subscribers - authenticated", "Status filter working"]
+    },
+    "payments_routes": {
+      "status": "PASS",
+      "details": ["GET /api/payments - authenticated", "Status filter working"]
+    },
+    "dashboard_routes": {
+      "status": "PASS",
+      "details": ["GET /api/analytics", "GET /api/settings", "GET /api/channels", "GET /api/chat-groups", "GET /api/branding", "GET /api/bot-language"]
+    },
+    "broadcasts_routes": {
+      "status": "PASS",
+      "details": ["GET /api/templates", "GET /api/broadcasts", "GET /api/scheduled-broadcasts"]
+    },
+    "engagement_routes": {
+      "status": "PASS",
+      "details": ["GET /api/coupons", "GET /api/referrals", "GET /api/blocked-users", "GET /api/tags", "GET /api/faqs", "GET /api/video-calls"]
+    },
+    "live_content_routes": {
+      "status": "PASS",
+      "details": ["GET /api/live/sessions", "GET /api/creators", "GET /api/telegram-admins", "GET /api/paid-posts", "GET /api/unlock-requests"]
+    },
+    "analytics_exports_routes": {
+      "status": "PASS",
+      "details": ["GET /api/analytics/revenue", "GET /api/analytics/users", "GET /api/export/subscribers", "GET /api/export/payments", "GET /api/chat-messages", "GET /api/bot-activity"]
+    },
+    "miniapp_user_routes": {
+      "status": "PASS",
+      "details": ["GET /api/miniapp/plans (public)", "GET /api/miniapp/status/{tg_id}", "GET /api/miniapp/upi-details (public)", "POST /api/miniapp/apply-coupon", "GET /api/miniapp/notifications/{tg_id}", "GET /api/miniapp/live-sessions/public"]
+    },
+    "miniapp_admin_routes": {
+      "status": "PASS",
+      "details": ["GET /api/miniapp/admin/check/{tg_id}", "GET /api/miniapp/admin/stats/{tg_id} (403 for non-admin)", "GET /api/miniapp/admin/pending-payments/{tg_id}", "GET /api/miniapp/admin/subscribers/{tg_id}", "GET /api/miniapp/admin/paid-posts/{tg_id}"]
+    },
+    "tenant_isolation": {
+      "status": "PASS",
+      "details": ["Tenant Admin can access /api/subscribers", "Tenant Admin can access /api/payments", "Tenant Admin can access /api/plans", "Tenant Admin blocked from /api/saas/tenants (403)"]
+    },
+    "rbac_frontend": {
+      "status": "PASS",
+      "details": ["Super Admin sees PLATFORM section (SaaS Management, Branding, User Management, Admin Support, SaaS Subscriptions)", "Super Admin sees OPERATIONS section", "Tenant Admin does NOT see PLATFORM section", "Tenant Admin sees only OPERATIONS items"]
+    }
+  },
+
+  "backend_tests_summary": {
+    "total": 51,
+    "passed": 51,
+    "failed": 0,
+    "skipped": 0,
+    "test_classes": [
+      "TestAuthRoutes (3 tests) - PASSED",
+      "TestPlansRoutes (3 tests) - PASSED",
+      "TestSubscribersRoutes (2 tests) - PASSED",
+      "TestPaymentsRoutes (2 tests) - PASSED",
+      "TestDashboardRoutes (6 tests) - PASSED",
+      "TestBroadcastsRoutes (3 tests) - PASSED",
+      "TestEngagementRoutes (6 tests) - PASSED",
+      "TestLiveContentRoutes (5 tests) - PASSED",
+      "TestAnalyticsExportsRoutes (6 tests) - PASSED",
+      "TestMiniAppUserRoutes (6 tests) - PASSED",
+      "TestMiniAppAdminRoutes (5 tests) - PASSED",
+      "TestTenantIsolation (2 tests) - PASSED",
+      "TestRBACEndpoints (2 tests) - PASSED"
+    ]
+  },
+
+  "mocked_apis": {
+    "has_mocked_apis": true,
+    "mocked_apis_list": ["Resend Email OTP - domain verification pending by user"]
+  }
+}
