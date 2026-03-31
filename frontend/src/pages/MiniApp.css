@@ -228,10 +228,11 @@
 
 /* ===== PAY SECTION ===== */
 .ma-pay-section {
-  margin-top: 12px; padding: 14px;
+  margin-top: 4px; margin-bottom: 4px; padding: 14px;
   background: var(--ma-glass);
   backdrop-filter: blur(var(--ma-blur)); -webkit-backdrop-filter: blur(var(--ma-blur));
-  border-radius: 14px; border: 1px solid var(--ma-border);
+  border-radius: 14px; border: 1px solid var(--ma-accent-30, rgba(255,62,108,0.25));
+  overflow: hidden;
 }
 .ma-pay-header { text-align: center; margin-bottom: 10px; }
 .ma-pay-header h3 { font-size: 14px; font-weight: 700; color: white; margin-bottom: 2px; }
@@ -261,6 +262,8 @@
   width: 100%; max-width: 500px;
   background: #1a1a1a; border-radius: 20px 20px 0 0;
   padding: 20px 20px 28px; border-top: 1px solid var(--ma-border);
+  max-height: 85vh; overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .ma-sheet-handle { width: 36px; height: 4px; border-radius: 4px; background: rgba(255,255,255,0.12); margin: 0 auto 16px; }
 .ma-sheet h3 { font-size: 16px; font-weight: 700; color: white; margin-bottom: 14px; text-align: center; }
@@ -277,8 +280,8 @@
   background: var(--ma-glass); border-radius: 10px; border: 1px solid var(--ma-border);
 }
 .ma-upi-label { font-size: 10px; color: var(--ma-text3); text-transform: uppercase; letter-spacing: 0.5px; }
-.ma-upi-id-row { display: flex; align-items: center; gap: 8px; }
-.ma-upi-id { font-size: 14px; font-weight: 600; color: var(--ma-accent); }
+.ma-upi-id-row { display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-width: 0; }
+.ma-upi-id { font-size: 13px; font-weight: 600; color: var(--ma-accent); word-break: break-all; min-width: 0; }
 .ma-upi-amt { font-size: 18px; font-weight: 800; color: white; }
 .ma-upi-plan { font-size: 13px; font-weight: 600; color: white; }
 .ma-copy-sm {

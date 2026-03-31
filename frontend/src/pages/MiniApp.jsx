@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import "./MiniApp.css";
 
@@ -514,75 +514,68 @@ export default function MiniApp() {
               <h2 className="ma-title">Choose Your Plan</h2>
               <div className="ma-plans">
                 {plans.map((plan, i) => (
-                  <motion.div
-                    key={plan.id}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.06 }}
-                    className={`ma-plan-card ${selectedPlan?.id === plan.id ? "selected" : ""} ${subscription?.plan_id === plan.id ? "current" : ""}`}
-                    data-testid={`miniapp-plan-${plan.id}`}
-                    onClick={() => { setSelectedPlan(plan); setCouponResult(null); setCouponCode(""); }}
-                  >
-                    {plan.is_popular && <span className="ma-badge-pop">Popular</span>}
-                    {subscription?.plan_id === plan.id && <span className="ma-badge-cur">Current</span>}
-                    <div className="ma-plan-top">
-                      <h3>{plan.name}</h3>
-                      <p className="ma-plan-dur">{plan.duration_days} days</p>
-                    </div>
-                    <div className="ma-plan-price">
-                      <span className="ma-rupee">&#8377;</span>
-                      <span className="ma-amt">{plan.price}</span>
-                      {loginDiscount > 0 && (
-                        <span className="ma-plan-disc">&#8377;{Math.round(plan.price - (plan.price * loginDiscount) / 100)}</span>
+                  <React.Fragment key={plan.id}>
+                    <motion.div
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.06 }}
+                      className={`ma-plan-card ${selectedPlan?.id === plan.id ? "selected" : ""} ${subscription?.plan_id === plan.id ? "current" : ""}`}
+                      data-testid={`miniapp-plan-${plan.id}`}
+                      onClick={() => { setSelectedPlan(selectedPlan?.id === plan.id ? null : plan); setCouponResult(null); setCouponCode(""); }}
+                    >
+                      {plan.is_popular && <span className="ma-badge-pop">Popular</span>}
+                      {subscription?.plan_id === plan.id && <span className="ma-badge-cur">Current</span>}
+                      <div className="ma-plan-top">
+                        <h3>{plan.name}</h3>
+                        <p className="ma-plan-dur">{plan.duration_days} days</p>
+                      </div>
+                      <div className="ma-plan-price">
+                        <span className="ma-rupee">&#8377;</span>
+                        <span className="ma-amt">{plan.price}</span>
+                        {loginDiscount > 0 && (
+                          <span className="ma-plan-disc">&#8377;{Math.round(plan.price - (plan.price * loginDiscount) / 100)}</span>
+                        )}
+                      </div>
+                      {plan.features?.length > 0 && (
+                        <ul className="ma-plan-feats">
+                          {plan.features.slice(0, 3).map((f, j) => <li key={j}>{f}</li>)}
+                        </ul>
                       )}
-                    </div>
-                    {plan.features?.length > 0 && (
-                      <ul className="ma-plan-feats">
-                        {plan.features.slice(0, 3).map((f, j) => <li key={j}>{f}</li>)}
-                      </ul>
+                    </motion.div>
+
+                    {/* Payment Section - inline below selected plan */}
+                    {selectedPlan?.id === plan.id && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="ma-pay-section" data-testid="miniapp-pay-section">
+                        {/* Coupon */}
+                        <div className="ma-coupon-row">
+                          <input className="ma-input" placeholder="Coupon code" value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} data-testid="miniapp-coupon-input" />
+                          <button className="ma-btn-sm" onClick={applyCoupon} disabled={couponLoading} data-testid="miniapp-coupon-apply">{couponLoading ? "..." : "Apply"}</button>
+                        </div>
+                        {couponResult && (
+                          <p className={`ma-msg ${couponResult.valid ? "green" : "red"}`}>
+                            {couponResult.valid ? `Coupon: -₹${couponResult.discount}` : couponResult.error}
+                          </p>
+                        )}
+
+                        <div className="ma-pay-total">
+                          <span>Total</span>
+                          <span className="ma-pay-final">&#8377;{getPayAmount()}</span>
+                        </div>
+
+                        <button className="ma-btn-accent" onClick={handleRazorpay} disabled={payProcessing} data-testid="miniapp-razorpay-btn">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                          {payProcessing ? "Processing..." : `Pay ₹${getPayAmount()} Instantly`}
+                        </button>
+                        <button className="ma-btn-outline" onClick={handlePayNow} disabled={qrLoading} data-testid="miniapp-pay-btn">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+                          {qrLoading ? "Loading..." : "UPI Manual Payment"}
+                        </button>
+                        <p className="ma-pay-hint">Razorpay = instant. UPI = admin verification.</p>
+                      </motion.div>
                     )}
-                  </motion.div>
+                  </React.Fragment>
                 ))}
               </div>
-
-              {/* Payment Section */}
-              {selectedPlan && (
-                <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="ma-pay-section" data-testid="miniapp-pay-section">
-                  <div className="ma-pay-header">
-                    <h3>{selectedPlan.name}</h3>
-                    <p className="ma-pay-orig">
-                      <span className={loginDiscount > 0 ? "ma-strikethrough" : ""}>&#8377;{selectedPlan.price}</span>
-                      {loginDiscount > 0 && <span className="ma-pay-disc-tag"> -{loginDiscount}%</span>}
-                    </p>
-                  </div>
-
-                  {/* Coupon */}
-                  <div className="ma-coupon-row">
-                    <input className="ma-input" placeholder="Coupon code" value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} data-testid="miniapp-coupon-input" />
-                    <button className="ma-btn-sm" onClick={applyCoupon} disabled={couponLoading} data-testid="miniapp-coupon-apply">{couponLoading ? "..." : "Apply"}</button>
-                  </div>
-                  {couponResult && (
-                    <p className={`ma-msg ${couponResult.valid ? "green" : "red"}`}>
-                      {couponResult.valid ? `Coupon: -₹${couponResult.discount}` : couponResult.error}
-                    </p>
-                  )}
-
-                  <div className="ma-pay-total">
-                    <span>Total</span>
-                    <span className="ma-pay-final">&#8377;{getPayAmount()}</span>
-                  </div>
-
-                  <button className="ma-btn-accent" onClick={handleRazorpay} disabled={payProcessing} data-testid="miniapp-razorpay-btn">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                    {payProcessing ? "Processing..." : `Pay ₹${getPayAmount()} Instantly`}
-                  </button>
-                  <button className="ma-btn-outline" onClick={handlePayNow} disabled={qrLoading} data-testid="miniapp-pay-btn">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
-                    {qrLoading ? "Loading..." : "UPI Manual Payment"}
-                  </button>
-                  <p className="ma-pay-hint">Razorpay = instant activation. UPI = admin verification.</p>
-                </motion.div>
-              )}
             </motion.div>
           )}
 
