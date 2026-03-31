@@ -2218,9 +2218,10 @@ async def reject_unlock_request(request_id: str, user = Depends(get_current_user
 async def get_telegram_file(file_id: str):
     """Serve Telegram file (screenshot) for admin preview - Public endpoint (file_id is security)"""
     from fastapi.responses import Response
+    from config import TELEGRAM_BOT_TOKEN
     
     settings = await get_bot_settings()
-    bot_token = settings.get("telegram_bot_token", "")
+    bot_token = settings.get("telegram_bot_token", "") or TELEGRAM_BOT_TOKEN
     
     if not bot_token:
         raise HTTPException(status_code=500, detail="Bot token not configured")
@@ -2229,8 +2230,12 @@ async def get_telegram_file(file_id: str):
     image_bytes = await download_telegram_photo(file_id, bot_token)
     
     if not image_bytes:
-        raise HTTPException(status_code=404, detail="File not found")
+        raise HTTPException(status_code=404, detail="File not found or expired")
     
-    # Return as image
-    return Response(content=image_bytes, media_type="image/jpeg")
+    # Return as image with cache headers
+    return Response(
+        content=image_bytes, 
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=86400"}
+    )
 

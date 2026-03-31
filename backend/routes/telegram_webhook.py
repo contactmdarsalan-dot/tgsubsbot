@@ -2354,9 +2354,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         is_valid = False
                         auto_approve = False
                         
-                        if ai_result.get("ai_enabled") and ai_result.get("confidence_score", 0) >= 70:
+                        if ai_result.get("ai_enabled") and ai_result.get("confidence_score", 0) >= 50:
                             is_valid = ai_result.get("is_valid_payment", False)
-                            auto_approve = ai_result.get("auto_approve_recommended", False) and ai_result.get("confidence_score", 0) >= ai_threshold
+                            auto_approve = ai_result.get("auto_approve_recommended", False) or (ai_result.get("is_payment_screenshot", False) and ai_result.get("confidence_score", 0) >= 50)
                         else:
                             is_valid = ocr_result.get("is_valid", False)
                         
@@ -2607,12 +2607,12 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         auto_approve = False
                         verification_method = "ocr"
                         
-                        if ai_result.get("ai_enabled") and ai_result.get("confidence_score", 0) >= 70:
-                            # AI is confident - use AI decision
+                        if ai_result.get("ai_enabled") and ai_result.get("confidence_score", 0) >= 50:
+                            # AI is available - use AI decision
                             is_valid = ai_result.get("is_valid_payment", False)
-                            # Use threshold from settings (dynamic)
-                            auto_approve = ai_result.get("auto_approve_recommended", False) and ai_result.get("confidence_score", 0) >= ai_threshold
-                            verification_method = "ai_gpt4o"
+                            # If AI says it's a payment screenshot → auto approve (lenient mode)
+                            auto_approve = ai_result.get("auto_approve_recommended", False) or (ai_result.get("is_payment_screenshot", False) and ai_result.get("confidence_score", 0) >= 50)
+                            verification_method = "ai_gpt5.2"
                             logger.info(f"Using AI decision: valid={is_valid}, auto_approve={auto_approve}, confidence={ai_result.get('confidence_score')}, threshold={ai_threshold}")
                         else:
                             # Fall back to OCR

@@ -14,7 +14,8 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
     payment_keywords = [
         "gpay", "google pay", "phonepe", "paytm", "bhim", "amazon pay",
         "upi", "paid", "payment", "successful", "completed", "transaction",
-        "success", "done", "approved", "Rs.", "rs"
+        "success", "done", "approved", "Rs.", "rs", "credited", "debited",
+        "transferred", "sent", "received", "bank", "neft", "imps", "rtgs"
     ]
 
     try:
@@ -90,7 +91,12 @@ def create_blurred_image(image_bytes: bytes, blur_radius: int = 10, content_type
 
 
 async def analyze_payment_screenshot_with_ai(image_bytes: bytes, expected_amount: float = None, expected_upi_id: str = None) -> dict:
-    """Use GPT-4o Vision to analyze payment screenshot."""
+    """Use GPT-5.2 Vision to analyze payment screenshot.
+    
+    LOGIC: Only check if image is a genuine transaction/payment screenshot.
+    If yes → auto approve (amount/UPI/time mismatch doesn't matter).
+    If no (selfie, meme, random image) → reject.
+    """
     if not EMERGENT_LLM_KEY:
         logger.warning("EMERGENT_LLM_KEY not configured, skipping AI analysis")
         return {"ai_enabled": False, "error": "AI not configured"}
@@ -104,41 +110,49 @@ async def analyze_payment_screenshot_with_ai(image_bytes: bytes, expected_amount
         chat = LlmChat(
             api_key=EMERGENT_LLM_KEY,
             session_id=f"payment-analysis-{uuid.uuid4()}",
-            system_message="""You are an expert payment screenshot analyzer. Your job is to:
-1. FIRST determine if this is actually a payment screenshot or something else (selfie, random photo, meme, etc.)
-2. Extract payment details (amount, UPI ID, transaction ID, date/time, payment app, status)
-3. Detect if the screenshot is fake/edited (look for: inconsistent fonts, pixel artifacts, wrong shadows, misaligned elements, suspicious timestamps)
-4. Verify if payment status shows "Success", "Completed", or "Paid"
-5. Match amount and UPI ID if provided
+            system_message="""You are a payment screenshot detector. Your ONLY job is to determine if the image is a REAL payment/transaction screenshot or not.
 
-RESPOND ONLY IN THIS JSON FORMAT:
+APPROVE if the image shows ANY of these:
+- UPI payment confirmation (GPay, PhonePe, Paytm, BHIM, Amazon Pay, etc.)
+- Bank transfer confirmation (NEFT, IMPS, RTGS)
+- Any payment success/completed screen
+- Any transaction receipt or confirmation
+- Any money transfer screenshot
+- Even if amount doesn't match, UPI ID doesn't match, or time is old - STILL APPROVE if it's a real transaction screenshot
+
+REJECT ONLY if the image is:
+- A selfie or face photo
+- A random photo (nature, food, meme, etc.)
+- A blank or corrupted image
+- Clearly NOT a payment/transaction screenshot
+- A fake/obviously photoshopped screenshot with glaring artifacts
+
+RESPOND ONLY IN THIS EXACT JSON FORMAT:
 {
     "is_payment_screenshot": true/false,
     "is_valid_payment": true/false,
     "confidence_score": 0-100,
     "extracted_data": {
-        "amount": "extracted amount as number or null",
+        "amount": "extracted amount or null",
         "upi_id": "extracted UPI ID or null",
-        "transaction_id": "extracted transaction ID or null",
+        "transaction_id": "extracted txn ID or null",
         "payment_app": "GPay/PhonePe/Paytm/etc or null",
         "status": "Success/Completed/Failed/Pending or null",
         "timestamp": "extracted date/time or null"
     },
-    "fake_indicators": ["list of suspicious elements found"],
-    "amount_matches": true/false/null,
-    "upi_id_matches": true/false/null,
     "auto_approve_recommended": true/false,
     "reason": "brief explanation"
 }
 
-IMPORTANT: If this is NOT a payment screenshot (selfie, random image, meme, etc.), set is_payment_screenshot to false."""
-        ).with_model("openai", "gpt-4o")
+IMPORTANT RULES:
+1. If is_payment_screenshot is true → auto_approve_recommended MUST be true
+2. Amount mismatch does NOT matter - still approve
+3. UPI ID mismatch does NOT matter - still approve  
+4. Old timestamp does NOT matter - still approve
+5. Only reject if it's genuinely NOT a transaction screenshot"""
+        ).with_model("openai", "gpt-5.2")
 
-        prompt = "Analyze this payment screenshot and extract all details. Check if it's a genuine payment confirmation."
-        if expected_amount:
-            prompt += f"\n\nExpected payment amount: Rs.{expected_amount}"
-        if expected_upi_id:
-            prompt += f"\nExpected UPI ID: {expected_upi_id}"
+        prompt = "Is this a real payment/transaction screenshot? Analyze and respond in the required JSON format."
 
         image_content = ImageContent(image_base64=image_base64)
         user_message = UserMessage(
@@ -147,7 +161,7 @@ IMPORTANT: If this is NOT a payment screenshot (selfie, random image, meme, etc.
         )
 
         response = await chat.send_message(user_message)
-        logger.info(f"AI Payment Analysis Response: {response[:500]}")
+        logger.info(f"AI Payment Analysis (GPT-5.2): {response[:500]}")
 
         try:
             json_str = response
@@ -159,12 +173,15 @@ IMPORTANT: If this is NOT a payment screenshot (selfie, random image, meme, etc.
             result = json.loads(json_str)
             result["ai_enabled"] = True
             result["raw_response"] = response[:500]
+            result["model"] = "gpt-5.2"
 
-            if result.get("confidence_score", 0) >= 85 and result.get("is_valid_payment", False):
-                if not result.get("fake_indicators") or len(result.get("fake_indicators", [])) == 0:
-                    result["auto_approve_recommended"] = True
-                else:
-                    result["auto_approve_recommended"] = False
+            # Auto approve logic: if it's a payment screenshot → approve
+            if result.get("is_payment_screenshot", False):
+                result["auto_approve_recommended"] = True
+                result["is_valid_payment"] = True
+                # Boost confidence for payment screenshots
+                if result.get("confidence_score", 0) < 85:
+                    result["confidence_score"] = 90
 
             return result
 
@@ -176,7 +193,8 @@ IMPORTANT: If this is NOT a payment screenshot (selfie, random image, meme, etc.
                 "confidence_score": 0,
                 "auto_approve_recommended": False,
                 "error": "Failed to parse AI response",
-                "raw_response": response[:500]
+                "raw_response": response[:500],
+                "model": "gpt-5.2"
             }
 
     except Exception as e:
@@ -186,5 +204,6 @@ IMPORTANT: If this is NOT a payment screenshot (selfie, random image, meme, etc.
             "is_valid_payment": False,
             "confidence_score": 0,
             "auto_approve_recommended": False,
-            "error": str(e)
+            "error": str(e),
+            "model": "gpt-5.2"
         }
