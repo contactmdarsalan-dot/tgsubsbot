@@ -44,6 +44,7 @@ export default function LandingPage() {
             <a href="#how">How It Works</a>
           </div>
           <button className="lp-btn-primary lp-btn-sm" onClick={goOnboard} data-testid="nav-cta">Launch Bot</button>
+          <button className="lp-btn-glass lp-btn-sm" onClick={() => navigate("/login")} data-testid="nav-login">Login</button>
         </div>
       </nav>
 

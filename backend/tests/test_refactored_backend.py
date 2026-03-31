@@ -6,7 +6,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://glassmorphism-web-1.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://bot-builder-93.preview.emergentagent.com')
 
 # Test credentials from test_credentials.md
 TEST_EMAIL = "gamerxboys8958@gmail.com"

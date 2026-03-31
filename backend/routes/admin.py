@@ -641,3 +641,213 @@ async def get_miniapp_users_stats(user: dict = Depends(get_current_user)):
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     today_count = await db.miniapp_users.count_documents({"created_at": {"$gte": today.isoformat()}})
     return {"total": total, "today": today_count}
+
+
+# ============== SAAS MANAGEMENT - BOT SUBSCRIPTION PLANS ==============
+
+@router.get("/saas/bot-plans")
+async def get_bot_plans(user: dict = Depends(get_current_user)):
+    """Get all bot subscription plans with features"""
+    await verify_super_admin(user)
+    plans = await db.bot_subscription_plans.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return plans
+
+
+@router.post("/saas/bot-plans")
+async def create_bot_plan(data: dict, user: dict = Depends(get_current_user)):
+    """Create a new bot subscription plan"""
+    await verify_super_admin(user)
+
+    plan = {
+        "id": str(uuid.uuid4()),
+        "name": data.get("name", "New Plan"),
+        "price": data.get("price", 0),
+        "duration_days": data.get("duration_days", 30),
+        "features": data.get("features", []),
+        "max_subscribers": data.get("max_subscribers", 500),
+        "max_broadcasts": data.get("max_broadcasts", 10),
+        "ai_verify_enabled": data.get("ai_verify_enabled", True),
+        "live_stream_enabled": data.get("live_stream_enabled", True),
+        "paid_posts_enabled": data.get("paid_posts_enabled", True),
+        "is_active": True,
+        "is_popular": data.get("is_popular", False),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.bot_subscription_plans.insert_one(plan)
+    del plan["_id"]
+    return plan
+
+
+@router.put("/saas/bot-plans/{plan_id}")
+async def update_bot_plan(plan_id: str, data: dict, user: dict = Depends(get_current_user)):
+    """Update a bot subscription plan"""
+    await verify_super_admin(user)
+
+    existing = await db.bot_subscription_plans.find_one({"id": plan_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    update_fields = {}
+    allowed = ["name", "price", "duration_days", "features", "max_subscribers",
+               "max_broadcasts", "ai_verify_enabled", "live_stream_enabled",
+               "paid_posts_enabled", "is_active", "is_popular"]
+    for key in allowed:
+        if key in data:
+            update_fields[key] = data[key]
+
+    if update_fields:
+        await db.bot_subscription_plans.update_one({"id": plan_id}, {"$set": update_fields})
+
+    updated = await db.bot_subscription_plans.find_one({"id": plan_id}, {"_id": 0})
+    return updated
+
+
+@router.delete("/saas/bot-plans/{plan_id}")
+async def delete_bot_plan(plan_id: str, user: dict = Depends(get_current_user)):
+    """Delete a bot subscription plan"""
+    await verify_super_admin(user)
+    result = await db.bot_subscription_plans.delete_one({"id": plan_id})
+    return {"success": result.deleted_count > 0}
+
+
+# ============== SAAS MANAGEMENT - TENANT CRUD ==============
+
+@router.get("/saas/tenants")
+async def get_all_tenants(user: dict = Depends(get_current_user)):
+    """Get all tenants with stats"""
+    await verify_super_admin(user)
+
+    tenants = await db.tenants.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+    # Enrich with stats
+    for t in tenants:
+        tid = t.get("tenant_id", "")
+        t["stats"] = {
+            "total_users": await db.bot_users.count_documents({"tenant_id": tid}),
+            "active_subs": await db.subscribers.count_documents({"tenant_id": tid, "status": "active"}),
+            "total_payments": await db.payments.count_documents({"tenant_id": tid}),
+        }
+        # Revenue
+        pipeline = [
+            {"$match": {"tenant_id": tid, "status": {"$in": ["verified", "approved"]}}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+        ]
+        rev = await db.payments.aggregate(pipeline).to_list(1)
+        t["stats"]["revenue"] = rev[0]["total"] if rev else 0
+
+        # Get admins
+        admins = await db.telegram_admins.find(
+            {"tenant_id": tid, "is_active": True}, {"_id": 0}
+        ).to_list(20)
+        t["admins"] = admins
+
+    return tenants
+
+
+@router.post("/saas/tenants")
+async def create_tenant_admin(data: dict, user: dict = Depends(get_current_user)):
+    """Create a new tenant from super admin"""
+    await verify_super_admin(user)
+
+    tenant_id = f"tenant_{uuid.uuid4().hex[:12]}"
+    tenant = {
+        "id": str(uuid.uuid4()),
+        "tenant_id": tenant_id,
+        "name": data.get("name", ""),
+        "email": data.get("email", ""),
+        "owner_telegram_id": data.get("owner_telegram_id", ""),
+        "bot_token": data.get("bot_token", ""),
+        "bot_username": data.get("bot_username", ""),
+        "upi_id": data.get("upi_id", ""),
+        "channel_id": data.get("channel_id", ""),
+        "razorpay_key_id": data.get("razorpay_key_id", ""),
+        "status": "active",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.tenants.insert_one(tenant)
+    del tenant["_id"]
+    return tenant
+
+
+@router.put("/saas/tenants/{tenant_id}")
+async def update_tenant_admin(tenant_id: str, data: dict, user: dict = Depends(get_current_user)):
+    """Update a tenant"""
+    await verify_super_admin(user)
+
+    allowed = ["name", "email", "bot_token", "bot_username", "upi_id",
+               "channel_id", "razorpay_key_id", "status"]
+    update_fields = {k: data[k] for k in allowed if k in data}
+
+    if update_fields:
+        await db.tenants.update_one({"tenant_id": tenant_id}, {"$set": update_fields})
+
+    updated = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0})
+    return updated
+
+
+@router.delete("/saas/tenants/{tenant_id}")
+async def delete_tenant_admin(tenant_id: str, user: dict = Depends(get_current_user)):
+    """Deactivate/delete a tenant"""
+    await verify_super_admin(user)
+    result = await db.tenants.update_one(
+        {"tenant_id": tenant_id},
+        {"$set": {"status": "inactive"}}
+    )
+    return {"success": result.modified_count > 0}
+
+
+# ============== TENANT ADMIN ASSIGNMENT ==============
+
+@router.get("/saas/tenants/{tenant_id}/admins")
+async def get_tenant_admins(tenant_id: str, user: dict = Depends(get_current_user)):
+    """Get admins for a specific tenant"""
+    await verify_super_admin(user)
+    admins = await db.telegram_admins.find(
+        {"tenant_id": tenant_id}, {"_id": 0}
+    ).to_list(50)
+    return admins
+
+
+@router.post("/saas/tenants/{tenant_id}/admins")
+async def assign_tenant_admin(tenant_id: str, data: dict, user: dict = Depends(get_current_user)):
+    """Assign a new admin to a tenant"""
+    await verify_super_admin(user)
+
+    telegram_user_id = str(data.get("telegram_user_id", "")).strip()
+    if not telegram_user_id:
+        raise HTTPException(status_code=400, detail="Telegram User ID required")
+
+    # Check if already admin for this tenant
+    existing = await db.telegram_admins.find_one(
+        {"telegram_user_id": telegram_user_id, "tenant_id": tenant_id},
+        {"_id": 0}
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="Already an admin for this tenant")
+
+    admin_doc = {
+        "id": str(uuid.uuid4()),
+        "telegram_user_id": telegram_user_id,
+        "name": data.get("name", "Admin"),
+        "email": data.get("email", ""),
+        "role": data.get("role", "admin"),
+        "is_active": True,
+        "permissions": data.get("permissions", [
+            "manage_bot", "verify_payments", "broadcast",
+            "live_streams", "super_chats", "add_subscribers"
+        ]),
+        "tenant_id": tenant_id,
+        "assigned_by": user.get("email", ""),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.telegram_admins.insert_one(admin_doc)
+    del admin_doc["_id"]
+    return admin_doc
+
+
+@router.delete("/saas/tenants/{tenant_id}/admins/{admin_id}")
+async def remove_tenant_admin(tenant_id: str, admin_id: str, user: dict = Depends(get_current_user)):
+    """Remove an admin from a tenant"""
+    await verify_super_admin(user)
+    result = await db.telegram_admins.delete_one({"id": admin_id, "tenant_id": tenant_id})
+    return {"success": result.deleted_count > 0}
