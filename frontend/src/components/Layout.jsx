@@ -90,7 +90,8 @@ export default function Layout() {
     const adminStatus = localStorage.getItem("isFirstUser") === "true" || 
                         user.is_admin === true || 
                         user.role === "admin" || 
-                        user.role === "super_admin";
+                        user.role === "super_admin" ||
+                        user.role === "tenant_admin";
     setIsAdmin(adminStatus);
     
     const superAdminStatus = user.role === "super_admin" || SUPER_ADMIN_EMAILS.includes(user.email);

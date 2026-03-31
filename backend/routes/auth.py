@@ -64,6 +64,8 @@ async def login(request: Request, user: UserLogin):
     # Super admin bypasses subscription check
     if user_role == "super_admin":
         sub_status = "active"  # Always active for super admin
+    elif user_role == "tenant_admin":
+        sub_status = "active"  # Tenant admins always have access
     elif sub_status == "active" and sub_end and datetime.now(timezone.utc) > sub_end:
         # Check if subscription expired
         sub_status = "expired"
@@ -77,10 +79,11 @@ async def login(request: Request, user: UserLogin):
             "email": existing["email"], 
             "name": existing.get("name", ""),
             "role": user_role,
+            "tenant_id": existing.get("tenant_id", ""),
             "dashboard_subscription_status": sub_status,
             "dashboard_plan": existing.get("dashboard_plan", ""),
             "dashboard_subscription_end": sub_end.isoformat() if sub_end else None,
-            "is_admin": existing.get("is_admin", False) or user_role in ["admin", "super_admin"]
+            "is_admin": existing.get("is_admin", False) or user_role in ["admin", "super_admin", "tenant_admin"]
         }
     }
 
@@ -190,10 +193,11 @@ async def get_me(user = Depends(get_current_user)):
         "phone": user.get("phone", ""),
         "picture": user.get("picture", ""),
         "role": user_role,
+        "tenant_id": user.get("tenant_id", ""),
         "dashboard_subscription_status": sub_status,
         "dashboard_plan": user.get("dashboard_plan", ""),
         "dashboard_subscription_end": sub_end.isoformat() if sub_end else None,
-        "is_admin": user.get("is_admin", False) or user_role in ["admin", "super_admin"]
+        "is_admin": user.get("is_admin", False) or user_role in ["admin", "super_admin", "tenant_admin"]
     }
 
 # ============== TWILIO OTP ROUTES ==============

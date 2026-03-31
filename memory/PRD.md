@@ -10,6 +10,12 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 - AI: OpenAI GPT-5.2 Vision (Payment Screenshot Verification)
 - Payments: Razorpay (instant) + Manual UPI (QR + AI verify)
 
+## Roles
+- **Super Admin**: Manages entire SaaS platform (tenants, bot plans, all data)
+- **Tenant Admin**: Web dashboard login, sees only their tenant's data (subscribers, payments, plans, broadcasts etc.)
+- **Bot Admin**: Telegram Mini App admin (TG User ID based, manages bot features)
+- **User**: Regular subscriber
+
 ## All Completed Features
 1. Mini App UI - Dark glassmorphism theme
 2. Phone Login with discount hook
@@ -23,23 +29,21 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 10. Referral System
 11. Tenant Isolation (multi-tenant SaaS)
 12. AI Auto-Verify Live Tickets
-13. Live Tab for Users (public sessions + ticket purchase)
-14. Creator Self-Service Onboarding (/creator-onboard)
-15. Creator Dashboard (/creator-dashboard)
-16. SaaS Landing Page (/) - Dark rose/crimson color palette with dynamic pricing
-17. Extend Subscription + 3-day expiry warning
-18. Live Management Fixes - End Stream, Delete, descriptions
-19. SaaS Management Page (/dashboard/saas-management) - Bot Plans CRUD + Tenant CRUD + Admin Assignment with permissions
-20. Data Migration API (/api/saas/migrate-to-tenant) + Quick Setup button
-21. Landing page Dashboard button for logged-in users
-22. Admin Live Management permission fix (removed strict live_streams check)
-23. Tenant Admin management with permissions (manage bot, verify payments, broadcast, live streams, paid posts, add subscribers, manage plans, manage users)
+13. Creator Self-Service Onboarding (/creator-onboard)
+14. Creator Dashboard (/creator-dashboard)
+15. SaaS Landing Page (/) - Dark rose/crimson with dynamic pricing
+16. Extend Subscription + 3-day expiry warning
+17. SaaS Management (/dashboard/saas-management) - Bot Plans CRUD + Tenant CRUD
+18. Data Migration API + Quick Setup button
+19. Landing page Dashboard button for logged-in users
+20. **Tenant Admin System** - Create tenant admin users (email/password) who login to web dashboard and see only their tenant's data
+21. **Dashboard Tenant Filtering** - Plans, Subscribers, Payments, Analytics, Broadcasts, Live Sessions, Referrals, Coupons, TG Admins all filtered by tenant_id
+22. **Admin Dialog** - Dual sections: Bot Admins (TG) + Dashboard Admins (Web) with create/remove
+23. **Permissions System** - 8 toggleable permissions for bot admins
 
 ## Tenants
-- **Anamika** (tenant_85ee971d0285): Production data migrated here
+- **Anamika** (tenant_85ee971d0285): Production data
 - **Kaloo** (default): Empty, ready for new bot
-
-## Testing: Iterations 10-19 all 100% passing
 
 ## Remaining Tasks
 - (P2) Subscription Analytics (Revenue graph, churn rate, MRR dashboard)
@@ -47,4 +51,4 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 - (P2) Production deployment sync ("Save to Github" + Coolify redeploy)
 - (P3) WhatsApp integration
 - (P3) Multi-language bot support
-- (P3) MiniApp.jsx refactoring (1400+ lines - split into subcomponents)
+- (P3) MiniApp.jsx refactoring (1400+ lines)

@@ -12,7 +12,7 @@ from services.telegram import (
 )
 from services.payment import create_blurred_image
 from services.bot_activity import log_bot_activity
-from services.tenant import DEFAULT_TENANT_ID
+from services.tenant import DEFAULT_TENANT_ID, tenant_query
 from config import logger
 from models import MessageTemplate
 from pydantic import BaseModel
@@ -26,6 +26,23 @@ import json
 import re
 
 router = APIRouter()
+
+SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"
+
+
+def get_user_tenant(user: dict) -> str:
+    """Get tenant_id from user. Super admins see all data."""
+    role = user.get("role", "user")
+    if role == "super_admin" or user.get("email") == SUPER_ADMIN_EMAIL:
+        return ""
+    return user.get("tenant_id", "")
+
+
+def tq(base_query: dict, tenant_id: str) -> dict:
+    """Add tenant_id filter if present."""
+    if tenant_id:
+        base_query["tenant_id"] = tenant_id
+    return base_query
 
 # ============== MESSAGE TEMPLATES ROUTES ==============
 
@@ -247,7 +264,8 @@ async def send_broadcast_messages(broadcast_id: str, user_ids: list, message: st
 @router.get("/broadcasts")
 async def get_broadcasts(user = Depends(get_current_user)):
     """Get all broadcast history"""
-    broadcasts = await db.broadcasts.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    tenant_id = get_user_tenant(user)
+    broadcasts = await db.broadcasts.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(100)
     return broadcasts
 
 @router.get("/broadcasts/{broadcast_id}")
@@ -375,7 +393,8 @@ async def send_paid_post_broadcast(broadcast_id: str, post_id: str, user_ids: li
 @router.get("/coupons")
 async def get_coupons(user = Depends(get_current_user)):
     """Get all coupons"""
-    coupons = await db.coupons.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    tenant_id = get_user_tenant(user)
+    coupons = await db.coupons.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(1000)
     return coupons
 
 @router.post("/coupons")
@@ -592,7 +611,8 @@ async def unblock_user(user_id: str, user = Depends(get_current_user)):
 @router.get("/referrals")
 async def get_referrals(user = Depends(get_current_user)):
     """Get all referrals"""
-    referrals = await db.referrals.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    tenant_id = get_user_tenant(user)
+    referrals = await db.referrals.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(1000)
     return referrals
 
 @router.get("/referrals/settings")
@@ -1094,7 +1114,8 @@ async def is_admin_or_creator(telegram_user_id: str, telegram_username: str = ""
 @router.get("/telegram-admins")
 async def get_telegram_admins(user = Depends(get_current_user)):
     """Get all Telegram admins"""
-    admins = await db.telegram_admins.find({}, {"_id": 0}).to_list(100)
+    tenant_id = get_user_tenant(user)
+    admins = await db.telegram_admins.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
     return admins
 
 @router.post("/telegram-admins")
@@ -1190,7 +1211,8 @@ async def delete_telegram_admin(admin_id: str, user = Depends(get_current_user))
 @router.get("/live/sessions")
 async def get_live_sessions(user = Depends(get_current_user)):
     """Get all live sessions"""
-    sessions = await db.live_sessions.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    tenant_id = get_user_tenant(user)
+    sessions = await db.live_sessions.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(100)
     return sessions
 
 @router.post("/live/sessions")
@@ -1586,18 +1608,19 @@ async def reject_superchat(chat_id: str, user = Depends(get_current_user)):
 async def get_revenue_analytics(user = Depends(get_current_user)):
     """Advanced revenue analytics with daily/weekly/monthly breakdowns"""
     now = datetime.now(timezone.utc)
+    tenant_id = get_user_tenant(user)
     
     # Get ALL verified payments
     payments = await db.payments.find(
-        {"status": "verified"},
+        tq({"status": "verified"}, tenant_id),
         {"_id": 0, "amount": 1, "created_at": 1, "plan_id": 1, "plan_name": 1}
     ).to_list(100000)
     
     # Get all subscribers
-    subscribers = await db.subscribers.find({}, {"_id": 0}).to_list(100000)
+    subscribers = await db.subscribers.find(tq({}, tenant_id), {"_id": 0}).to_list(100000)
     
     # Get all plans
-    plans = await db.plans.find({}, {"_id": 0}).to_list(100)
+    plans = await db.plans.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
     
     # === TOTAL METRICS ===
     total_revenue = sum(p.get("amount", 0) for p in payments)

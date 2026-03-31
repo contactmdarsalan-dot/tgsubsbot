@@ -1,7 +1,7 @@
 """Dashboard subscription, Super admin management routes"""
 from fastapi import APIRouter, HTTPException, Depends, Request
 from database import db
-from services.auth import get_current_user
+from services.auth import get_current_user, hash_password
 from config import logger, RAZORPAY_KEY_ID, razorpay_client, DASHBOARD_PLANS
 from models import User
 from datetime import datetime, timezone, timedelta
@@ -851,6 +851,89 @@ async def remove_tenant_admin(tenant_id: str, admin_id: str, user: dict = Depend
     await verify_super_admin(user)
     result = await db.telegram_admins.delete_one({"id": admin_id, "tenant_id": tenant_id})
     return {"success": result.deleted_count > 0}
+
+
+
+# ============== TENANT ADMIN USER MANAGEMENT ==============
+
+@router.post("/saas/tenants/{tenant_id}/dashboard-admin")
+async def create_tenant_dashboard_admin(tenant_id: str, data: dict, user: dict = Depends(get_current_user)):
+    """Create a web dashboard admin user for a specific tenant. Super Admin only."""
+    await verify_super_admin(user)
+
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "").strip()
+    name = data.get("name", "").strip()
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password required")
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    # Check tenant exists
+    tenant = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0})
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    # Check if user already exists
+    existing = await db.users.find_one({"email": email}, {"_id": 0})
+    if existing:
+        # Update existing user to tenant_admin role if not already
+        await db.users.update_one(
+            {"email": email},
+            {"$set": {
+                "role": "tenant_admin",
+                "tenant_id": tenant_id,
+                "name": name or existing.get("name", ""),
+                "is_admin": True,
+                "dashboard_subscription_status": "active",
+            }}
+        )
+        return {"message": f"User {email} updated to tenant admin for {tenant.get('name', tenant_id)}"}
+
+    # Create new user
+    user_doc = {
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "name": name or email.split("@")[0],
+        "password_hash": hash_password(password),
+        "role": "tenant_admin",
+        "tenant_id": tenant_id,
+        "is_admin": True,
+        "dashboard_subscription_status": "active",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.users.insert_one(user_doc)
+    del user_doc["_id"]
+
+    logger.info(f"Created tenant admin: {email} for tenant {tenant_id}")
+    return {
+        "message": f"Tenant admin created: {email} for {tenant.get('name', tenant_id)}",
+        "user_id": user_doc["id"],
+        "email": email,
+    }
+
+
+@router.get("/saas/tenants/{tenant_id}/dashboard-admins")
+async def get_tenant_dashboard_admins(tenant_id: str, user: dict = Depends(get_current_user)):
+    """Get all web dashboard admin users for a tenant."""
+    await verify_super_admin(user)
+    admins = await db.users.find(
+        {"tenant_id": tenant_id, "role": "tenant_admin"},
+        {"_id": 0, "password_hash": 0}
+    ).to_list(100)
+    return admins
+
+
+@router.delete("/saas/tenants/{tenant_id}/dashboard-admins/{user_id}")
+async def remove_tenant_dashboard_admin(tenant_id: str, user_id: str, user: dict = Depends(get_current_user)):
+    """Remove a tenant dashboard admin."""
+    await verify_super_admin(user)
+    result = await db.users.update_one(
+        {"id": user_id, "tenant_id": tenant_id},
+        {"$set": {"role": "user", "tenant_id": "", "is_admin": False}}
+    )
+    return {"success": result.modified_count > 0}
 
 
 

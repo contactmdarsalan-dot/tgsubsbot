@@ -8,7 +8,7 @@ from services.telegram import (
 )
 from services.payment import detect_payment_screenshot, analyze_payment_screenshot_with_ai
 from services.bot_activity import log_bot_activity
-from services.tenant import DEFAULT_TENANT_ID
+from services.tenant import DEFAULT_TENANT_ID, tenant_query
 from config import logger, RAZORPAY_KEY_ID, razorpay_client
 from models import (
     SubscriptionPlanCreate, SubscriptionPlan, SubscriberCreate, Subscriber,
@@ -29,11 +29,27 @@ SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"
 
 router = APIRouter()
 
+
+def get_user_tenant(user: dict) -> str:
+    """Get tenant_id from user. Super admins see all data (empty string = no filter)."""
+    role = user.get("role", "user")
+    if role == "super_admin" or user.get("email") == SUPER_ADMIN_EMAIL:
+        return ""  # No filter - sees everything
+    return user.get("tenant_id", "")
+
+
+def tq(base_query: dict, tenant_id: str) -> dict:
+    """Add tenant_id filter if present."""
+    if tenant_id:
+        base_query["tenant_id"] = tenant_id
+    return base_query
+
 # ============== PLANS ROUTES ==============
 
 @router.get("/plans", response_model=List[SubscriptionPlan])
 async def get_plans(user = Depends(get_current_user)):
-    plans = await db.plans.find({}, {"_id": 0}).to_list(100)
+    tenant_id = get_user_tenant(user)
+    plans = await db.plans.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
     for plan in plans:
         if isinstance(plan.get('created_at'), str):
             plan['created_at'] = datetime.fromisoformat(plan['created_at'])
@@ -92,7 +108,8 @@ async def delete_plan(plan_id: str, user = Depends(get_current_user)):
 
 @router.get("/subscribers")
 async def get_subscribers(status: Optional[str] = None, user = Depends(get_current_user)):
-    query = {}
+    tenant_id = get_user_tenant(user)
+    query = tq({}, tenant_id)
     if status:
         query["status"] = status
     subscribers = await db.subscribers.find(query, {"_id": 0}).to_list(1000)
@@ -472,7 +489,8 @@ async def delete_channel(channel_id: str, user = Depends(get_current_user)):
 
 @router.get("/payments")
 async def get_payments(status: Optional[str] = None, user = Depends(get_current_user)):
-    query = {}
+    tenant_id = get_user_tenant(user)
+    query = tq({}, tenant_id)
     if status:
         query["status"] = status
     # Sort by created_at descending (newest first)
@@ -1211,14 +1229,15 @@ async def upload_image(file: UploadFile = File(...), user = Depends(get_current_
 @router.get("/analytics")
 async def get_analytics(user = Depends(get_current_user)):
     now = datetime.now(timezone.utc)
+    tenant_id = get_user_tenant(user)
     
-    total_subscribers = await db.subscribers.count_documents({})
-    active_subscribers = await db.subscribers.count_documents({"status": "active"})
-    expired_subscribers = await db.subscribers.count_documents({"status": "expired"})
-    grace_subscribers = await db.subscribers.count_documents({"status": "grace"})
+    total_subscribers = await db.subscribers.count_documents(tq({}, tenant_id))
+    active_subscribers = await db.subscribers.count_documents(tq({"status": "active"}, tenant_id))
+    expired_subscribers = await db.subscribers.count_documents(tq({"status": "expired"}, tenant_id))
+    grace_subscribers = await db.subscribers.count_documents(tq({"status": "grace"}, tenant_id))
     
     # Revenue calculation
-    verified_payments = await db.payments.find({"status": "verified"}, {"_id": 0}).to_list(10000)
+    verified_payments = await db.payments.find(tq({"status": "verified"}, tenant_id), {"_id": 0}).to_list(10000)
     total_revenue = sum(p.get("amount", 0) for p in verified_payments)
     
     # This month's revenue
@@ -1228,14 +1247,14 @@ async def get_analytics(user = Depends(get_current_user)):
     monthly_revenue = sum(p.get("amount", 0) for p in monthly_payments)
     
     # Recent activity
-    recent_subscribers = await db.subscribers.find({}, {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
-    recent_payments = await db.payments.find({}, {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
+    recent_subscribers = await db.subscribers.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
+    recent_payments = await db.payments.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
     
     # Plans stats
-    plans = await db.plans.find({}, {"_id": 0}).to_list(100)
+    plans = await db.plans.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
     plan_stats = []
     for plan in plans:
-        count = await db.subscribers.count_documents({"plan_id": plan["id"], "status": "active"})
+        count = await db.subscribers.count_documents(tq({"plan_id": plan["id"], "status": "active"}, tenant_id))
         plan_stats.append({"name": plan["name"], "count": count, "price": plan["price"]})
     
     return {

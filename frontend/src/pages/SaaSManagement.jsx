@@ -75,6 +75,10 @@ export default function SaaSManagement() {
   const [tenantAdmins, setTenantAdmins] = useState([]);
   const [newAdmin, setNewAdmin] = useState({ telegram_user_id: "", name: "", email: "", role: "admin", permissions: ["manage_bot", "verify_payments", "broadcast", "live_streams", "paid_posts", "add_subscribers"] });
 
+  // Dashboard (Tenant) Admin
+  const [dashAdmins, setDashAdmins] = useState([]);
+  const [newDashAdmin, setNewDashAdmin] = useState({ email: "", password: "", name: "" });
+
   const fetchPlans = useCallback(async () => {
     try {
       const { data } = await axios.get(`${API}/saas/bot-plans`, getAuth());
@@ -190,11 +194,16 @@ export default function SaaSManagement() {
   // ======= ADMIN ASSIGNMENT =======
   const openAdminDialog = async (tenant) => {
     setSelectedTenant(tenant);
-    setNewAdmin({ telegram_user_id: "", name: "", email: "", role: "admin" });
+    setNewAdmin({ telegram_user_id: "", name: "", email: "", role: "admin", permissions: ["manage_bot", "verify_payments", "broadcast", "live_streams", "paid_posts", "add_subscribers"] });
+    setNewDashAdmin({ email: "", password: "", name: "" });
     try {
       const { data } = await axios.get(`${API}/saas/tenants/${tenant.tenant_id}/admins`, getAuth());
       setTenantAdmins(data);
     } catch (e) { setTenantAdmins(tenant.admins || []); }
+    try {
+      const { data } = await axios.get(`${API}/saas/tenants/${tenant.tenant_id}/dashboard-admins`, getAuth());
+      setDashAdmins(data);
+    } catch (e) { setDashAdmins([]); }
     setAdminDialog(true);
   };
 
@@ -223,6 +232,28 @@ export default function SaaSManagement() {
       const { data } = await axios.get(`${API}/saas/tenants/${selectedTenant.tenant_id}/admins`, getAuth());
       setTenantAdmins(data);
       fetchTenants();
+    } catch (e) { toast.error("Failed"); }
+  };
+
+  // Dashboard Admin CRUD
+  const createDashAdmin = async () => {
+    if (!newDashAdmin.email.trim() || !newDashAdmin.password.trim()) return;
+    try {
+      await axios.post(`${API}/saas/tenants/${selectedTenant.tenant_id}/dashboard-admin`, newDashAdmin, getAuth());
+      toast.success(`Tenant Admin created: ${newDashAdmin.email}`);
+      setNewDashAdmin({ email: "", password: "", name: "" });
+      const { data } = await axios.get(`${API}/saas/tenants/${selectedTenant.tenant_id}/dashboard-admins`, getAuth());
+      setDashAdmins(data);
+    } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
+  };
+
+  const removeDashAdmin = async (userId) => {
+    if (!window.confirm("Remove this dashboard admin?")) return;
+    try {
+      await axios.delete(`${API}/saas/tenants/${selectedTenant.tenant_id}/dashboard-admins/${userId}`, getAuth());
+      toast.success("Dashboard admin removed");
+      const { data } = await axios.get(`${API}/saas/tenants/${selectedTenant.tenant_id}/dashboard-admins`, getAuth());
+      setDashAdmins(data);
     } catch (e) { toast.error("Failed"); }
   };
 
@@ -545,7 +576,38 @@ export default function SaaSManagement() {
                   </div>
                 </div>
                 <Button onClick={assignAdmin} disabled={!newAdmin.telegram_user_id.trim()} className="w-full" data-testid="assign-admin-btn">
-                  <UserPlus className="w-4 h-4 mr-1" /> Assign Admin
+                  <UserPlus className="w-4 h-4 mr-1" /> Assign Bot Admin
+                </Button>
+              </div>
+            </div>
+
+            {/* ===== DASHBOARD (TENANT) ADMINS ===== */}
+            <div className="border-t pt-4">
+              <Label className="mb-2 block font-semibold">Dashboard Admins ({dashAdmins.length})</Label>
+              <p className="text-xs text-muted-foreground mb-3">These users can login to the web dashboard and manage this tenant's data.</p>
+
+              {dashAdmins.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {dashAdmins.map(a => (
+                    <div key={a.id} className="flex items-center justify-between border rounded-lg p-3 bg-blue-500/5 border-blue-500/20" data-testid={`dash-admin-${a.id}`}>
+                      <div>
+                        <p className="text-sm font-medium">{a.name || a.email}</p>
+                        <p className="text-xs text-muted-foreground">{a.email} &middot; Tenant Admin</p>
+                      </div>
+                      <Button variant="ghost" size="icon" onClick={() => removeDashAdmin(a.id)} data-testid={`remove-dash-admin-${a.id}`}>
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Input placeholder="Email *" type="email" value={newDashAdmin.email} onChange={e => setNewDashAdmin(p => ({ ...p, email: e.target.value }))} data-testid="dash-admin-email" />
+                <Input placeholder="Password *" type="password" value={newDashAdmin.password} onChange={e => setNewDashAdmin(p => ({ ...p, password: e.target.value }))} data-testid="dash-admin-password" />
+                <Input placeholder="Name" value={newDashAdmin.name} onChange={e => setNewDashAdmin(p => ({ ...p, name: e.target.value }))} data-testid="dash-admin-name" />
+                <Button onClick={createDashAdmin} disabled={!newDashAdmin.email.trim() || !newDashAdmin.password.trim()} className="w-full bg-blue-600 hover:bg-blue-700" data-testid="create-dash-admin-btn">
+                  <UserPlus className="w-4 h-4 mr-1" /> Create Tenant Admin
                 </Button>
               </div>
             </div>
