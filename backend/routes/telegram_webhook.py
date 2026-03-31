@@ -492,33 +492,24 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 if qr_url:
                     try:
                         logger.info(f"Sending QR to {chat_id}...")
-                        async with httpx.AsyncClient() as http_client:
-                            url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-                            
-                            # For large payments (₹500+), show UPI ID along with QR
-                            upi_id = settings.get("upi_id", "") or settings.get("payment_upi_id", "")
-                            
-                            caption_text = f"📱 <b>Scan & Pay {price_display}</b>\n\n"
-                            caption_text += f"📦 Plan: <b>{plan['name'] if plan else ''}</b>\n\n"
-                            
-                            # Show UPI ID for large amounts (₹500+)
-                            if final_price >= 500 and upi_id:
-                                caption_text += f"💳 <b>UPI ID:</b> <code>{upi_id}</code>\n"
-                                caption_text += f"<i>(Large amount? Pay directly to UPI ID)</i>\n\n"
-                            
-                            caption_text += f"⚠️ <b>Payment ke baad turant screenshot bhejo!</b>\n\n"
-                            caption_text += f"⏳ Waiting for your screenshot..."
-                            
-                            response = await http_client.post(url, json={
-                                "chat_id": chat_id,
-                                "photo": qr_url,
-                                "caption": caption_text,
-                                "parse_mode": "HTML"
-                            })
-                            logger.info(f"QR send response: {response.status_code} - {response.text[:200]}")
+                        # For large payments (₹500+), show UPI ID along with QR
+                        upi_id = settings.get("upi_id", "") or settings.get("payment_upi_id", "")
+                        
+                        caption_text = f"📱 <b>Scan & Pay {price_display}</b>\n\n"
+                        caption_text += f"📦 Plan: <b>{plan['name'] if plan else ''}</b>\n\n"
+                        
+                        if final_price >= 500 and upi_id:
+                            caption_text += f"💳 <b>UPI ID:</b> <code>{upi_id}</code>\n"
+                            caption_text += f"<i>(Large amount? Pay directly to UPI ID)</i>\n\n"
+                        
+                        caption_text += f"⚠️ <b>Payment ke baad turant screenshot bhejo!</b>\n\n"
+                        caption_text += f"⏳ Waiting for your screenshot..."
+                        
+                        # Use send_telegram_photo which handles local files properly
+                        await send_telegram_photo(chat_id, qr_url, caption_text, bot_token)
                     except Exception as e:
                         logger.error(f"Failed to send QR: {e}")
-                        await send_telegram_message(chat_id, f"QR Code: {qr_url}\n\n📸 Screenshot bhejo!", bot_token)
+                        await send_telegram_message(chat_id, f"📸 Screenshot bhejo payment ka!", bot_token)
                 else:
                     logger.warning(f"QR URL is empty! Cannot send QR code.")
                 

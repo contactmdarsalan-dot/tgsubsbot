@@ -6,6 +6,10 @@ from config import logger, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, razorpay_client
 from datetime import datetime, timezone, timedelta
 import uuid
 import json
+import os
+import qrcode
+from io import BytesIO
+from PIL import Image
 
 router = APIRouter(prefix="/miniapp")
 
@@ -66,13 +70,70 @@ async def miniapp_get_user_discount(telegram_user_id: str):
 
 # ============== UPI DETAILS ==============
 
+def _generate_upi_qr(upi_id: str, upi_name: str = "") -> str:
+    """Generate a UPI QR code image and save to uploads, returns relative URL"""
+    upi_url = f"upi://pay?pa={upi_id}&pn={upi_name}&cu=INR"
+    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_H, box_size=10, border=4)
+    qr.add_data(upi_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+    os.makedirs(uploads_path, exist_ok=True)
+    filename = f"qr_auto_{upi_id.replace('@','_')}.png"
+    filepath = os.path.join(uploads_path, filename)
+    img.save(filepath)
+    return f"/api/uploads/{filename}"
+
+
+def _is_valid_qr_file(qr_url: str) -> bool:
+    """Check if a local QR code file exists and is actually a QR code (not a random photo)"""
+    if not qr_url or qr_url.startswith("http"):
+        return bool(qr_url and qr_url.startswith("http"))
+    # Local file - check if it exists
+    filename = qr_url.split("/")[-1]
+    uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+    filepath = os.path.join(uploads_path, filename)
+    if not os.path.exists(filepath):
+        return False
+    # Quick check: QR codes have very few unique colors (2-5), photos have 100+
+    try:
+        img = Image.open(filepath)
+        pixels = img.load()
+        colors = set()
+        step = max(1, img.width // 20)  # Sample every Nth pixel for speed
+        for x in range(0, img.width, step):
+            for y in range(0, img.height, step):
+                colors.add(pixels[x, y])
+                if len(colors) > 20:
+                    return False  # Too many colors = photo, not QR
+        return True
+    except Exception:
+        return False
+
+
 @router.get("/upi-details")
 async def miniapp_get_upi_details():
-    """Get UPI payment details for manual payment"""
+    """Get UPI payment details for manual payment. Auto-generates QR from UPI ID if missing."""
     settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
+    upi_id = settings.get("payment_upi_id") or settings.get("upi_id", "")
+    upi_name = settings.get("upi_name", "")
+    qr_url = settings.get("qr_code_url", "")
+    
+    # Auto-generate QR if: no URL, file missing, or file is not actually a QR code
+    if upi_id and not _is_valid_qr_file(qr_url):
+        qr_url = _generate_upi_qr(upi_id, upi_name)
+        # Save back to DB so it persists
+        await db.settings.update_one(
+            {"id": "bot_settings"}, 
+            {"$set": {"qr_code_url": qr_url}},
+            upsert=True
+        )
+        logger.info(f"Auto-generated QR code for UPI: {upi_id} -> {qr_url}")
+    
     return {
-        "upi_id": settings.get("payment_upi_id") or settings.get("upi_id", ""),
-        "qr_code_url": settings.get("qr_code_url", ""),
+        "upi_id": upi_id,
+        "qr_code_url": qr_url,
         "payment_message": settings.get("payment_instructions") or settings.get("payment_message", "Send payment screenshot to the bot after paying via UPI.")
     }
 

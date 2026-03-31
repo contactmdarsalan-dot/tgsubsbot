@@ -220,7 +220,8 @@ async def download_telegram_photo(file_id: str, bot_token: str) -> bytes:
 
 
 async def send_telegram_photo(chat_id: str, photo_url_or_bytes, caption: str, bot_token: str, reply_markup: dict = None) -> dict:
-    """Send photo to Telegram chat"""
+    """Send photo to Telegram chat. Handles URLs, local /api/uploads/ paths, and raw bytes."""
+    import os
     try:
         async with httpx.AsyncClient(timeout=30.0) as http_client:
             url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
@@ -235,8 +236,22 @@ async def send_telegram_photo(chat_id: str, photo_url_or_bytes, caption: str, bo
                 data["reply_markup"] = json.dumps(reply_markup)
 
             if isinstance(photo_url_or_bytes, str):
-                data["photo"] = photo_url_or_bytes
-                response = await http_client.post(url, data=data)
+                # Check if it's a local /api/uploads/ path - read file and upload directly
+                if photo_url_or_bytes.startswith("/api/uploads/"):
+                    filename = photo_url_or_bytes.split("/")[-1]
+                    uploads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+                    filepath = os.path.join(uploads_dir, filename)
+                    if os.path.exists(filepath):
+                        with open(filepath, "rb") as f:
+                            file_bytes = f.read()
+                        files = {"photo": (filename, file_bytes, "image/png")}
+                        response = await http_client.post(url, data=data, files=files)
+                    else:
+                        logger.error(f"Local QR file not found: {filepath}")
+                        return None
+                else:
+                    data["photo"] = photo_url_or_bytes
+                    response = await http_client.post(url, data=data)
             else:
                 files = {"photo": ("image.jpg", photo_url_or_bytes, "image/jpeg")}
                 response = await http_client.post(url, data=data, files=files)
