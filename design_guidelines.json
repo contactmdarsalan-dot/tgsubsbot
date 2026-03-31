@@ -1,121 +1,145 @@
 {
-  "theme": "Dark",
-  "archetype": "7 (Electric & Neon) modified with Crystal Glassmorphism",
-  "design_philosophy": "A high-energy, premium SaaS landing page for creators. Uses a base of deep tinted void black, intersected by hot pink and deep purple neon accents. Relies heavily on Crystal Glassmorphism (sharp 1px white/10 borders, heavy background blurs, saturated light bleed) to create an edgy, lucrative, and trustworthy environment for influencers launching their Telegram bots.",
-  "colors": {
-    "background": "#05050A",
-    "surface": "rgba(255, 255, 255, 0.03)",
-    "surface_glass": "rgba(255, 255, 255, 0.05)",
-    "border": "rgba(255, 255, 255, 0.1)",
-    "primary": "#FF007F",
-    "primary_hover": "#FF3399",
-    "secondary": "#7000FF",
-    "text_primary": "#FFFFFF",
-    "text_secondary": "rgba(255, 255, 255, 0.7)",
-    "text_muted": "rgba(255, 255, 255, 0.4)",
-    "gradient_accent": "linear-gradient(135deg, #FF007F 0%, #7000FF 100%)"
+  "metadata": {
+    "domain": "Telegram Subscription Bot SaaS Platform",
+    "theme": "Dark",
+    "archetype": "5 (Jewel & Luxury)",
+    "vibe": "Midnight, deep space, expensive, cinematic, high-contrast control room",
+    "instructions_to_main_agent": "Follow this JSON strictly. Do not deviate from the colors or typography specified. The Super Admin dashboard must feel like a dense 'Control Room' (Mode B Grid) with high precision data. The Telegram Mini App must feel like an immersive, conversion-focused 'Glassmorphism' mobile experience. Use Lucide React for icons, Framer Motion for smooth transitions, and Recharts for data visualization. Ensure EVERY interactive element has a data-testid. ALL files must be in .js/.jsx, NOT TypeScript."
   },
   "typography": {
-    "heading_font": "Unbounded, sans-serif",
-    "body_font": "Manrope, sans-serif",
-    "h1": "text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter leading-none text-white",
-    "h2": "text-3xl sm:text-4xl font-bold tracking-tight text-white",
-    "h3": "text-xl sm:text-2xl font-bold tracking-tight text-white",
-    "body_large": "text-lg sm:text-xl font-medium text-white/70 leading-relaxed",
-    "body": "text-base text-white/70 leading-relaxed",
-    "label": "text-xs font-bold uppercase tracking-[0.2em] text-white/50",
-    "rules": [
-      "Headings MUST use tight tracking (tracking-tighter).",
-      "No Inter or generic sans for headings. Unbounded gives a futuristic, premium tech vibe.",
-      "Labels must be uppercase with wide tracking."
-    ]
+    "fonts": {
+      "headings": "'Outfit', sans-serif",
+      "body": "'Manrope', sans-serif",
+      "mono": "'JetBrains Mono', monospace"
+    },
+    "scale": {
+      "h1_hero": "text-4xl sm:text-5xl font-black tracking-tight",
+      "h2_section": "text-2xl sm:text-3xl font-bold tracking-tight",
+      "h3_card": "text-xl font-semibold",
+      "body": "text-base font-medium",
+      "labels_overlines": "text-xs font-bold uppercase tracking-[0.2em]",
+      "metrics_data": "font-mono text-3xl sm:text-4xl font-semibold tracking-tighter"
+    },
+    "rules": {
+      "no_inter": true,
+      "weight_contrast": "Use bold/black for headings, medium for body to create high contrast.",
+      "text_colors": "Use pure white for primary headings, zinc-400 for secondary text to maintain APCA contrast."
+    }
   },
-  "layout_and_surfaces": {
-    "spacing": "Generous spacing. Sections use py-24 to py-32. Components use p-6 to p-8.",
-    "glassmorphism_rules": "Use 'Crystal Glass' style. Containers: bg-white/5 backdrop-blur-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]. Text over glass MUST be high contrast.",
-    "bento_grid": "Mode A ('Tetris' Grid). Use grid-cols-1 md:grid-cols-8 lg:grid-cols-12 with gap-6. Mix span sizes (e.g., col-span-12 md:col-span-8 row-span-2) to create asymmetry and tension."
+  "color_palette": {
+    "backgrounds": {
+      "app": "#05050A",
+      "surface": "#0D0D14",
+      "surface_glass": "rgba(255, 255, 255, 0.03)",
+      "surface_hover": "rgba(255, 255, 255, 0.06)"
+    },
+    "brand": {
+      "primary": "#6366F1",
+      "primary_hover": "#4F46E5",
+      "secondary": "#8B5CF6",
+      "accent": "#06B6D4"
+    },
+    "gradients": {
+      "cta": "bg-gradient-to-r from-indigo-500 to-purple-600",
+      "text": "bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A1A1AA",
+      "muted": "#71717A",
+      "inverse": "#000000"
+    },
+    "borders": {
+      "subtle": "rgba(255, 255, 255, 0.08)",
+      "focus": "rgba(99, 102, 241, 0.5)"
+    },
+    "status": {
+      "success": "#10B981",
+      "warning": "#F59E0B",
+      "error": "#F43F5E",
+      "info": "#3B82F6"
+    }
+  },
+  "spacing_and_layout": {
+    "super_admin": {
+      "grid_mode": "Control Room Grid (Mode B)",
+      "container_padding": "p-6",
+      "gap": "gap-6",
+      "card_padding": "p-6"
+    },
+    "mini_app": {
+      "grid_mode": "Tetris Grid (Mode A, Mobile First)",
+      "container_padding": "p-4 sm:p-6",
+      "gap": "gap-4",
+      "card_padding": "p-5 sm:p-6"
+    },
+    "radii": {
+      "buttons": "rounded-2xl",
+      "cards": "rounded-2xl",
+      "inner_elements": "rounded-xl",
+      "badges": "rounded-full"
+    },
+    "rules": {
+      "generous_spacing": "Use 2x normal padding to create a luxurious feel.",
+      "mobile_first": "Always start with single column on mobile, max 80vh for images."
+    }
   },
   "components_strategy": {
-    "buttons": {
-      "primary": "Solid #FF007F background, text-white, rounded-full, px-8 py-4, font-bold transition-all hover:scale-105 hover:bg-[#FF3399] hover:shadow-[0_0_20px_rgba(255,0,127,0.4)]",
-      "glass": "bg-white/5 backdrop-blur-md border border-white/10 text-white rounded-full px-8 py-4 font-bold hover:bg-white/10 transition-all"
-    },
     "cards": {
-      "base": "Rounded-2xl or rounded-3xl bg-white/5 backdrop-blur-xl border border-white/10 p-8 overflow-hidden relative group transition-all hover:border-white/20",
-      "glow_effect": "Add absolute inset-0 bg-gradient-to-br from-[#FF007F]/10 to-[#7000FF]/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
+      "style": "bg-white/5 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-2xl",
+      "hover": "hover:bg-white/10 hover:border-white/20 transition-all duration-300"
     },
-    "icons": "lucide-react (use default imports)",
-    "animations": "Framer Motion for entrance (y: 20, opacity: 0 -> y: 0, opacity: 1). Staggered children in grids."
-  },
-  "pages": {
-    "LandingPage": {
-      "sections": [
-        {
-          "name": "Header",
-          "description": "Sticky nav. bg-[#05050A]/80 backdrop-blur-md border-b border-white/10. Logo on left, links center, Primary CTA 'Launch Bot' on right leading to /creator-onboard."
-        },
-        {
-          "name": "Hero",
-          "description": "Massive top margin. Background has dark overlay over abstract purple neon image to ensure text pops (bg-black/60). Tagline label: 'THE ULTIMATE CREATOR TOOL'. H1: 'Launch your Telegram subscription bot in 2 minutes'. Subtitle: 'Monetize your audience with AI payments, auto QR codes, and exclusive content gates.' CTA: Primary button redirecting to /creator-onboard. Optional secondary CTA 'View Demo'. Use staggered Framer Motion entrance."
-        },
-        {
-          "name": "SocialProofMarquee",
-          "description": "Use react-fast-marquee. 'Trusted by 10,000+ creators across'. Display logos in grayscale/white with opacity-50, hover:opacity-100."
-        },
-        {
-          "name": "FeaturesBento",
-          "description": "Asymmetric bento grid. Card 1 (Large): AI-Powered Payment Verification (show a mock scanning UI). Card 2 (Tall): Paid Posts with Blur (glassmorphism blurred text visual). Card 3 (Square): Automatic QR Codes (use QR hologram image). Card 4 (Square): Live Streaming Tickets."
-        },
-        {
-          "name": "HowItWorks",
-          "description": "Vertical timeline or 3-step horizontal cards. Step 1: Connect Telegram. Step 2: Set Pricing & Tiers. Step 3: Share Link & Earn. Use neon gradient connecting lines."
-        },
-        {
-          "name": "Testimonials",
-          "description": "Glassmorphism cards featuring creator portraits. Quotes emphasizing speed of setup and increased revenue."
-        },
-        {
-          "name": "BottomCTA",
-          "description": "Massive py-32 section. Background uses gradient accent with heavy blur or glass image. H2: 'Ready to own your audience?'. Big CTA button to /creator-onboard."
-        },
-        {
-          "name": "Footer",
-          "description": "Dark background. Large Brand text. Links to Legal, Terms, Support. Very minimal and clean."
-        }
-      ]
+    "buttons": {
+      "primary_cta": "bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-2xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_4px_14px_rgba(99,102,241,0.39)] hover:brightness-110 active:scale-95 transition-all w-full py-4 text-lg",
+      "secondary": "bg-white/10 text-white border border-white/10 rounded-2xl hover:bg-white/20 transition-all"
+    },
+    "skeletons": {
+      "style": "animate-pulse bg-white/10 rounded-xl"
+    },
+    "charts": {
+      "style": "Use Recharts. Area charts should have an opacity gradient fill matching primary/secondary colors. Hide default grid lines, use thin white/10 grid lines if necessary. Text should be white/50."
+    },
+    "navigation": {
+      "breadcrumbs": "text-zinc-400 text-sm font-medium",
+      "top_bar": "sticky top-0 z-50 bg-black/60 backdrop-blur-xl border-b border-white/10",
+      "mini_app_bottom": "fixed bottom-0 w-full bg-black/80 backdrop-blur-2xl border-t border-white/10 pb-safe pt-2 px-4 flex justify-around items-center"
     }
   },
-  "image_urls": {
-    "hero_background": {
-      "url": "https://images.unsplash.com/photo-1762278804729-13d330fad71a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTN8MHwxfHNlYXJjaHw0fHxwdXJwbGUlMjBuZW9uJTIwbGlnaHRzJTIwZGFyayUyMGFic3RyYWN0fGVufDB8fHx8MTc3NDk3MDYwOHww&ixlib=rb-4.1.0&q=85",
-      "description": "Abstract purple and pink light streaks on black. Use with heavy bg-black/70 overlay."
+  "animations": {
+    "page_load": {
+      "initial": { "opacity": 0, "y": 10 },
+      "animate": { "opacity": 1, "y": 0 },
+      "transition": { "duration": 0.4, "ease": "easeOut" }
     },
-    "feature_qr_bg": {
-      "url": "https://images.unsplash.com/photo-1641427858305-6811d70f0c8b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MDV8MHwxfHNlYXJjaHwzfHxjeWJlcnB1bmslMjBwaG9uZSUyMGRhcmslMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3NDk3MDYwOXww&ixlib=rb-4.1.0&q=85",
-      "description": "Cyberpunk dark phone aesthetic. Use inside the Automatic QR Codes feature card."
+    "stagger": {
+      "delayChildren": 0.1,
+      "staggerChildren": 0.05
     },
-    "feature_glass_bg": {
-      "url": "https://images.unsplash.com/photo-1633856384682-cff3b9f06682?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTF8MHwxfHNlYXJjaHw0fHxwaW5rJTIwcHVycGxlJTIwZ2xhc3MlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3NDk3MDYxMnww&ixlib=rb-4.1.0&q=85",
-      "description": "Shiny purple glass object. Use for the 'Paid posts with blur' or 'Multi-tenant isolation' cards."
-    },
-    "creator_1": {
-      "url": "https://images.pexels.com/photos/33786445/pexels-photo-33786445.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-      "description": "Creator portrait for testimonial."
-    },
-    "creator_2": {
-      "url": "https://images.unsplash.com/photo-1620779040904-b39694c620dd?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzl8MHwxfHNlYXJjaHwxfHxjcmVhdG9yJTIwcG9ydHJhaXQlMjBkYXJrJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzQ5NzA2MDN8MA&ixlib=rb-4.1.0&q=85",
-      "description": "Creator portrait for testimonial."
-    },
-    "logo_1": {
-      "url": "https://images.unsplash.com/photo-1705988142466-e468bc654eeb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwxfHxjb21wYW55JTIwbG9nbyUyMHdoaXRlJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzQ5NTAwNTB8MA&ixlib=rb-4.1.0&q=85",
-      "description": "Abstract white logo for marquee."
-    },
-    "logo_2": {
-      "url": "https://images.unsplash.com/photo-1764344815160-0e2afc6939a0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwyfHxjb21wYW55JTIwbG9nbyUyMHdoaXRlJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzQ5NTAwNTB8MA&ixlib=rb-4.1.0&q=85",
-      "description": "Abstract white logo for marquee."
-    }
+    "hover": "Slight lift (-translate-y-1) for cards, subtle brightness increase for buttons.",
+    "micro_interactions": "Framer motion scale: 0.98 on tap/click for all buttons and interactive cards."
   },
-  "testing": {
-    "requirements": "All interactive elements MUST have data-testid. E.g., data-testid='hero-cta-button', data-testid='nav-creator-onboard'."
+  "accessibility": {
+    "contrast": "Ensure all text against dark backgrounds passes WCAG AA at minimum (4.5:1 for body).",
+    "testing": "MANDATORY: Use data-testid attributes on all interactive elements (e.g., data-testid='cta-purchase-plan', data-testid='tenant-table-row').",
+    "focus": "focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-black"
+  },
+  "media": {
+    "image_urls": {
+      "admin_background": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/c99e9d55-8c06-4f0e-894e-c0bbec541b65/images/a57f2db5be7398891494889b716658f21b914fd7bc98ee1cdd45cdf2e791c6e7.png",
+        "description": "Abstract SaaS dashboard background texture, deep space obsidian with faint isometric grid lines.",
+        "usage": "Use as a fixed background for the Super Admin dashboard with a low opacity (e.g., opacity-20) to add texture."
+      },
+      "mini_app_background": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/c99e9d55-8c06-4f0e-894e-c0bbec541b65/images/b55fdd623ac7d9165319f808b728e29e2226c1cb0f7057a5c0ad3e2de626b239.png",
+        "description": "Abstract dark mode background, 3D fluid glass textures.",
+        "usage": "Use as the primary background for the Telegram Mini App, covering the viewport behind the glassmorphism cards."
+      },
+      "creator_avatar": {
+        "url": "https://images.unsplash.com/photo-1761882717631-824133aedc0e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2OTV8MHwxfHNlYXJjaHwzfHxwb3J0cmFpdCUyMGZhc2hpb24lMjBtYWxlJTIwbmVvbiUyMGxpZ2h0fGVufDB8fHx8MTc3NDk4NDE4MHww&ixlib=rb-4.1.0&q=85",
+        "description": "Fashionable male portrait under neon lights.",
+        "usage": "Use as the Creator/Admin profile picture on the Mini App Home Screen."
+      }
+    }
   }
 }
