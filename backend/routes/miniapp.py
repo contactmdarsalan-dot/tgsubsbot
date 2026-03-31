@@ -1197,3 +1197,143 @@ async def miniapp_admin_announce_live(session_id: str, data: dict):
 
     await db.live_sessions.update_one({"id": session_id}, {"$set": {"status": "announced"}})
     return {"success": True, "sent_to": sent}
+
+
+# ============== PAID POSTS ADMIN ==============
+
+@router.get("/admin/paid-posts/{telegram_user_id}")
+async def miniapp_admin_paid_posts(telegram_user_id: str):
+    """Get paid posts for admin"""
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+
+    posts = await db.paid_posts.find(
+        {}, {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    return posts
+
+
+@router.post("/admin/paid-post")
+async def miniapp_admin_create_paid_post(data: dict):
+    """Create a paid post from Mini App"""
+    telegram_user_id = data.get("telegram_user_id", "")
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+
+    post_id = str(uuid.uuid4())
+    post = {
+        "id": post_id,
+        "caption": data.get("caption", ""),
+        "price": data.get("price", 0),
+        "content_type": "text",
+        "is_active": True,
+        "unlock_count": 0,
+        "created_by": admin.get("name", "Admin"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.paid_posts.insert_one(post)
+    del post["_id"]
+    return post
+
+
+@router.post("/admin/paid-post/{post_id}/toggle")
+async def miniapp_toggle_paid_post(post_id: str, data: dict):
+    """Toggle paid post active/inactive"""
+    telegram_user_id = data.get("telegram_user_id", "")
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+
+    post = await db.paid_posts.find_one({"id": post_id}, {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    new_status = not post.get("is_active", True)
+    await db.paid_posts.update_one({"id": post_id}, {"$set": {"is_active": new_status}})
+    return {"success": True, "is_active": new_status}
+
+
+@router.post("/admin/paid-post/{post_id}/broadcast")
+async def miniapp_broadcast_paid_post(post_id: str, data: dict, background_tasks: BackgroundTasks):
+    """Broadcast a paid post to all users from Mini App"""
+    telegram_user_id = data.get("telegram_user_id", "")
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+
+    post = await db.paid_posts.find_one({"id": post_id, "is_active": True}, {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found or inactive")
+
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    bot_users = await db.bot_users.find({}, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+    user_ids = [u["telegram_user_id"] for u in bot_users if u.get("telegram_user_id")]
+
+    price = post.get("price", 0)
+    caption = post.get("caption", "")
+    msg = f"{'🔒' if price > 0 else '📢'} <b>{'Paid Content' if price > 0 else 'Free Post'}</b>\n\n"
+    msg += f"{caption}\n\n"
+    if price > 0:
+        msg += f"💰 Unlock for ₹{price}"
+
+    sent = 0
+    for uid in user_ids:
+        try:
+            await send_telegram_message(uid, msg, bot_token)
+            sent += 1
+        except Exception:
+            pass
+
+    return {"success": True, "sent_to": sent}
+
+
+@router.post("/admin/live-session/{session_id}/go-live")
+async def miniapp_go_live(session_id: str, data: dict):
+    """Mark a live session as live and notify users"""
+    telegram_user_id = data.get("telegram_user_id", "")
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+
+    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    await db.live_sessions.update_one({"id": session_id}, {"$set": {"status": "live"}})
+
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    bot_users = await db.bot_users.find({}, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+
+    msg = f"🔴 <b>LIVE NOW!</b>\n\n"
+    msg += f"📺 {session.get('title', 'Live Session')}\n"
+    if session.get("stream_link"):
+        msg += f"🔗 {session['stream_link']}\n"
+    msg += f"\nJoin now!"
+
+    sent = 0
+    for u in bot_users:
+        uid = u.get("telegram_user_id")
+        if uid:
+            try:
+                await send_telegram_message(uid, msg, bot_token)
+                sent += 1
+            except Exception:
+                pass
+
+    return {"success": True, "status": "live", "notified": sent}
+
+
+@router.delete("/admin/live-session/{session_id}")
+async def miniapp_delete_live(session_id: str, data: dict):
+    """Delete a live session"""
+    telegram_user_id = data.get("telegram_user_id", "")
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+
+    result = await db.live_sessions.delete_one({"id": session_id})
+    return {"success": result.deleted_count > 0}

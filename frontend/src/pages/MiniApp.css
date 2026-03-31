@@ -1,20 +1,21 @@
 /* TGSubsBot Mini App - Glassmorphism Dark */
 :root {
-  --ma-bg: #0e0e0e;
-  --ma-glass: rgba(255, 255, 255, 0.04);
-  --ma-glass2: rgba(255, 255, 255, 0.06);
+  --ma-bg: #080810;
+  --ma-glass: rgba(255, 255, 255, 0.035);
+  --ma-glass2: rgba(255, 255, 255, 0.055);
   --ma-glass3: rgba(255, 255, 255, 0.08);
-  --ma-border: rgba(255, 255, 255, 0.06);
-  --ma-accent: #e8365d;
-  --ma-accent-dim: rgba(232, 54, 93, 0.1);
+  --ma-border: rgba(255, 255, 255, 0.07);
+  --ma-accent: #ff3e6c;
+  --ma-accent-30: rgba(255, 62, 108, 0.25);
+  --ma-accent-dim: rgba(255, 62, 108, 0.1);
   --ma-green: #3ecf8e;
   --ma-green-dim: rgba(62, 207, 142, 0.08);
   --ma-yellow: #f0b429;
   --ma-yellow-dim: rgba(240, 180, 41, 0.08);
-  --ma-text: #eaeaea;
-  --ma-text2: #909090;
+  --ma-text: #f0f0f5;
+  --ma-text2: #8a8a9a;
   --ma-text3: #555;
-  --ma-blur: 18px;
+  --ma-blur: 20px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -22,6 +23,7 @@
 .ma-root {
   min-height: 100vh;
   background: var(--ma-bg);
+  background-image: radial-gradient(ellipse at 50% 0%, rgba(255,62,108,0.06) 0%, transparent 60%);
   color: var(--ma-text);
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
   display: flex; flex-direction: column;
@@ -599,6 +601,22 @@
   display: flex; align-items: center; justify-content: center; font-weight: 700;
 }
 .ma-nav-btn { position: relative; }
+
+/* Live & Paid Posts Styles */
+.ma-live-active { border-color: rgba(239,68,68,0.4) !important; animation: ma-pulse-border 2s infinite; }
+@keyframes ma-pulse-border { 0%,100% { border-color: rgba(239,68,68,0.4); } 50% { border-color: rgba(239,68,68,0.8); } }
+.ma-live-dot { display: inline-block; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; margin-right: 6px; animation: ma-pulse 1.5s infinite; }
+@keyframes ma-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.ma-btn-go-live {
+  flex: 1; padding: 8px; border-radius: 10px; font-size: 13px; font-weight: 700;
+  background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3);
+  cursor: pointer; transition: all 0.2s;
+}
+.ma-btn-go-live:hover { background: rgba(239,68,68,0.3); }
+.ma-live-badge { font-size: 11px; font-weight: 800; color: #ef4444; padding: 4px 10px; background: rgba(239,68,68,0.12); border-radius: 8px; animation: ma-pulse 1.5s infinite; }
+.ma-post-caption { font-size: 13px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ma-status-tag.live { background: rgba(239,68,68,0.15); color: #ef4444; }
+
 
 /* ===== SCREENSHOT UPLOAD ===== */
 .ma-upload-section { display: flex; flex-direction: column; gap: 10px; }

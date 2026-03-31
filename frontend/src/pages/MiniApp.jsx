@@ -63,6 +63,9 @@ export default function MiniApp() {
   const [adminSubTab, setAdminSubTab] = useState("stats");
   const [showCreateLive, setShowCreateLive] = useState(false);
   const [newLive, setNewLive] = useState({ title: "", description: "", scheduled_date: "", scheduled_time: "", price: 0, stream_link: "" });
+  const [paidPosts, setPaidPosts] = useState([]);
+  const [showCreatePost, setShowCreatePost] = useState(false);
+  const [newPost, setNewPost] = useState({ caption: "", price: 0 });
 
   // Payment
   const [payProcessing, setPayProcessing] = useState(false);
@@ -433,16 +436,18 @@ export default function MiniApp() {
     if (!userId) return;
     setAdminLoading(true);
     try {
-      const [statsRes, paymentsRes, subsRes, liveRes] = await Promise.all([
+      const [statsRes, paymentsRes, subsRes, liveRes, postsRes] = await Promise.all([
         fetch(`${API}/miniapp/admin/stats/${userId}`),
         adminPerms.includes("verify_payments") ? fetch(`${API}/miniapp/admin/pending-payments/${userId}`) : null,
         fetch(`${API}/miniapp/admin/subscribers/${userId}`),
         adminPerms.includes("live_streams") ? fetch(`${API}/miniapp/admin/live-sessions/${userId}`) : null,
+        fetch(`${API}/miniapp/admin/paid-posts/${userId}`),
       ]);
       setAdminStats(await statsRes.json());
       if (paymentsRes) setPendingPayments(await paymentsRes.json());
       setAdminSubs(await subsRes.json());
       if (liveRes) setLiveSessions(await liveRes.json());
+      if (postsRes) setPaidPosts(await postsRes.json());
     } catch (e) { console.error("Admin fetch error:", e); }
     finally { setAdminLoading(false); }
   };
@@ -505,6 +510,60 @@ export default function MiniApp() {
         setLiveSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: "announced" } : s));
         alert(`Announced to ${data.sent_to} users!`);
       }
+    } catch (e) { console.error(e); }
+  };
+
+  const goLive = async (sessionId) => {
+    try {
+      const res = await fetch(`${API}/miniapp/admin/live-session/${sessionId}/go-live`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telegram_user_id: userId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLiveSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: "live" } : s));
+        alert(`LIVE! Notified ${data.notified} users`);
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const createPaidPost = async () => {
+    if (!newPost.caption.trim()) return;
+    try {
+      const res = await fetch(`${API}/miniapp/admin/paid-post`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...newPost, telegram_user_id: userId }),
+      });
+      const data = await res.json();
+      if (data.id) {
+        setPaidPosts(prev => [data, ...prev]);
+        setShowCreatePost(false);
+        setNewPost({ caption: "", price: 0 });
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const togglePost = async (postId) => {
+    try {
+      const res = await fetch(`${API}/miniapp/admin/paid-post/${postId}/toggle`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telegram_user_id: userId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPaidPosts(prev => prev.map(p => p.id === postId ? { ...p, is_active: data.is_active } : p));
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const broadcastPost = async (postId) => {
+    try {
+      const res = await fetch(`${API}/miniapp/admin/paid-post/${postId}/broadcast`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telegram_user_id: userId }),
+      });
+      const data = await res.json();
+      if (data.success) alert(`Sent to ${data.sent_to} users!`);
     } catch (e) { console.error(e); }
   };
 
@@ -992,6 +1051,7 @@ export default function MiniApp() {
                   ...(adminPerms.includes("verify_payments") ? [{ id: "payments", label: "Payments", perm: "verify_payments" }] : []),
                   ...(adminPerms.includes("broadcast") ? [{ id: "broadcast", label: "Broadcast", perm: "broadcast" }] : []),
                   ...(adminPerms.includes("live_streams") ? [{ id: "live", label: "Live", perm: "live_streams" }] : []),
+                  { id: "posts", label: "Paid Posts", perm: null },
                   { id: "subs", label: "Users", perm: null },
                 ].map(t => (
                   <button key={t.id} className={`ma-admin-tab ${adminSubTab === t.id ? "active" : ""}`} onClick={() => setAdminSubTab(t.id)} data-testid={`admin-tab-${t.id}`}>
@@ -1065,8 +1125,8 @@ export default function MiniApp() {
                   {/* LIVE SESSIONS */}
                   {adminSubTab === "live" && (
                     <div className="ma-admin-list" data-testid="admin-live-sessions">
-                      <button className="ma-btn-outline" onClick={() => setShowCreateLive(!showCreateLive)} data-testid="create-live-btn">
-                        {showCreateLive ? "Cancel" : "+ Create Live Session"}
+                      <button className="ma-btn-accent" onClick={() => setShowCreateLive(!showCreateLive)} data-testid="create-live-btn">
+                        {showCreateLive ? "Cancel" : "+ New Live Session"}
                       </button>
 
                       {showCreateLive && (
@@ -1086,19 +1146,59 @@ export default function MiniApp() {
                       )}
 
                       {liveSessions.length === 0 && !showCreateLive ? (
-                        <div className="ma-empty">No live sessions</div>
+                        <div className="ma-empty">No live sessions yet</div>
                       ) : liveSessions.map(s => (
-                        <div key={s.id} className="ma-admin-item" data-testid={`live-${s.id}`}>
+                        <div key={s.id} className={`ma-admin-item ${s.status === "live" ? "ma-live-active" : ""}`} data-testid={`live-${s.id}`}>
                           <div className="ma-admin-item-top">
-                            <strong>{s.title}</strong>
+                            <strong>{s.status === "live" && <span className="ma-live-dot" />}{s.title}</strong>
                             <span className={`ma-status-tag ${s.status}`}>{s.status}</span>
                           </div>
                           <p className="ma-admin-item-sub">
                             {s.scheduled_date || "No date"} {s.scheduled_time || ""} &middot; {s.price > 0 ? `₹${s.price}` : "FREE"}
+                            {s.stream_link && <> &middot; <a href={s.stream_link} target="_blank" rel="noreferrer" style={{color: "var(--ma-accent)"}}>Link</a></>}
                           </p>
-                          {s.status !== "announced" && (
-                            <button className="ma-btn-sm" onClick={() => announceLive(s.id)} data-testid={`announce-${s.id}`}>Announce</button>
-                          )}
+                          <div className="ma-admin-actions">
+                            {s.status === "scheduled" && <button className="ma-btn-approve" onClick={() => announceLive(s.id)} data-testid={`announce-${s.id}`}>Announce</button>}
+                            {(s.status === "scheduled" || s.status === "announced") && <button className="ma-btn-go-live" onClick={() => goLive(s.id)} data-testid={`golive-${s.id}`}>Go Live</button>}
+                            {s.status === "live" && <span className="ma-live-badge">LIVE NOW</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* PAID POSTS */}
+                  {adminSubTab === "posts" && (
+                    <div className="ma-admin-list" data-testid="admin-paid-posts">
+                      <button className="ma-btn-accent" onClick={() => setShowCreatePost(!showCreatePost)} data-testid="create-post-btn">
+                        {showCreatePost ? "Cancel" : "+ New Paid Post"}
+                      </button>
+
+                      {showCreatePost && (
+                        <div className="ma-admin-create-form" data-testid="create-post-form">
+                          <textarea className="ma-input ma-textarea" placeholder="Post content / caption..." value={newPost.caption} onChange={e => setNewPost(p => ({...p, caption: e.target.value}))} rows={3} />
+                          <input className="ma-input" type="number" placeholder="Price (0 = free)" value={newPost.price} onChange={e => setNewPost(p => ({...p, price: parseInt(e.target.value) || 0}))} />
+                          <button className="ma-btn-accent" onClick={createPaidPost} disabled={!newPost.caption.trim()} data-testid="save-post-btn">Create Post</button>
+                        </div>
+                      )}
+
+                      {paidPosts.length === 0 && !showCreatePost ? (
+                        <div className="ma-empty">No paid posts yet</div>
+                      ) : paidPosts.map(p => (
+                        <div key={p.id} className="ma-admin-item" data-testid={`post-${p.id}`}>
+                          <div className="ma-admin-item-top">
+                            <strong className="ma-post-caption">{p.caption?.substring(0, 60) || "Untitled"}{p.caption?.length > 60 ? "..." : ""}</strong>
+                            <span className={`ma-status-tag ${p.is_active ? "active" : "completed"}`}>{p.is_active ? "Active" : "Inactive"}</span>
+                          </div>
+                          <p className="ma-admin-item-sub">
+                            {p.price > 0 ? `₹${p.price}` : "FREE"} &middot; {p.unlock_count || 0} unlocks &middot; {p.created_at?.split("T")[0] || ""}
+                          </p>
+                          <div className="ma-admin-actions">
+                            <button className={p.is_active ? "ma-btn-reject" : "ma-btn-approve"} onClick={() => togglePost(p.id)} data-testid={`toggle-${p.id}`}>
+                              {p.is_active ? "Deactivate" : "Activate"}
+                            </button>
+                            {p.is_active && <button className="ma-btn-approve" onClick={() => broadcastPost(p.id)} data-testid={`broadcast-post-${p.id}`}>Broadcast</button>}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1137,7 +1237,7 @@ export default function MiniApp() {
         ].map((tab) => (
           <button
             key={tab.id}
-            className={`ma-nav-btn ${(activeTab === tab.id || (tab.id === "more" && ["history", "referral", "help", "notifications"].includes(activeTab))) ? "active" : ""}`}
+            className={`ma-nav-btn ${(activeTab === tab.id || (tab.id === "more" && ["referral", "help", "notifications"].includes(activeTab))) ? "active" : ""}`}
             data-testid={`miniapp-nav-${tab.id}`}
             onClick={() => tab.id === "more" ? setMoreOpen(!moreOpen) : switchTab(tab.id)}
           >
@@ -1153,7 +1253,6 @@ export default function MiniApp() {
         {moreOpen && (
           <motion.div className="ma-more-menu" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }} data-testid="miniapp-more-menu">
             {[
-              { id: "history", label: "Payment History", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
               { id: "referral", label: "Referral Program", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
               { id: "notifications", label: "Notifications", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> },
               { id: "help", label: "Help & FAQ", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> },
