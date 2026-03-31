@@ -1152,7 +1152,7 @@ async def upload_qr_code(file: UploadFile = File(...), user = Depends(get_curren
     
     # Save file
     import os as os_mod
-    uploads_path = os_mod.path.join(os_mod.path.dirname(__file__), "uploads")
+    uploads_path = os_mod.path.join(os_mod.path.dirname(os_mod.path.dirname(__file__)), "uploads")
     os_mod.makedirs(uploads_path, exist_ok=True)
     file_path = os_mod.path.join(uploads_path, filename)
     
@@ -1165,7 +1165,7 @@ async def upload_qr_code(file: UploadFile = File(...), user = Depends(get_curren
         # Fallback to constructing URL
         base_url = os.environ.get("REACT_APP_BACKEND_URL", "").replace("/api", "")
     
-    file_url = f"/uploads/{filename}"
+    file_url = f"/api/uploads/{filename}"
     
     return {"url": file_url, "filename": filename}
 
@@ -1188,14 +1188,14 @@ async def upload_image(file: UploadFile = File(...), user = Depends(get_current_
     
     # Save file
     import os as os_mod
-    uploads_path = os_mod.path.join(os_mod.path.dirname(__file__), "uploads")
+    uploads_path = os_mod.path.join(os_mod.path.dirname(os_mod.path.dirname(__file__)), "uploads")
     os_mod.makedirs(uploads_path, exist_ok=True)
     file_path = os_mod.path.join(uploads_path, filename)
     
     with open(file_path, "wb") as f:
         f.write(contents)
     
-    file_url = f"/uploads/{filename}"
+    file_url = f"/api/uploads/{filename}"
     
     return {"url": file_url, "filename": filename}
 

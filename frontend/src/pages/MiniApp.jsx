@@ -188,6 +188,11 @@ export default function MiniApp() {
       try {
         const res = await fetch(`${API}/miniapp/upi-details`);
         const data = await res.json();
+        // Construct full QR URL if relative path
+        if (data.qr_code_url && !data.qr_code_url.startsWith("http")) {
+          const base = process.env.REACT_APP_BACKEND_URL.replace(/\/api\/?$/, "");
+          data.qr_code_url = `${base}${data.qr_code_url}`;
+        }
         setUpiDetails(data);
       } catch {
         setUpiDetails({ upi_id: "N/A", qr_code_url: "", payment_message: "Contact admin for UPI details." });
@@ -373,20 +378,21 @@ export default function MiniApp() {
               <div className="ma-sheet-handle" />
               <h3>Pay via UPI</h3>
 
-              {/* QR Code */}
-              {upiDetails?.qr_code_url && (
-                <div className="ma-qr-wrap">
-                  <img src={upiDetails.qr_code_url} alt="UPI QR Code" className="ma-qr-img" data-testid="miniapp-qr-img" />
-                </div>
-              )}
-
               <div className="ma-upi-box">
                 <span className="ma-upi-label">UPI ID</span>
                 <div className="ma-upi-id-row">
                   <span className="ma-upi-id">{upiDetails?.upi_id || "Loading..."}</span>
-                  <button className="ma-copy-sm" onClick={() => navigator.clipboard?.writeText(upiDetails?.upi_id || "")}>Copy</button>
+                  <button className="ma-copy-sm" onClick={() => { navigator.clipboard?.writeText(upiDetails?.upi_id || ""); }}>Copy</button>
                 </div>
               </div>
+
+              {/* QR Code - below UPI Copy */}
+              {upiDetails?.qr_code_url && (
+                <div className="ma-qr-wrap" data-testid="miniapp-qr-wrap">
+                  <img src={upiDetails.qr_code_url} alt="Scan QR to Pay" className="ma-qr-img" data-testid="miniapp-qr-img" />
+                </div>
+              )}
+
               <div className="ma-upi-box">
                 <span className="ma-upi-label">Amount</span>
                 <span className="ma-upi-amt">&#8377;{getPayAmount()}</span>
