@@ -108,7 +108,7 @@ export default function PlansScreen() {
         <div className="glass-card rounded-2xl p-4 mb-4">
           <p className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-2">Have a coupon?</p>
           <div className="flex gap-2">
-            <input type="text" value={couponCode} onChange={e => setCouponCode(e.target.value.toUpperCase())} placeholder="COUPON CODE" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500/50" data-testid="coupon-input" />
+            <input type="text" value={couponCode} onChange={e => setCouponCode(e.target.value.toUpperCase())} placeholder="COUPON CODE" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-rose-500/50" data-testid="coupon-input" />
             <button onClick={applyCoupon} disabled={couponLoading} className="px-4 py-2 bg-white/10 text-white text-sm font-semibold rounded-xl hover:bg-white/20 transition-all disabled:opacity-50" data-testid="apply-coupon-btn">
               {couponLoading ? "..." : "Apply"}
             </button>
@@ -140,7 +140,7 @@ export default function PlansScreen() {
           {showManualSheet && (
             <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="fixed inset-0 z-50 flex items-end" onClick={e => e.target === e.currentTarget && setShowManualSheet(false)}>
               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowManualSheet(false)} />
-              <motion.div className="relative w-full max-h-[85vh] overflow-y-auto rounded-t-3xl p-5 pb-8" style={{ background: "#0D0D14", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <motion.div className="relative w-full max-h-[85vh] overflow-y-auto rounded-t-3xl p-5 pb-8" style={{ background: "hsl(340,40%,7%)", border: "1px solid hsl(340,40%,15%)" }}>
                 <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-5" />
                 {uploadStep === "result" ? (
                   <div className="text-center py-6">
@@ -162,7 +162,7 @@ export default function PlansScreen() {
                   </div>
                 ) : uploadStep === "uploading" ? (
                   <div className="text-center py-10">
-                    <Loader2 className="w-10 h-10 animate-spin text-indigo-400 mx-auto mb-4" />
+                    <Loader2 className="w-10 h-10 animate-spin text-rose-400 mx-auto mb-4" />
                     <p className="text-white font-semibold">Analyzing with AI...</p>
                     <p className="text-xs text-zinc-500 mt-1">Verifying payment screenshot</p>
                   </div>
@@ -173,7 +173,7 @@ export default function PlansScreen() {
                     {screenshotPreview ? (
                       <div className="mb-4"><img src={screenshotPreview} alt="Screenshot" className="max-h-48 mx-auto rounded-xl border border-white/10" /></div>
                     ) : (
-                      <button onClick={() => fileInputRef.current?.click()} className="w-full py-10 border-2 border-dashed border-white/10 rounded-2xl text-zinc-500 hover:border-indigo-500/30 hover:text-zinc-300 transition-all mb-4" data-testid="select-screenshot-btn">
+                      <button onClick={() => fileInputRef.current?.click()} className="w-full py-10 border-2 border-dashed border-white/10 rounded-2xl text-zinc-500 hover:border-rose-500/30 hover:text-zinc-300 transition-all mb-4" data-testid="select-screenshot-btn">
                         <Camera className="w-8 h-8 mx-auto mb-2" /><span className="text-sm">Tap to select screenshot</span>
                       </button>
                     )}
@@ -192,7 +192,7 @@ export default function PlansScreen() {
                     <div className="glass-card rounded-2xl p-4 mb-4 text-center">
                       <p className="font-mono text-2xl font-bold text-white mb-3">Rs.{getPayAmount()}</p>
                       {qrLoading ? (
-                        <div className="py-8"><Loader2 className="w-8 h-8 animate-spin text-indigo-400 mx-auto" /></div>
+                        <div className="py-8"><Loader2 className="w-8 h-8 animate-spin text-rose-400 mx-auto" /></div>
                       ) : upiDetails?.qr_code_url ? (
                         <img src={upiDetails.qr_code_url} alt="QR" className="w-48 h-48 mx-auto rounded-xl bg-white p-2 mb-3" />
                       ) : null}
@@ -241,11 +241,11 @@ export default function PlansScreen() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.08 }}
               onClick={() => setSelectedPlan(plan)}
-              className={`glass-card rounded-2xl p-4 cursor-pointer active:scale-[0.98] transition-all relative ${isPopular ? "border-indigo-500/30 ring-1 ring-indigo-500/20" : ""}`}
+              className={`glass-card rounded-2xl p-4 cursor-pointer active:scale-[0.98] transition-all relative ${isPopular ? "border-rose-500/30 ring-1 ring-rose-500/20" : ""}`}
               data-testid={`plan-card-${plan.id}`}
             >
               {isPopular && (
-                <div className="absolute -top-2.5 left-4 px-3 py-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full text-[10px] font-bold text-white uppercase tracking-wider">
+                <div className="absolute -top-2.5 left-4 px-3 py-0.5 bg-gradient-to-r from-rose-500 to-red-600 rounded-full text-[10px] font-bold text-white uppercase tracking-wider">
                   Most Popular
                 </div>
               )}
@@ -273,7 +273,7 @@ export default function PlansScreen() {
 
       {/* Social proof */}
       <div className="mt-6 text-center">
-        <p className="text-xs text-zinc-600">Trusted by <span className="text-indigo-400 font-semibold">1000+</span> members</p>
+        <p className="text-xs text-zinc-600">Trusted by <span className="text-rose-400 font-semibold">1000+</span> members</p>
       </div>
     </div>
   );

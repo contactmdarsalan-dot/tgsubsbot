@@ -49,7 +49,7 @@ function MetricCard({ label, value, change, changeType, icon: Icon, color, delay
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="glass-card px-3 py-2 rounded-lg text-sm" style={{ background: "#0D0D14", border: "1px solid rgba(255,255,255,0.1)" }}>
+    <div className="glass-card px-3 py-2 rounded-lg text-sm" style={{ background: "hsl(340,40%,7%)", border: "1px solid hsl(340,40%,15%)" }}>
       <p className="text-zinc-400 text-xs">{label}</p>
       {payload.map((p, i) => (
         <p key={i} className="text-white font-semibold">Rs. {p.value?.toLocaleString()}</p>
@@ -115,7 +115,7 @@ export default function Dashboard() {
   }));
 
   const planStats = a.plan_stats || r.plan_performance || [];
-  const COLORS = ["#6366F1", "#8B5CF6", "#06B6D4", "#10B981", "#F59E0B", "#F43F5E"];
+  const COLORS = ["#E11D48", "#F43F5E", "#FB7185", "#10B981", "#F59E0B", "#3B82F6"];
 
   const recentPayments = (a.recent_payments || []).slice(0, 5);
   const recentSubs = (a.recent_subscribers || []).slice(0, 5);
@@ -134,12 +134,12 @@ export default function Dashboard() {
 
       {/* Metric Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <MetricCard label="Total Revenue" value={`Rs.${totalRevenue.toLocaleString()}`} change={Math.abs(revenueGrowth)} changeType={revenueGrowth >= 0 ? "positive" : "negative"} icon={IndianRupee} color="bg-indigo-500/20" delay={0.05} />
-        <MetricCard label="Monthly Revenue" value={`Rs.${monthlyRevenue.toLocaleString()}`} icon={TrendingUp} color="bg-purple-500/20" delay={0.1} />
-        <MetricCard label="Active Subs" value={activeSubs.toLocaleString()} icon={Users} color="bg-cyan-500/20" delay={0.15} />
-        <MetricCard label="Total Users" value={totalSubs.toLocaleString()} icon={UserPlus} color="bg-emerald-500/20" delay={0.2} />
-        <MetricCard label="Churn Rate" value={`${churnRate}%`} changeType={churnRate > 10 ? "negative" : "positive"} icon={Activity} color="bg-amber-500/20" delay={0.25} />
-        <MetricCard label="Expired" value={failedPayments.toLocaleString()} icon={AlertTriangle} color="bg-rose-500/20" delay={0.3} />
+        <MetricCard label="Total Revenue" value={`Rs.${totalRevenue.toLocaleString()}`} change={Math.abs(revenueGrowth)} changeType={revenueGrowth >= 0 ? "positive" : "negative"} icon={IndianRupee} color="bg-rose-500/20" delay={0.05} />
+        <MetricCard label="Monthly Revenue" value={`Rs.${monthlyRevenue.toLocaleString()}`} icon={TrendingUp} color="bg-rose-600/20" delay={0.1} />
+        <MetricCard label="Active Subs" value={activeSubs.toLocaleString()} icon={Users} color="bg-emerald-500/20" delay={0.15} />
+        <MetricCard label="Total Users" value={totalSubs.toLocaleString()} icon={UserPlus} color="bg-amber-500/20" delay={0.2} />
+        <MetricCard label="Churn Rate" value={`${churnRate}%`} changeType={churnRate > 10 ? "negative" : "positive"} icon={Activity} color="bg-blue-500/20" delay={0.25} />
+        <MetricCard label="Expired" value={failedPayments.toLocaleString()} icon={AlertTriangle} color="bg-zinc-500/20" delay={0.3} />
       </div>
 
       {/* Charts Row */}
@@ -153,7 +153,7 @@ export default function Dashboard() {
             </div>
             <div className="flex gap-1 bg-white/5 rounded-lg p-0.5">
               {["7d", "30d", "90d"].map(r => (
-                <button key={r} onClick={() => setChartRange(r)} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${chartRange === r ? "bg-indigo-500 text-white" : "text-zinc-500 hover:text-zinc-300"}`} data-testid={`chart-range-${r}`}>
+                <button key={r} onClick={() => setChartRange(r)} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${chartRange === r ? "bg-rose-600 text-white" : "text-zinc-500 hover:text-zinc-300"}`} data-testid={`chart-range-${r}`}>
                   {r}
                 </button>
               ))}
@@ -163,15 +163,15 @@ export default function Dashboard() {
             <AreaChart data={chartRange === "7d" ? chartData.slice(-7) : chartRange === "90d" ? chartData : chartData}>
               <defs>
                 <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#6366F1" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="#6366F1" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#E11D48" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#E11D48" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
               <XAxis dataKey="date" tick={{ fill: "#71717A", fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: "#71717A", fontSize: 11 }} axisLine={false} tickLine={false} />
               <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="revenue" stroke="#6366F1" fill="url(#revGrad)" strokeWidth={2} />
+              <Area type="monotone" dataKey="revenue" stroke="#E11D48" fill="url(#revGrad)" strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
         </motion.div>
@@ -187,7 +187,7 @@ export default function Dashboard() {
                     {planStats.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
                   <Tooltip content={({ active, payload }) => active && payload?.[0] ? (
-                    <div className="px-3 py-2 rounded-lg text-sm" style={{ background: "#0D0D14", border: "1px solid rgba(255,255,255,0.1)" }}>
+                    <div className="px-3 py-2 rounded-lg text-sm" style={{ background: "hsl(340,40%,7%)", border: "1px solid hsl(340,40%,15%)" }}>
                       <p className="text-white font-semibold">{payload[0].name}: {payload[0].value}</p>
                     </div>
                   ) : null} />
@@ -252,8 +252,8 @@ export default function Dashboard() {
               {recentSubs.length > 0 ? recentSubs.map((s, i) => (
                 <div key={i} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-500/15 flex items-center justify-center">
-                      <UserPlus className="w-4 h-4 text-indigo-400" />
+                    <div className="w-8 h-8 rounded-lg bg-rose-500/15 flex items-center justify-center">
+                      <UserPlus className="w-4 h-4 text-rose-400" />
                     </div>
                     <div>
                       <p className="text-sm text-white font-medium">{s.telegram_username || s.telegram_user_id || "User"}</p>

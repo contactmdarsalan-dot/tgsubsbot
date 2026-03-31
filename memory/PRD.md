@@ -32,12 +32,21 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 - **P1 Security**: Telegram `initData` HMAC-SHA256 verification (`services/telegram_verify.py`), Audit logging (`services/audit.py`), Pydantic Enums, Query limits
 - All tested: Iteration 20 (P0, 29/29), Iteration 21 (P1, 39/39)
 
+### Phase 5: Frontend Refactoring & Design System (Complete - 2026-03-31)
+- Split `MiniApp.jsx` (1540L) into 6 subcomponents: `PlansScreen.jsx`, `StatusScreen.jsx`, `SupportScreen.jsx`, `ReferralScreen.jsx`, `AdminPanel.jsx`, `context.js` in `/pages/miniapp/`
+- Rewrote `Layout.jsx` with RBAC-aware sidebar (Platform + Operations sections for Super Admin)
+- Rewrote `Dashboard.jsx` as "Control Center" overview with metric cards, revenue chart, plan distribution
+- **Design System Change**: Migrated entire app from indigo/purple (#6366F1) to rose/crimson (#E11D48) theme matching the landing page
+
 ### Phase 4: Backend Refactoring (Complete - 2026-03-31)
 - Split `core.py` (1513L) into: `plans.py`, `subscribers.py`, `payments.py`, `dashboard.py`
 - Split `features.py` (2255L) into: `broadcasts.py`, `engagement.py`, `live_content.py`, `analytics_exports.py`
 - Split `miniapp.py` (1690L) into: `miniapp_user.py`, `miniapp_admin.py`
 - **Result**: 3 giant files (5458L) → 10 domain files (4623L), removed 835 lines of dead code
 - All tested: Iteration 22 (51/51 passed)
+
+  - Updated: `index.css` CSS variables, `Layout.jsx`, `Dashboard.jsx`, `MiniApp.jsx`, all miniapp subcomponents, `BotCheckout.jsx`, `design_guidelines.json`
+  - Consistent rose/crimson across: Landing page, Login, Dashboard, Revenue, MiniApp
 
 ## Architecture
 
@@ -82,7 +91,8 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 ## Prioritized Backlog
 
 ### P1 (Next)
-- [ ] Refactor `MiniApp.jsx` (1540 lines) into subcomponents
+- [ ] Implement remaining Super Admin pages with updated design
+- [ ] Impersonation Mode (Super Admin → Tenant Admin login)
 
 ### P2
 - [ ] Object Storage migration (local uploads → S3/Cloudflare R2)
@@ -101,4 +111,4 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 
 ## Known Issues
 - Resend email OTP: Domain verification pending by user
-- MiniApp.jsx still needs frontend refactoring (1540 lines)
+- Design system updated from indigo/purple to rose/crimson (matching landing page) on 2026-03-31

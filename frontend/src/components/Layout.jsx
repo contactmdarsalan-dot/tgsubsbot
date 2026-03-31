@@ -58,11 +58,11 @@ function NavItem({ item, isActive, onClick }) {
       data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
       className={`flex items-center gap-3 px-3 py-2 text-sm rounded-xl transition-all duration-200 group ${
         isActive
-          ? "bg-indigo-500/15 text-white border border-indigo-500/30 font-semibold"
+          ? "bg-rose-500/15 text-white border border-rose-500/30 font-semibold"
           : "text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent"
       }`}
     >
-      <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-indigo-400" : "text-zinc-500 group-hover:text-zinc-300"}`} strokeWidth={1.8} />
+      <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-rose-400" : "text-zinc-500 group-hover:text-zinc-300"}`} strokeWidth={1.8} />
       <span className="truncate">{item.label}</span>
     </Link>
   );
@@ -121,7 +121,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: "#05050A" }}>
+    <div className="min-h-screen flex" style={{ background: "hsl(340, 50%, 4%)" }}>
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
@@ -151,7 +151,7 @@ export default function Layout() {
             {isSuperAdmin && (
               <>
                 <div className="px-3 pt-1 pb-2">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-400/60">Platform</span>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-rose-400/60">Platform</span>
                 </div>
                 <div className="space-y-0.5 mb-4">
                   {superAdminNav.map(item => (
@@ -185,7 +185,7 @@ export default function Layout() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         {/* Top Bar */}
-        <header className="sticky top-0 z-30 border-b border-white/6 flex-shrink-0" style={{ background: "rgba(5,5,10,0.8)", backdropFilter: "blur(20px)" }}>
+        <header className="sticky top-0 z-30 border-b border-white/6 flex-shrink-0" style={{ background: "hsla(340,50%,4%,0.85)", backdropFilter: "blur(20px)" }}>
           <div className="flex items-center justify-between px-4 md:px-6 py-3">
             <div className="flex items-center gap-3">
               <Button variant="ghost" size="icon" className="lg:hidden text-white hover:bg-white/10 rounded-xl" onClick={() => setSidebarOpen(true)} data-testid="mobile-menu-btn">
@@ -235,11 +235,11 @@ export default function Layout() {
                 </button>
 
                 {profileOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-white/10 shadow-2xl py-1 z-50" style={{ background: "#0D0D14" }}>
+                  <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-white/10 shadow-2xl py-1 z-50" style={{ background: "hsl(340, 40%, 7%)" }}>
                     <div className="px-4 py-3 border-b border-white/6">
                       <p className="text-sm font-semibold text-white truncate">{user.name || "User"}</p>
                       <p className="text-xs text-zinc-500 truncate">{user.email}</p>
-                      {isSuperAdmin && <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-bold bg-indigo-500/20 text-indigo-400 rounded-full">Super Admin</span>}
+                      {isSuperAdmin && <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-bold bg-rose-500/20 text-rose-400 rounded-full">Super Admin</span>}
                     </div>
                     <Link to="/dashboard/profile" onClick={() => setProfileOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-400 hover:text-white hover:bg-white/5 transition-colors" data-testid="profile-link">
                       <User className="w-4 h-4" /> Profile
@@ -260,7 +260,7 @@ export default function Layout() {
         </header>
 
         {/* Page Content */}
-        <div className="flex-1 p-4 md:p-6 overflow-y-auto scrollbar-thin">
+        <div className="flex-1 p-4 md:p-6 overflow-y-auto scrollbar-thin" style={{ background: "hsl(340, 50%, 4%)" }}>
           <div className="max-w-[1400px] mx-auto pb-8">
             <Outlet />
           </div>

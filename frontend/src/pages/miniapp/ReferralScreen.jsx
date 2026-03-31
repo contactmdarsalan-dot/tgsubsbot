@@ -45,14 +45,14 @@ export default function ReferralScreen() {
         {data?.referral_code ? (
           <>
             <div className="flex items-center gap-2 mb-4">
-              <div className="flex-1 font-mono text-lg font-bold text-center py-3 bg-white/5 rounded-xl text-indigo-400 tracking-wider">{data.referral_code}</div>
+              <div className="flex-1 font-mono text-lg font-bold text-center py-3 bg-white/5 rounded-xl text-rose-400 tracking-wider">{data.referral_code}</div>
               <button onClick={() => copyToClipboard(data.referral_code)} className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center hover:bg-white/20 transition-all active:scale-90" data-testid="copy-referral-btn">
                 <Copy className="w-5 h-5 text-white" />
               </button>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white/5 rounded-xl p-3 text-center">
-                <Users className="w-5 h-5 text-indigo-400 mx-auto mb-1" />
+                <Users className="w-5 h-5 text-rose-400 mx-auto mb-1" />
                 <p className="font-mono text-xl font-bold text-white">{data.referred_count || 0}</p>
                 <p className="text-[10px] text-zinc-500">Referred</p>
               </div>
@@ -81,10 +81,10 @@ export default function ReferralScreen() {
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass-card rounded-2xl p-4">
         <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-3">Have a referral code?</h4>
         <div className="flex gap-2">
-          <input value={applyCode} onChange={e => setApplyCode(e.target.value.toUpperCase())} placeholder="Enter code" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500/50" data-testid="apply-referral-input" />
+          <input value={applyCode} onChange={e => setApplyCode(e.target.value.toUpperCase())} placeholder="Enter code" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-rose-500/50" data-testid="apply-referral-input" />
           <button onClick={applyReferral} className="px-5 py-2.5 bg-white/10 text-white text-sm font-semibold rounded-xl hover:bg-white/20 transition-all" data-testid="apply-referral-btn">Apply</button>
         </div>
-        {applyMsg && <p className="text-xs text-indigo-400 mt-2">{applyMsg}</p>}
+        {applyMsg && <p className="text-xs text-rose-400 mt-2">{applyMsg}</p>}
       </motion.div>
     </div>
   );

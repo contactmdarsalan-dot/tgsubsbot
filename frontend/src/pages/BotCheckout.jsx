@@ -97,7 +97,7 @@ export default function BotCheckout() {
         contact: ""
       },
       theme: {
-        color: "#8B5CF6"
+        color: "#E11D48"
       },
       modal: {
         ondismiss: function () {

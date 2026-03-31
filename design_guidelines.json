@@ -28,20 +28,20 @@
   },
   "color_palette": {
     "backgrounds": {
-      "app": "#05050A",
-      "surface": "#0D0D14",
+      "app": "hsl(340, 50%, 4%)",
+      "surface": "hsl(340, 40%, 7%)",
       "surface_glass": "rgba(255, 255, 255, 0.03)",
       "surface_hover": "rgba(255, 255, 255, 0.06)"
     },
     "brand": {
-      "primary": "#6366F1",
-      "primary_hover": "#4F46E5",
-      "secondary": "#8B5CF6",
-      "accent": "#06B6D4"
+      "primary": "#E11D48",
+      "primary_hover": "#BE123C",
+      "secondary": "#F43F5E",
+      "accent": "#FB7185"
     },
     "gradients": {
-      "cta": "bg-gradient-to-r from-indigo-500 to-purple-600",
-      "text": "bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400"
+      "cta": "bg-gradient-to-r from-rose-600 to-red-700",
+      "text": "bg-clip-text text-transparent bg-gradient-to-r from-rose-400 via-rose-500 to-red-400"
     },
     "text": {
       "primary": "#FFFFFF",
@@ -51,7 +51,7 @@
     },
     "borders": {
       "subtle": "rgba(255, 255, 255, 0.08)",
-      "focus": "rgba(99, 102, 241, 0.5)"
+      "focus": "hsla(346, 80%, 50%, 0.5)"
     },
     "status": {
       "success": "#10B981",
@@ -90,7 +90,7 @@
       "hover": "hover:bg-white/10 hover:border-white/20 transition-all duration-300"
     },
     "buttons": {
-      "primary_cta": "bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-2xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_4px_14px_rgba(99,102,241,0.39)] hover:brightness-110 active:scale-95 transition-all w-full py-4 text-lg",
+      "primary_cta": "bg-gradient-to-r from-rose-600 to-red-700 text-white font-bold rounded-2xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_4px_14px_hsla(346,80%,50%,0.35)] hover:brightness-110 active:scale-95 transition-all w-full py-4 text-lg",
       "secondary": "bg-white/10 text-white border border-white/10 rounded-2xl hover:bg-white/20 transition-all"
     },
     "skeletons": {
@@ -121,7 +121,7 @@
   "accessibility": {
     "contrast": "Ensure all text against dark backgrounds passes WCAG AA at minimum (4.5:1 for body).",
     "testing": "MANDATORY: Use data-testid attributes on all interactive elements (e.g., data-testid='cta-purchase-plan', data-testid='tenant-table-row').",
-    "focus": "focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-black"
+    "focus": "focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 focus:ring-offset-black"
   },
   "media": {
     "image_urls": {

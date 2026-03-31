@@ -68,7 +68,7 @@ export default function AdminPanel() {
   return (
     <div className="pb-24">
       <div className="flex items-center gap-3 mb-5">
-        <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center"><Sparkles className="w-5 h-5 text-indigo-400" /></div>
+        <div className="w-10 h-10 rounded-xl bg-rose-500/20 flex items-center justify-center"><Sparkles className="w-5 h-5 text-rose-400" /></div>
         <div>
           <h2 className="font-heading text-xl font-bold text-white">Admin Panel</h2>
           <p className="text-xs text-zinc-500">{adminName}</p>
@@ -80,7 +80,7 @@ export default function AdminPanel() {
         {sections.map(s => {
           const Icon = s.icon;
           return (
-            <button key={s.id} onClick={() => setActiveSection(s.id)} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${activeSection === s.id ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30" : "bg-white/5 text-zinc-500 border border-transparent"}`} data-testid={`admin-tab-${s.id}`}>
+            <button key={s.id} onClick={() => setActiveSection(s.id)} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${activeSection === s.id ? "bg-rose-500/20 text-rose-400 border border-rose-500/30" : "bg-white/5 text-zinc-500 border border-transparent"}`} data-testid={`admin-tab-${s.id}`}>
               <Icon className="w-3.5 h-3.5" />{s.label}
               {s.badge > 0 && <span className="px-1.5 py-0.5 text-[10px] bg-rose-500 text-white rounded-full">{s.badge}</span>}
             </button>
@@ -153,7 +153,7 @@ export default function AdminPanel() {
           {activeSection === "broadcast" && (
             <div className="glass-card rounded-2xl p-5">
               <h3 className="font-heading text-base font-bold text-white mb-3">Send Broadcast</h3>
-              <textarea value={broadcastMsg} onChange={e => setBroadcastMsg(e.target.value)} placeholder="Type your message..." rows={4} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 resize-none focus:outline-none focus:border-indigo-500/50 mb-3" data-testid="broadcast-input" />
+              <textarea value={broadcastMsg} onChange={e => setBroadcastMsg(e.target.value)} placeholder="Type your message..." rows={4} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 resize-none focus:outline-none focus:border-rose-500/50 mb-3" data-testid="broadcast-input" />
               <button onClick={sendBroadcast} disabled={broadcastSending || !broadcastMsg.trim()} className="gradient-cta text-white font-bold rounded-2xl py-3 w-full flex items-center justify-center gap-2 disabled:opacity-30 active:scale-95 transition-transform" data-testid="send-broadcast-btn">
                 {broadcastSending ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending...</> : <><Send className="w-4 h-4" /> Send to All Users</>}
               </button>
