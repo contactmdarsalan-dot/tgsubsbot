@@ -264,6 +264,13 @@
 }
 .ma-sheet-handle { width: 36px; height: 4px; border-radius: 4px; background: rgba(255,255,255,0.12); margin: 0 auto 16px; }
 .ma-sheet h3 { font-size: 16px; font-weight: 700; color: white; margin-bottom: 14px; text-align: center; }
+.ma-qr-wrap {
+  display: flex; align-items: center; justify-content: center;
+  padding: 12px; margin-bottom: 12px;
+  background: white; border-radius: 12px;
+  max-width: 200px; margin-left: auto; margin-right: auto;
+}
+.ma-qr-img { width: 100%; height: auto; border-radius: 4px; display: block; }
 .ma-upi-box {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 12px; margin-bottom: 8px;

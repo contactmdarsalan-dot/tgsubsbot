@@ -71,8 +71,9 @@ async def miniapp_get_upi_details():
     """Get UPI payment details for manual payment"""
     settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
     return {
-        "upi_id": settings.get("upi_id", ""),
-        "payment_message": settings.get("payment_message", "Send payment screenshot to the bot after paying via UPI.")
+        "upi_id": settings.get("upi_id", settings.get("payment_upi_id", "")),
+        "qr_code_url": settings.get("qr_code_url", ""),
+        "payment_message": settings.get("payment_instructions", settings.get("payment_message", "Send payment screenshot to the bot after paying via UPI."))
     }
 
 
@@ -444,7 +445,7 @@ Recent conversation:
                 ticket = {
                     "id": str(uuid.uuid4()),
                     "telegram_user_id": telegram_user_id,
-                    "subject": f"Mini App Escalation",
+                    "subject": "Mini App Escalation",
                     "message": message,
                     "escalation_reason": escalation_reason,
                     "status": "open",

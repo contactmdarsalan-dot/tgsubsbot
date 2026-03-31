@@ -318,14 +318,14 @@ export default function Plans() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">-- No Channel (use default) --</SelectItem>
-                    {channels.map((ch) => (
+                    {channels.filter(ch => (ch.telegram_channel_id || ch.channel_id)).map((ch) => (
                       <SelectItem key={ch.id || ch.channel_id} value={ch.telegram_channel_id || ch.channel_id || ch.id}>
-                        {ch.name} ({ch.telegram_channel_id || ch.channel_id})
+                        {ch.channel_name || ch.name || "Channel"} ({ch.telegram_channel_id || ch.channel_id})
                       </SelectItem>
                     ))}
-                    {groups.map((g) => (
-                      <SelectItem key={g.id || g.chat_id} value={g.chat_id || g.id}>
-                        {g.name} ({g.chat_id})
+                    {groups.filter(g => g.group_id && g.group_id !== "0").map((g) => (
+                      <SelectItem key={g.id || g.group_id} value={g.group_id}>
+                        {g.group_name || g.name || "Group"} ({g.group_id})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -340,16 +340,23 @@ export default function Plans() {
                   className="bg-muted/50 border-primary/30 focus:border-primary font-mono text-sm"
                 />
               )}
+              <div className="space-y-1 mt-1">
+                <Label className="text-xs text-muted-foreground">Or enter Channel ID manually:</Label>
+                <Input
+                  value={form.channel_id}
+                  onChange={(e) => setForm({ ...form, channel_id: e.target.value })}
+                  placeholder="-1001234567890"
+                  data-testid="plan-channel-manual-input"
+                  className="bg-muted/50 border-transparent focus:border-primary font-mono text-sm"
+                />
+              </div>
               {!form.channel_id && (
                 <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-md">
                   <p className="text-xs text-amber-400 font-medium">
-                    Warning: No channel set! All subscribers will get the DEFAULT channel link. Set a specific channel for this plan to avoid wrong links.
+                    Warning: No channel set! Set a channel ID for this plan.
                   </p>
                 </div>
               )}
-              <p className="text-xs text-muted-foreground">
-                Each plan should have its own channel. Without it, all plans share the same channel.
-              </p>
             </div>
 
             <div className="space-y-2">

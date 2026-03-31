@@ -28,6 +28,7 @@ export default function MiniApp() {
   // Manual payment sheet
   const [showManualSheet, setShowManualSheet] = useState(false);
   const [upiDetails, setUpiDetails] = useState(null);
+  const [qrLoading, setQrLoading] = useState(false);
 
   // Referral
   const [referralCode, setReferralCode] = useState("");
@@ -48,8 +49,7 @@ export default function MiniApp() {
   const chatEndRef = useRef(null);
   const sessionIdRef = useRef(`support-${Date.now()}`);
 
-  // Razorpay
-  const [payProcessing, setPayProcessing] = useState(false);
+  // Payment
   const [paySuccess, setPaySuccess] = useState(null);
 
   // More menu
@@ -181,85 +181,18 @@ export default function MiniApp() {
     return base;
   };
 
-  // ---- Razorpay ----
-  const handleRazorpay = async () => {
-    if (!selectedPlan || payProcessing) return;
-    setPayProcessing(true);
-    try {
-      const res = await fetch(`${API}/miniapp/create-order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          plan_id: selectedPlan.id,
-          telegram_user_id: userId,
-          telegram_username: user?.username || "",
-          amount: getPayAmount(),
-          coupon_code: couponResult?.valid ? couponResult.coupon_code : null,
-        }),
-      });
-      const order = await res.json();
-      if (order.order_id) {
-        openRazorpayCheckout(order);
-      } else {
-        alert(order.detail || "Failed to create order");
-        setPayProcessing(false);
-      }
-    } catch {
-      alert("Payment error. Try again.");
-      setPayProcessing(false);
-    }
-  };
-
-  const openRazorpayCheckout = (order) => {
-    const options = {
-      key: order.key_id,
-      amount: order.amount * 100,
-      currency: order.currency || "INR",
-      name: "TGSubsBot",
-      description: `${order.plan_name} Subscription`,
-      order_id: order.order_id,
-      handler: async (response) => {
-        try {
-          const verifyRes = await fetch(`${API}/miniapp/verify-payment`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-              telegram_user_id: userId,
-            }),
-          });
-          const result = await verifyRes.json();
-          if (result.success) {
-            setPaySuccess(result);
-            fetchData();
-          } else {
-            alert("Payment verification failed");
-          }
-        } catch {
-          alert("Verification error");
-        } finally {
-          setPayProcessing(false);
-        }
-      },
-      prefill: { name: user?.first_name || "", contact: phoneNum || "" },
-      theme: { color: "#e8365d" },
-      modal: { ondismiss: () => setPayProcessing(false) },
-    };
-    const rzp = new window.Razorpay(options);
-    rzp.open();
-  };
-
-  // ---- Manual Payment ----
-  const handleManualPay = async () => {
+  // ---- Manual Payment (UPI QR + ID) ----
+  const handlePayNow = async () => {
     if (!upiDetails) {
+      setQrLoading(true);
       try {
         const res = await fetch(`${API}/miniapp/upi-details`);
         const data = await res.json();
         setUpiDetails(data);
       } catch {
-        setUpiDetails({ upi_id: "N/A", payment_message: "Contact admin for UPI details." });
+        setUpiDetails({ upi_id: "N/A", qr_code_url: "", payment_message: "Contact admin for UPI details." });
+      } finally {
+        setQrLoading(false);
       }
     }
     setShowManualSheet(true);
@@ -432,13 +365,21 @@ export default function MiniApp() {
         )}
       </AnimatePresence>
 
-      {/* Manual Payment Bottom Sheet */}
+      {/* UPI Payment Bottom Sheet */}
       <AnimatePresence>
         {showManualSheet && (
           <motion.div className="ma-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowManualSheet(false)}>
             <motion.div className="ma-sheet" initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25 }} onClick={(e) => e.stopPropagation()} data-testid="miniapp-manual-sheet">
               <div className="ma-sheet-handle" />
-              <h3>UPI Payment Details</h3>
+              <h3>Pay via UPI</h3>
+
+              {/* QR Code */}
+              {upiDetails?.qr_code_url && (
+                <div className="ma-qr-wrap">
+                  <img src={upiDetails.qr_code_url} alt="UPI QR Code" className="ma-qr-img" data-testid="miniapp-qr-img" />
+                </div>
+              )}
+
               <div className="ma-upi-box">
                 <span className="ma-upi-label">UPI ID</span>
                 <div className="ma-upi-id-row">
@@ -447,7 +388,7 @@ export default function MiniApp() {
                 </div>
               </div>
               <div className="ma-upi-box">
-                <span className="ma-upi-label">Amount to Pay</span>
+                <span className="ma-upi-label">Amount</span>
                 <span className="ma-upi-amt">&#8377;{getPayAmount()}</span>
               </div>
               <div className="ma-upi-box">
@@ -455,7 +396,7 @@ export default function MiniApp() {
                 <span className="ma-upi-plan">{selectedPlan?.name}</span>
               </div>
               <div className="ma-sheet-steps">
-                <p>1. Copy the UPI ID above</p>
+                <p>1. Scan the QR or copy UPI ID above</p>
                 <p>2. Pay &#8377;{getPayAmount()} via any UPI app</p>
                 <p>3. Take a screenshot of the payment</p>
                 <p>4. Send the screenshot to the bot</p>
@@ -565,15 +506,11 @@ export default function MiniApp() {
                     <span className="ma-pay-final">&#8377;{getPayAmount()}</span>
                   </div>
 
-                  <button className="ma-btn-accent" onClick={handleRazorpay} disabled={payProcessing} data-testid="miniapp-razorpay-btn">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                    {payProcessing ? "Processing..." : `Pay ₹${getPayAmount()} Instantly`}
-                  </button>
-                  <button className="ma-btn-outline" onClick={handleManualPay} data-testid="miniapp-manual-btn">
+                  <button className="ma-btn-accent" onClick={handlePayNow} disabled={qrLoading} data-testid="miniapp-pay-btn">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
-                    UPI Manual Payment
+                    {qrLoading ? "Loading..." : `Pay ₹${getPayAmount()} via UPI`}
                   </button>
-                  <p className="ma-pay-hint">Razorpay = instant. Manual = admin verification.</p>
+                  <p className="ma-pay-hint">Scan QR or copy UPI ID to pay. Then send screenshot to bot.</p>
                 </motion.div>
               )}
             </motion.div>
