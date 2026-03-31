@@ -537,7 +537,7 @@ export default function MiniApp() {
       if (data.id) {
         setLiveSessions(prev => [data, ...prev]);
         setShowCreateLive(false);
-        setNewLive({ title: "", description: "", scheduled_date: "", scheduled_time: "", price: 0, stream_link: "" });
+        setNewLive({ title: "", description: "", scheduled_date: "", scheduled_time: "", price: 0, stream_link: "", max_viewers: 100, superchat_enabled: false, superchat_min_amount: 50 });
       }
     } catch (e) { console.error(e); }
   };
@@ -881,7 +881,32 @@ export default function MiniApp() {
           {/* ===== PLANS TAB ===== */}
           {activeTab === "plans" && (
             <motion.div key="plans" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="ma-tab" data-testid="miniapp-plans-tab">
-              <h2 className="ma-title">Choose Your Plan</h2>
+              <h2 className="ma-title">{subscription?.is_active ? "Extend Subscription" : "Choose Your Plan"}</h2>
+
+              {/* Expiry Warning */}
+              {subscription?.is_active && subscription.days_remaining <= 3 && (
+                <motion.div className="ma-expiry-warn" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} data-testid="miniapp-expiry-warning">
+                  <div className="ma-warn-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  </div>
+                  <div>
+                    <p className="ma-warn-title">Subscription Expiring Soon!</p>
+                    <p className="ma-warn-sub">Only <strong>{subscription.days_remaining}</strong> day{subscription.days_remaining !== 1 ? "s" : ""} left. Renew now to keep access.</p>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Active Subscription Banner */}
+              {subscription?.is_active && subscription.days_remaining > 3 && (
+                <div className="ma-extend-banner" data-testid="miniapp-extend-banner">
+                  <div className="ma-extend-info">
+                    <span className="ma-extend-plan">{subscription.plan_name}</span>
+                    <span className="ma-extend-days">{subscription.days_remaining}d remaining</span>
+                  </div>
+                  <p className="ma-extend-hint">Select a plan below to extend your subscription. New days will be added to your current plan.</p>
+                </div>
+              )}
+
               <div className="ma-plans">
                 {plans.map((plan, i) => (
                   <React.Fragment key={plan.id}>
@@ -916,6 +941,11 @@ export default function MiniApp() {
                     {/* Payment Section - inline below selected plan */}
                     {selectedPlan?.id === plan.id && (
                       <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="ma-pay-section" data-testid="miniapp-pay-section">
+                        {subscription?.is_active && (
+                          <div className="ma-extend-note" data-testid="miniapp-extend-note">
+                            <p>+{plan.duration_days} days will be added to your current subscription</p>
+                          </div>
+                        )}
                         {/* Coupon */}
                         <div className="ma-coupon-row">
                           <input className="ma-input" placeholder="Coupon code" value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} data-testid="miniapp-coupon-input" />
@@ -934,7 +964,7 @@ export default function MiniApp() {
 
                         <button className="ma-btn-accent" onClick={handleRazorpay} disabled={payProcessing} data-testid="miniapp-razorpay-btn">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                          {payProcessing ? "Processing..." : `Pay ₹${getPayAmount()} Instantly`}
+                          {payProcessing ? "Processing..." : subscription?.is_active ? `Extend - Pay ₹${getPayAmount()}` : `Pay ₹${getPayAmount()} Instantly`}
                         </button>
                         <button className="ma-btn-outline" onClick={handlePayNow} disabled={qrLoading} data-testid="miniapp-pay-btn">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
@@ -1253,17 +1283,17 @@ export default function MiniApp() {
 
                       {showCreateLive && (
                         <div className="ma-admin-create-form" data-testid="create-live-form">
-                          <input className="ma-input" placeholder="Session Title" value={newLive.title} onChange={e => setNewLive(p => ({...p, title: e.target.value}))} />
-                          <textarea className="ma-input ma-textarea" placeholder="Description" value={newLive.description} onChange={e => setNewLive(p => ({...p, description: e.target.value}))} rows={2} />
+                          <input className="ma-input" placeholder="Session Title *" value={newLive.title} onChange={e => setNewLive(p => ({...p, title: e.target.value}))} data-testid="live-title-input" />
+                          <textarea className="ma-input ma-textarea" placeholder="Description (optional)" value={newLive.description} onChange={e => setNewLive(p => ({...p, description: e.target.value}))} rows={2} data-testid="live-desc-input" />
                           <div className="ma-form-row">
-                            <input className="ma-input" type="date" value={newLive.scheduled_date} onChange={e => setNewLive(p => ({...p, scheduled_date: e.target.value}))} />
-                            <input className="ma-input" type="time" value={newLive.scheduled_time} onChange={e => setNewLive(p => ({...p, scheduled_time: e.target.value}))} />
+                            <input className="ma-input" type="date" value={newLive.scheduled_date} onChange={e => setNewLive(p => ({...p, scheduled_date: e.target.value}))} data-testid="live-date-input" />
+                            <input className="ma-input" type="time" value={newLive.scheduled_time} onChange={e => setNewLive(p => ({...p, scheduled_time: e.target.value}))} data-testid="live-time-input" />
                           </div>
                           <div className="ma-form-row">
-                            <input className="ma-input" type="number" placeholder="Price (0=free)" value={newLive.price} onChange={e => setNewLive(p => ({...p, price: parseInt(e.target.value) || 0}))} />
-                            <input className="ma-input" type="number" placeholder="Max Viewers" value={newLive.max_viewers} onChange={e => setNewLive(p => ({...p, max_viewers: parseInt(e.target.value) || 100}))} />
+                            <input className="ma-input" type="number" placeholder="Price (0=free)" value={newLive.price} onChange={e => setNewLive(p => ({...p, price: parseInt(e.target.value) || 0}))} data-testid="live-price-input" />
+                            <input className="ma-input" type="number" placeholder="Max Viewers" value={newLive.max_viewers} onChange={e => setNewLive(p => ({...p, max_viewers: parseInt(e.target.value) || 100}))} data-testid="live-viewers-input" />
                           </div>
-                          <input className="ma-input" placeholder="Stream Link (optional)" value={newLive.stream_link} onChange={e => setNewLive(p => ({...p, stream_link: e.target.value}))} />
+                          <input className="ma-input" placeholder="Stream Link (YouTube/Twitch etc.)" value={newLive.stream_link} onChange={e => setNewLive(p => ({...p, stream_link: e.target.value}))} data-testid="live-link-input" />
                           <div className="ma-toggle-row">
                             <label className="ma-toggle-label">Super Chat</label>
                             <button className={`ma-toggle-btn ${newLive.superchat_enabled ? "on" : ""}`} onClick={() => setNewLive(p => ({...p, superchat_enabled: !p.superchat_enabled}))} data-testid="superchat-toggle">
@@ -1271,14 +1301,14 @@ export default function MiniApp() {
                             </button>
                           </div>
                           {newLive.superchat_enabled && (
-                            <input className="ma-input" type="number" placeholder="Min Super Chat ₹" value={newLive.superchat_min_amount} onChange={e => setNewLive(p => ({...p, superchat_min_amount: parseInt(e.target.value) || 10}))} />
+                            <input className="ma-input" type="number" placeholder="Min Super Chat ₹" value={newLive.superchat_min_amount} onChange={e => setNewLive(p => ({...p, superchat_min_amount: parseInt(e.target.value) || 10}))} data-testid="live-superchat-min" />
                           )}
-                          <button className="ma-btn-accent" onClick={createLiveSession} data-testid="save-live-btn">Create Session</button>
+                          <button className="ma-btn-accent" onClick={createLiveSession} disabled={!newLive.title.trim()} data-testid="save-live-btn">Create Session</button>
                         </div>
                       )}
 
                       {liveSessions.length === 0 && !showCreateLive ? (
-                        <div className="ma-empty">No live sessions yet</div>
+                        <div className="ma-empty">No live sessions yet. Create your first one!</div>
                       ) : liveSessions.map(s => (
                         <div key={s.id} className={`ma-admin-item ${s.status === "live" ? "ma-live-active" : ""}`} data-testid={`live-${s.id}`}>
                           <div className="ma-admin-item-top">
@@ -1288,6 +1318,7 @@ export default function MiniApp() {
                           <p className="ma-admin-item-sub">
                             {s.scheduled_date || "No date"} {s.scheduled_time || ""} &middot; {s.price > 0 ? `₹${s.price}` : "FREE"} &middot; Max: {s.max_viewers || 100}
                           </p>
+                          {s.description && <p className="ma-admin-item-desc">{s.description}</p>}
                           <div className="ma-admin-item-meta">
                             {s.stream_link && <span className="ma-meta-tag"><a href={s.stream_link} target="_blank" rel="noreferrer">Stream Link</a></span>}
                             {s.superchat_enabled && <span className="ma-meta-tag accent">SuperChat ₹{s.superchat_min_amount || 50}+</span>}
@@ -1295,9 +1326,41 @@ export default function MiniApp() {
                             {s.started_at && <span className="ma-meta-tag">Started: {s.started_at.split("T")[0]}</span>}
                           </div>
                           <div className="ma-admin-actions">
-                            {s.status === "scheduled" && <button className="ma-btn-approve" onClick={() => announceLive(s.id)} data-testid={`announce-${s.id}`}>Announce</button>}
-                            {(s.status === "scheduled" || s.status === "announced") && <button className="ma-btn-go-live" onClick={() => goLive(s.id)} data-testid={`golive-${s.id}`}>Go Live</button>}
-                            {s.status === "live" && <span className="ma-live-badge">LIVE NOW</span>}
+                            {s.status === "scheduled" && (
+                              <>
+                                <button className="ma-btn-approve" onClick={() => announceLive(s.id)} data-testid={`announce-${s.id}`}>Announce</button>
+                                <button className="ma-btn-go-live" onClick={() => goLive(s.id)} data-testid={`golive-${s.id}`}>Go Live</button>
+                              </>
+                            )}
+                            {s.status === "announced" && (
+                              <button className="ma-btn-go-live" onClick={() => goLive(s.id)} data-testid={`golive-${s.id}`}>Go Live</button>
+                            )}
+                            {s.status === "live" && (
+                              <>
+                                <span className="ma-live-badge">LIVE NOW</span>
+                                <button className="ma-btn-end" onClick={async () => {
+                                  try {
+                                    const res = await fetch(`${API}/miniapp/admin/live-session/${s.id}/end`, {
+                                      method: "POST", headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ telegram_user_id: userId }),
+                                    });
+                                    if (res.ok) setLiveSessions(prev => prev.map(x => x.id === s.id ? { ...x, status: "ended" } : x));
+                                  } catch (e) { console.error(e); }
+                                }} data-testid={`end-live-${s.id}`}>End Stream</button>
+                              </>
+                            )}
+                            {(s.status === "ended" || s.status === "scheduled" || s.status === "announced") && (
+                              <button className="ma-btn-delete" onClick={async () => {
+                                if (!window.confirm("Delete this session?")) return;
+                                try {
+                                  const res = await fetch(`${API}/miniapp/admin/live-session/${s.id}`, {
+                                    method: "DELETE", headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ telegram_user_id: userId }),
+                                  });
+                                  if (res.ok) setLiveSessions(prev => prev.filter(x => x.id !== s.id));
+                                } catch (e) { console.error(e); }
+                              }} data-testid={`delete-live-${s.id}`}>Delete</button>
+                            )}
                           </div>
                         </div>
                       ))}

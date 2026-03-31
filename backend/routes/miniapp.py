@@ -1462,6 +1462,21 @@ async def miniapp_delete_live(session_id: str, data: dict):
     return {"success": result.deleted_count > 0}
 
 
+@router.post("/admin/live-session/{session_id}/end")
+async def miniapp_end_live(session_id: str, data: dict):
+    """End a live session"""
+    telegram_user_id = data.get("telegram_user_id", "")
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+
+    result = await db.live_sessions.update_one(
+        {"id": session_id},
+        {"$set": {"status": "ended", "ended_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"success": result.modified_count > 0, "status": "ended"}
+
+
 
 # ============== TENANT MANAGEMENT ==============
 

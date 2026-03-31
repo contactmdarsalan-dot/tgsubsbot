@@ -689,3 +689,28 @@ select.ma-input { appearance: auto; }
 .ma-media-preview { position: relative; border-radius: 10px; overflow: hidden; }
 .ma-media-remove { position: absolute; top: 6px; right: 6px; background: rgba(239,68,68,0.85); color: #fff; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; }
 
+/* Expiry Warning */
+.ma-expiry-warn { display: flex; align-items: center; gap: 12px; background: rgba(250,204,21,0.08); border: 1px solid rgba(250,204,21,0.2); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; }
+.ma-warn-icon { flex-shrink: 0; }
+.ma-warn-title { font-size: 14px; font-weight: 600; color: #facc15; margin: 0 0 2px; }
+.ma-warn-sub { font-size: 12px; color: #aaa; margin: 0; }
+
+/* Extend Banner */
+.ma-extend-banner { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; }
+.ma-extend-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.ma-extend-plan { font-size: 14px; font-weight: 600; color: #60a5fa; }
+.ma-extend-days { font-size: 13px; color: #aaa; }
+.ma-extend-hint { font-size: 12px; color: #888; margin: 0; }
+.ma-extend-note { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
+.ma-extend-note p { font-size: 12px; color: #4ade80; margin: 0; text-align: center; }
+
+/* Live Admin Improvements */
+.ma-live-active { border-color: rgba(239,68,68,0.3) !important; background: rgba(239,68,68,0.05) !important; }
+.ma-live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; margin-right: 6px; animation: blink 1.2s infinite; }
+.ma-admin-item-desc { font-size: 12px; color: #999; margin: 4px 0 0; }
+.ma-btn-end { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); padding: 5px 14px; border-radius: 8px; font-size: 11px; cursor: pointer; }
+.ma-btn-delete { background: rgba(255,255,255,0.04); color: #888; border: 1px solid rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 8px; font-size: 11px; cursor: pointer; }
+.ma-btn-delete:hover { color: #f87171; border-color: rgba(239,68,68,0.3); }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+
