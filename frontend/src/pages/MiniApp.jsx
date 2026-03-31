@@ -67,6 +67,11 @@ export default function MiniApp() {
   // Payment
   const [payProcessing, setPayProcessing] = useState(false);
   const [paySuccess, setPaySuccess] = useState(null);
+  const [screenshotFile, setScreenshotFile] = useState(null);
+  const [screenshotPreview, setScreenshotPreview] = useState(null);
+  const [uploadStep, setUploadStep] = useState(null); // null | "pick" | "uploading" | "result"
+  const [uploadResult, setUploadResult] = useState(null);
+  const fileInputRef = useRef(null);
 
   // More menu
   const [moreOpen, setMoreOpen] = useState(false);
@@ -295,18 +300,69 @@ export default function MiniApp() {
     setShowManualSheet(true);
   };
 
-  const confirmManualPay = () => {
-    if (tg) {
-      tg.sendData(
-        JSON.stringify({
-          action: "select_plan",
-          plan_id: selectedPlan.id,
-          plan_name: selectedPlan.name,
-          amount: getPayAmount(),
-        })
-      );
+  // Copy to clipboard (works in Telegram WebApp too)
+  const copyToClipboard = (text) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        if (tg) tg.showAlert("Copied: " + text);
+      }).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
     }
-    setShowManualSheet(false);
+  };
+  const fallbackCopy = (text) => {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;top:-9999px;left:-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    if (tg) tg.showAlert("Copied: " + text);
+  };
+
+  const confirmManualPay = () => {
+    // Instead of closing, show screenshot upload step
+    setUploadStep("pick");
+    setScreenshotFile(null);
+    setScreenshotPreview(null);
+    setUploadResult(null);
+  };
+
+  const handleScreenshotSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      if (tg) tg.showAlert("Please select an image file");
+      return;
+    }
+    setScreenshotFile(file);
+    setScreenshotPreview(URL.createObjectURL(file));
+  };
+
+  const uploadScreenshot = async () => {
+    if (!screenshotFile || !selectedPlan) return;
+    setUploadStep("uploading");
+    
+    const formData = new FormData();
+    formData.append("file", screenshotFile);
+    formData.append("telegram_user_id", userId);
+    formData.append("plan_id", selectedPlan.id);
+    formData.append("plan_name", selectedPlan.name);
+    formData.append("amount", getPayAmount());
+    
+    try {
+      const res = await fetch(`${API}/miniapp/upload-screenshot`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      setUploadResult(data);
+      setUploadStep("result");
+    } catch (e) {
+      setUploadResult({ success: false, error: "Upload failed. Try again." });
+      setUploadStep("result");
+    }
   };
 
   // ---- Support Chat ----
@@ -549,41 +605,114 @@ export default function MiniApp() {
           <motion.div className="ma-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowManualSheet(false)}>
             <motion.div className="ma-sheet" initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25 }} onClick={(e) => e.stopPropagation()} data-testid="miniapp-manual-sheet">
               <div className="ma-sheet-handle" />
-              <h3>Pay via UPI</h3>
+              
+              {/* STEP 1: UPI Details + Pay */}
+              {!uploadStep && (
+                <>
+                  <h3>Pay via UPI</h3>
+                  <div className="ma-upi-box">
+                    <span className="ma-upi-label">UPI ID</span>
+                    <div className="ma-upi-id-row">
+                      <span className="ma-upi-id">{upiDetails?.upi_id || "Loading..."}</span>
+                      <button className="ma-copy-sm" data-testid="miniapp-copy-upi" onClick={() => copyToClipboard(upiDetails?.upi_id || "")}>Copy</button>
+                    </div>
+                  </div>
+                  {upiDetails?.qr_code_url && (
+                    <div className="ma-qr-wrap" data-testid="miniapp-qr-wrap">
+                      <img src={upiDetails.qr_code_url} alt="Scan QR to Pay" className="ma-qr-img" data-testid="miniapp-qr-img" />
+                    </div>
+                  )}
+                  <div className="ma-upi-box">
+                    <span className="ma-upi-label">Amount</span>
+                    <span className="ma-upi-amt">&#8377;{getPayAmount()}</span>
+                  </div>
+                  <div className="ma-upi-box">
+                    <span className="ma-upi-label">Plan</span>
+                    <span className="ma-upi-plan">{selectedPlan?.name}</span>
+                  </div>
+                  <div className="ma-sheet-steps">
+                    <p>1. Scan the QR or copy UPI ID above</p>
+                    <p>2. Pay &#8377;{getPayAmount()} via any UPI app</p>
+                    <p>3. Click below to upload payment screenshot</p>
+                  </div>
+                  <button className="ma-btn-accent" onClick={confirmManualPay} data-testid="miniapp-manual-confirm">
+                    I've Paid, Send Screenshot
+                  </button>
+                  <button className="ma-btn-ghost" onClick={() => setShowManualSheet(false)}>Cancel</button>
+                </>
+              )}
 
-              <div className="ma-upi-box">
-                <span className="ma-upi-label">UPI ID</span>
-                <div className="ma-upi-id-row">
-                  <span className="ma-upi-id">{upiDetails?.upi_id || "Loading..."}</span>
-                  <button className="ma-copy-sm" onClick={() => { navigator.clipboard?.writeText(upiDetails?.upi_id || ""); }}>Copy</button>
-                </div>
-              </div>
-
-              {/* QR Code - below UPI Copy */}
-              {upiDetails?.qr_code_url && (
-                <div className="ma-qr-wrap" data-testid="miniapp-qr-wrap">
-                  <img src={upiDetails.qr_code_url} alt="Scan QR to Pay" className="ma-qr-img" data-testid="miniapp-qr-img" />
+              {/* STEP 2: Upload Screenshot */}
+              {uploadStep === "pick" && (
+                <div className="ma-upload-section" data-testid="miniapp-upload-section">
+                  <h3>Upload Payment Screenshot</h3>
+                  <p className="ma-subtitle">Select the screenshot of your payment</p>
+                  
+                  <input type="file" accept="image/*" ref={fileInputRef} onChange={handleScreenshotSelect} style={{ display: "none" }} data-testid="miniapp-file-input" />
+                  
+                  {screenshotPreview ? (
+                    <div className="ma-preview-wrap">
+                      <img src={screenshotPreview} alt="Preview" className="ma-preview-img" />
+                      <button className="ma-btn-ghost" onClick={() => { setScreenshotFile(null); setScreenshotPreview(null); }}>Change Image</button>
+                    </div>
+                  ) : (
+                    <div className="ma-upload-area" onClick={() => fileInputRef.current?.click()} data-testid="miniapp-upload-area">
+                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                      <p>Tap to select screenshot</p>
+                    </div>
+                  )}
+                  
+                  <div className="ma-upi-box" style={{ marginTop: 10 }}>
+                    <span className="ma-upi-label">Plan</span>
+                    <span className="ma-upi-plan">{selectedPlan?.name} &middot; &#8377;{getPayAmount()}</span>
+                  </div>
+                  
+                  <button className="ma-btn-accent" onClick={uploadScreenshot} disabled={!screenshotFile} data-testid="miniapp-upload-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    Upload &amp; Verify
+                  </button>
+                  <button className="ma-btn-ghost" onClick={() => setUploadStep(null)}>Back</button>
                 </div>
               )}
 
-              <div className="ma-upi-box">
-                <span className="ma-upi-label">Amount</span>
-                <span className="ma-upi-amt">&#8377;{getPayAmount()}</span>
-              </div>
-              <div className="ma-upi-box">
-                <span className="ma-upi-label">Plan</span>
-                <span className="ma-upi-plan">{selectedPlan?.name}</span>
-              </div>
-              <div className="ma-sheet-steps">
-                <p>1. Scan the QR or copy UPI ID above</p>
-                <p>2. Pay &#8377;{getPayAmount()} via any UPI app</p>
-                <p>3. Take a screenshot of the payment</p>
-                <p>4. Send the screenshot to the bot</p>
-              </div>
-              <button className="ma-btn-accent" onClick={confirmManualPay} data-testid="miniapp-manual-confirm">
-                I've Paid, Send Screenshot
-              </button>
-              <button className="ma-btn-ghost" onClick={() => setShowManualSheet(false)}>Cancel</button>
+              {/* STEP 3: Uploading */}
+              {uploadStep === "uploading" && (
+                <div className="ma-upload-section" data-testid="miniapp-uploading">
+                  <div className="ma-loader"><div className="ma-spinner" /><p>Verifying payment...</p></div>
+                  <p className="ma-subtitle" style={{ textAlign: "center", marginTop: 10 }}>AI is analyzing your screenshot</p>
+                </div>
+              )}
+
+              {/* STEP 4: Result */}
+              {uploadStep === "result" && uploadResult && (
+                <div className="ma-upload-section" data-testid="miniapp-upload-result">
+                  {uploadResult.ai_verified ? (
+                    <div className="ma-result-card verified">
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#3ecf8e" strokeWidth="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                      <h3>Payment Verified!</h3>
+                      <p>Your subscription is now active</p>
+                      {uploadResult.ai_result?.confidence > 0 && <p className="ma-confidence">AI Confidence: {uploadResult.ai_result.confidence}%</p>}
+                      {uploadResult.ai_result?.extracted?.amount && <p className="ma-subtitle">Detected: ₹{uploadResult.ai_result.extracted.amount}</p>}
+                    </div>
+                  ) : uploadResult.success ? (
+                    <div className="ma-result-card pending">
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ff983e" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <h3>Under Review</h3>
+                      <p>Admin will verify your payment shortly</p>
+                      {uploadResult.ai_result?.reason && <p className="ma-subtitle">{uploadResult.ai_result.reason}</p>}
+                    </div>
+                  ) : (
+                    <div className="ma-result-card failed">
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                      <h3>Upload Failed</h3>
+                      <p>{uploadResult.error || "Please try again"}</p>
+                    </div>
+                  )}
+                  <button className="ma-btn-accent" onClick={() => { setShowManualSheet(false); setUploadStep(null); }} data-testid="miniapp-done-btn">
+                    Done
+                  </button>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}

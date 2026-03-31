@@ -1,12 +1,14 @@
 """Mini App endpoints - Plans, Payments, Support AI, Referral, Notifications"""
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Form
 from database import db
-from services.telegram import get_bot_settings, send_telegram_message, add_to_channel
+from services.telegram import get_bot_settings, send_telegram_message, send_telegram_photo, add_to_channel
+from services.payment import analyze_payment_screenshot_with_ai
 from config import logger, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, razorpay_client, EMERGENT_LLM_KEY
 from datetime import datetime, timezone, timedelta
 import uuid
 import json
 import os
+import base64
 import qrcode
 from io import BytesIO
 from PIL import Image
@@ -424,6 +426,144 @@ async def miniapp_payment_history(telegram_user_id: str):
         {"_id": 0}
     ).sort("created_at", -1).to_list(50)
     return payments
+
+
+
+@router.post("/upload-screenshot")
+async def miniapp_upload_screenshot(
+    file: UploadFile = File(...),
+    telegram_user_id: str = Form(""),
+    plan_id: str = Form(""),
+    plan_name: str = Form(""),
+    amount: float = Form(0),
+):
+    """Upload payment screenshot from Mini App, run AI verification, create payment record"""
+    if not file:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+    
+    # Read image bytes
+    image_bytes = await file.read()
+    if len(image_bytes) > 10 * 1024 * 1024:  # 10MB limit
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+    
+    # Save screenshot locally
+    uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+    os.makedirs(uploads_path, exist_ok=True)
+    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"ss_{uuid.uuid4().hex[:10]}.{ext}"
+    filepath = os.path.join(uploads_path, filename)
+    with open(filepath, "wb") as f:
+        f.write(image_bytes)
+    
+    screenshot_url = f"/api/uploads/{filename}"
+    
+    # Get settings for AI verification context
+    settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
+    expected_upi = settings.get("payment_upi_id") or settings.get("upi_id", "")
+    
+    # Create payment record
+    payment_id = str(uuid.uuid4())
+    bot_user = await db.bot_users.find_one({"telegram_user_id": str(telegram_user_id)}, {"_id": 0})
+    
+    payment = {
+        "id": payment_id,
+        "telegram_user_id": str(telegram_user_id),
+        "telegram_username": bot_user.get("telegram_username", "") if bot_user else "",
+        "plan_id": plan_id,
+        "plan_name": plan_name,
+        "amount": amount,
+        "status": "pending",
+        "payment_method": "miniapp_upi",
+        "screenshot_url": screenshot_url,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "source": "miniapp",
+    }
+    
+    # Run AI Verification
+    ai_result = {}
+    try:
+        ai_result = await analyze_payment_screenshot_with_ai(image_bytes, amount, expected_upi)
+        payment["ai_verification"] = ai_result
+        
+        if ai_result.get("auto_approve_recommended"):
+            payment["status"] = "verified"
+            payment["verified_by"] = "AI (GPT-5.2)"
+            payment["verified_at"] = datetime.now(timezone.utc).isoformat()
+    except Exception as e:
+        logger.error(f"AI verification error: {e}")
+        ai_result = {"error": str(e), "ai_enabled": False}
+    
+    await db.payments.insert_one(payment)
+    del payment["_id"]
+    
+    # If AI verified, activate subscription
+    if payment["status"] == "verified":
+        plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+        duration = plan.get("duration_days", 30) if plan else 30
+        channel_id = ""
+        if plan:
+            channel_id = plan.get("channel_id", "") or settings.get("telegram_channel_id", "")
+        
+        await db.subscribers.update_one(
+            {"telegram_user_id": str(telegram_user_id)},
+            {"$set": {
+                "telegram_user_id": str(telegram_user_id),
+                "plan_id": plan_id,
+                "plan_name": plan_name,
+                "amount_paid": amount,
+                "status": "active",
+                "start_date": datetime.now(timezone.utc).isoformat(),
+                "end_date": (datetime.now(timezone.utc) + timedelta(days=duration)).isoformat(),
+                "payment_id": payment_id,
+            }},
+            upsert=True
+        )
+        
+        # Add to channel
+        bot_token = settings.get("telegram_bot_token", "")
+        if channel_id and bot_token and telegram_user_id:
+            try:
+                await add_to_channel(telegram_user_id, channel_id, bot_token)
+            except Exception as e:
+                logger.error(f"Failed to add to channel: {e}")
+    
+    # Notify admins about new payment
+    bot_token = settings.get("telegram_bot_token", "")
+    admin_ids = settings.get("telegram_admin_ids", [])
+    if bot_token and admin_ids:
+        status_emoji = "✅" if payment["status"] == "verified" else "⏳"
+        admin_msg = f"{status_emoji} <b>New Mini App Payment</b>\n\n"
+        admin_msg += f"User: {payment.get('telegram_username') or telegram_user_id}\n"
+        admin_msg += f"Plan: {plan_name}\n"
+        admin_msg += f"Amount: ₹{amount}\n"
+        admin_msg += f"Status: {payment['status'].upper()}\n"
+        if ai_result.get("ai_enabled"):
+            admin_msg += f"AI Confidence: {ai_result.get('confidence_score', 0)}%\n"
+            admin_msg += f"AI Verdict: {'Approved' if ai_result.get('auto_approve_recommended') else 'Manual Review Needed'}"
+        
+        for admin_id in admin_ids:
+            try:
+                await send_telegram_photo(admin_id, screenshot_url, admin_msg, bot_token)
+            except Exception:
+                try:
+                    await send_telegram_message(admin_id, admin_msg, bot_token)
+                except Exception:
+                    pass
+    
+    return {
+        "success": True,
+        "payment_id": payment_id,
+        "status": payment["status"],
+        "ai_verified": payment["status"] == "verified",
+        "ai_result": {
+            "enabled": ai_result.get("ai_enabled", False),
+            "is_payment": ai_result.get("is_payment_screenshot", False),
+            "confidence": ai_result.get("confidence_score", 0),
+            "reason": ai_result.get("reason", ""),
+            "auto_approved": ai_result.get("auto_approve_recommended", False),
+            "extracted": ai_result.get("extracted_data", {}),
+        }
+    }
 
 
 # ============== AI SUPPORT CHAT ==============
