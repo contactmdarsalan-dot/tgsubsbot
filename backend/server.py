@@ -54,18 +54,23 @@ uploads_dir = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(uploads_dir, exist_ok=True)
 app.mount("/api/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
-# CORS middleware
+# CORS middleware — strict allowlist
+_default_origins = "https://tgsubsbot.com,https://www.tgsubsbot.com,https://bot-builder-93.preview.emergentagent.com"
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=os.environ.get('CORS_ORIGINS', _default_origins).split(','),
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 
 @app.on_event("startup")
 async def startup():
+    # Create MongoDB indexes
+    from database import ensure_indexes
+    await ensure_indexes()
+    
     scheduler.add_job(check_subscriptions, 'interval', hours=6)
     scheduler.add_job(send_followups, 'cron', day_of_week='mon,thu', hour=10)
     scheduler.add_job(check_expired_chat_sessions, 'interval', seconds=30)

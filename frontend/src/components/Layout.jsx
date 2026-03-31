@@ -88,14 +88,12 @@ export default function Layout() {
   const SUPER_ADMIN_EMAILS = ["gamerxboys8958@gmail.com", "contactmdarsalan@gmail.com"];
 
   useEffect(() => {
-    const adminStatus = localStorage.getItem("isFirstUser") === "true" || 
-                        user.is_admin === true || 
-                        user.role === "admin" || 
-                        user.role === "super_admin" ||
-                        user.role === "tenant_admin";
+    // Role-based check only — no localStorage guessing
+    const role = user.role || "";
+    const adminStatus = role === "admin" || role === "super_admin" || role === "tenant_admin" || user.is_admin === true;
     setIsAdmin(adminStatus);
     
-    const superAdminStatus = user.role === "super_admin" || SUPER_ADMIN_EMAILS.includes(user.email);
+    const superAdminStatus = role === "super_admin" || SUPER_ADMIN_EMAILS.includes(user.email);
     setIsSuperAdmin(superAdminStatus);
   }, [user.email, user.role, user.is_admin]);
 

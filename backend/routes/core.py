@@ -9,7 +9,7 @@ from services.telegram import (
 from services.payment import detect_payment_screenshot, analyze_payment_screenshot_with_ai
 from services.bot_activity import log_bot_activity
 from services.tenant import DEFAULT_TENANT_ID, tenant_query
-from config import logger, RAZORPAY_KEY_ID, razorpay_client
+from config import logger, RAZORPAY_KEY_ID, razorpay_client, SUPER_ADMIN_EMAILS
 from models import (
     SubscriptionPlanCreate, SubscriptionPlan, SubscriberCreate, Subscriber,
     PaymentCreate, Payment, BotSettings
@@ -33,7 +33,7 @@ router = APIRouter()
 def get_user_tenant(user: dict) -> str:
     """Get tenant_id from user. Super admins see all data (empty string = no filter)."""
     role = user.get("role", "user")
-    if role == "super_admin" or user.get("email") == SUPER_ADMIN_EMAIL:
+    if role == "super_admin" or user.get("email") in SUPER_ADMIN_EMAILS:
         return ""  # No filter - sees everything
     return user.get("tenant_id", "")
 
@@ -81,17 +81,18 @@ async def create_plan(plan: SubscriptionPlanCreate, user = Depends(get_current_u
     plan_obj = SubscriptionPlan(**plan.model_dump())
     doc = plan_obj.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
-    doc['tenant_id'] = DEFAULT_TENANT_ID
+    doc['tenant_id'] = user.get("tenant_id") or DEFAULT_TENANT_ID
     await db.plans.insert_one(doc)
     return plan_obj
 
 @router.put("/plans/{plan_id}", response_model=SubscriptionPlan)
 async def update_plan(plan_id: str, plan: SubscriptionPlanCreate, user = Depends(get_current_user)):
-    existing = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+    tenant_id = get_user_tenant(user)
+    existing = await db.plans.find_one(tq({"id": plan_id}, tenant_id), {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Plan not found")
     
-    await db.plans.update_one({"id": plan_id}, {"$set": plan.model_dump()})
+    await db.plans.update_one(tq({"id": plan_id}, tenant_id), {"$set": plan.model_dump()})
     updated = await db.plans.find_one({"id": plan_id}, {"_id": 0})
     if isinstance(updated.get('created_at'), str):
         updated['created_at'] = datetime.fromisoformat(updated['created_at'])
@@ -99,7 +100,8 @@ async def update_plan(plan_id: str, plan: SubscriptionPlanCreate, user = Depends
 
 @router.delete("/plans/{plan_id}")
 async def delete_plan(plan_id: str, user = Depends(get_current_user)):
-    result = await db.plans.delete_one({"id": plan_id})
+    tenant_id = get_user_tenant(user)
+    result = await db.plans.delete_one(tq({"id": plan_id}, tenant_id))
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Plan not found")
     return {"message": "Plan deleted"}
@@ -177,7 +179,7 @@ async def create_subscriber(subscriber: SubscriberCreate, background_tasks: Back
     for field in ['start_date', 'end_date', 'grace_end_date', 'created_at']:
         if doc.get(field):
             doc[field] = doc[field].isoformat()
-    doc['tenant_id'] = DEFAULT_TENANT_ID
+    doc['tenant_id'] = plan.get("tenant_id") or user.get("tenant_id") or DEFAULT_TENANT_ID
     await db.subscribers.insert_one(doc)
     
     # Send welcome message and channel invite (use plan's channel if set)
@@ -669,7 +671,7 @@ async def verify_bot_checkout(data: dict, background_tasks: BackgroundTasks):
         "razorpay_order_id": data['razorpay_order_id'],
         "razorpay_payment_id": data['razorpay_payment_id'],
         "status": "verified",
-        "tenant_id": DEFAULT_TENANT_ID,
+        "tenant_id": plan.get("tenant_id", DEFAULT_TENANT_ID),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.payments.insert_one(payment_obj)
@@ -695,7 +697,7 @@ async def verify_bot_checkout(data: dict, background_tasks: BackgroundTasks):
         "end_date": end_date.isoformat(),
         "grace_end_date": grace_end.isoformat(),
         "reminder_sent": False,
-        "tenant_id": DEFAULT_TENANT_ID,
+        "tenant_id": plan.get("tenant_id", DEFAULT_TENANT_ID),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.subscribers.insert_one(subscriber_obj)
@@ -744,7 +746,8 @@ async def create_razorpay_order(payment: PaymentCreate, user = Depends(get_curre
     
     doc = payment_obj.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
-    doc['tenant_id'] = DEFAULT_TENANT_ID
+    plan_for_tenant = await db.plans.find_one({"id": payment.plan_id}, {"_id": 0, "tenant_id": 1})
+    doc['tenant_id'] = (plan_for_tenant or {}).get("tenant_id") or user.get("tenant_id") or DEFAULT_TENANT_ID
     await db.payments.insert_one(doc)
     
     return {"order_id": order["id"], "payment_id": payment_obj.id, "key_id": RAZORPAY_KEY_ID}
@@ -800,7 +803,8 @@ async def create_manual_payment(payment: PaymentCreate, user = Depends(get_curre
     
     doc = payment_obj.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
-    doc['tenant_id'] = DEFAULT_TENANT_ID
+    plan_for_tenant2 = await db.plans.find_one({"id": data.get("plan_id")}, {"_id": 0, "tenant_id": 1})
+    doc['tenant_id'] = (plan_for_tenant2 or {}).get("tenant_id") or user.get("tenant_id") or DEFAULT_TENANT_ID
     await db.payments.insert_one(doc)
     
     return {"payment_id": payment_obj.id, "message": "Manual payment created, waiting for verification"}
@@ -900,16 +904,17 @@ async def reject_payment(payment_id: str, data: dict = None, user = Depends(get_
 
 @router.delete("/payments/{payment_id}")
 async def delete_payment(payment_id: str, user = Depends(get_current_user)):
-    """Delete a payment record - Admin only"""
-    # Check if user is admin
-    if user.get("email") != SUPER_ADMIN_EMAIL and not user.get("is_admin"):
+    """Delete a payment record - Admin/Super Admin only"""
+    role = user.get("role", "user")
+    if role not in ["admin", "super_admin", "tenant_admin"] and user.get("email") not in SUPER_ADMIN_EMAILS:
         raise HTTPException(status_code=403, detail="Only admin can delete payments")
     
-    payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+    tenant_id = get_user_tenant(user)
+    payment = await db.payments.find_one(tq({"id": payment_id}, tenant_id), {"_id": 0})
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
     
-    await db.payments.delete_one({"id": payment_id})
+    await db.payments.delete_one(tq({"id": payment_id}, tenant_id))
     return {"message": "Payment deleted"}
 
 @router.post("/payments/bulk-verify")
@@ -999,15 +1004,16 @@ async def bulk_reject_payments(data: dict, user = Depends(get_current_user)):
 @router.post("/payments/bulk-delete")
 async def bulk_delete_payments(data: dict, user = Depends(get_current_user)):
     """Delete multiple payments at once - Admin only"""
-    # Check if user is admin
-    if user.get("email") != SUPER_ADMIN_EMAIL and not user.get("is_admin"):
+    role = user.get("role", "user")
+    if role not in ["admin", "super_admin", "tenant_admin"] and user.get("email") not in SUPER_ADMIN_EMAILS:
         raise HTTPException(status_code=403, detail="Only admin can delete payments")
     
     payment_ids = data.get("payment_ids", [])
     if not payment_ids:
         raise HTTPException(status_code=400, detail="No payment IDs provided")
     
-    result = await db.payments.delete_many({"id": {"$in": payment_ids}})
+    tenant_id = get_user_tenant(user)
+    result = await db.payments.delete_many(tq({"id": {"$in": payment_ids}}, tenant_id))
     return {"message": f"{result.deleted_count} payments deleted", "deleted_count": result.deleted_count}
 
 async def create_subscriber_task(subscriber_create: SubscriberCreate, plan: dict):
@@ -1036,7 +1042,7 @@ async def create_subscriber_task(subscriber_create: SubscriberCreate, plan: dict
         doc['end_date'] = doc['end_date'].isoformat()
         doc['grace_end_date'] = doc['grace_end_date'].isoformat()
         doc['created_at'] = doc['created_at'].isoformat()
-        doc['tenant_id'] = DEFAULT_TENANT_ID
+        doc['tenant_id'] = plan.get("tenant_id", DEFAULT_TENANT_ID)
         
         await db.subscribers.insert_one(doc)
         

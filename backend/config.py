@@ -13,8 +13,11 @@ load_dotenv(ROOT_DIR / '.env')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("server")
 
-# JWT Secret
-JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production')
+# JWT Secret — MUST be set in production, no fallback
+JWT_SECRET = os.environ.get('JWT_SECRET')
+if not JWT_SECRET:
+    JWT_SECRET = 'dev-only-unsafe-secret-do-not-use-in-prod'
+    logger.warning("JWT_SECRET not set! Using unsafe dev default. Set JWT_SECRET in .env for production.")
 
 # Telegram
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
@@ -22,6 +25,9 @@ TELEGRAM_CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID', '')
 
 # Emergent LLM Key
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
+
+# Super Admin Emails (comma-separated in .env)
+SUPER_ADMIN_EMAILS = [e.strip() for e in os.environ.get('SUPER_ADMIN_EMAILS', 'gamerxboys8958@gmail.com').split(',') if e.strip()]
 
 # Razorpay
 RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID')

@@ -1,6 +1,6 @@
 """Authentication service - password hashing, JWT tokens, user verification"""
 from database import db
-from config import JWT_SECRET, logger
+from config import JWT_SECRET, SUPER_ADMIN_EMAILS, logger
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import bcrypt
@@ -40,5 +40,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 
 async def verify_super_admin(user: dict):
-    if not user.get("is_admin"):
-        raise HTTPException(status_code=403, detail="Super admin access required")
+    """Strict super admin check — role-based only."""
+    if user.get("role") == "super_admin" or user.get("email") in SUPER_ADMIN_EMAILS:
+        return True
+    raise HTTPException(status_code=403, detail="Super admin access required")

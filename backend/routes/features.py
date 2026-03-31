@@ -13,7 +13,7 @@ from services.telegram import (
 from services.payment import create_blurred_image
 from services.bot_activity import log_bot_activity
 from services.tenant import DEFAULT_TENANT_ID, tenant_query
-from config import logger
+from config import logger, SUPER_ADMIN_EMAILS
 from models import MessageTemplate
 from pydantic import BaseModel
 from typing import List, Optional
@@ -27,13 +27,11 @@ import re
 
 router = APIRouter()
 
-SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"
-
 
 def get_user_tenant(user: dict) -> str:
     """Get tenant_id from user. Super admins see all data."""
     role = user.get("role", "user")
-    if role == "super_admin" or user.get("email") == SUPER_ADMIN_EMAIL:
+    if role == "super_admin" or user.get("email") in SUPER_ADMIN_EMAILS:
         return ""
     return user.get("tenant_id", "")
 

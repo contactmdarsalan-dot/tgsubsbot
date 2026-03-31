@@ -1,14 +1,27 @@
 """Creator Tenant Onboarding & Dashboard APIs.
 Allows new creators to self-register and manage their tenant."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from database import db
 from services.tenant import DEFAULT_TENANT_ID
-from config import logger
+from services.auth import get_current_user
+from config import logger, SUPER_ADMIN_EMAILS
 from datetime import datetime, timezone
 import uuid
 import httpx
 
 router = APIRouter(prefix="/tenant")
+
+
+async def _verify_tenant_access(user: dict, tenant_id: str):
+    """Verify user has access to this tenant (owner, tenant_admin, or super_admin)."""
+    role = user.get("role", "user")
+    # Super admin can access any tenant
+    if role == "super_admin" or user.get("email") in SUPER_ADMIN_EMAILS:
+        return True
+    # Tenant admin can access their own tenant
+    if role == "tenant_admin" and user.get("tenant_id") == tenant_id:
+        return True
+    raise HTTPException(status_code=403, detail="Access denied to this tenant")
 
 
 async def _validate_bot_token(bot_token: str) -> dict:
@@ -168,8 +181,10 @@ async def onboard_creator(data: dict):
 
 
 @router.get("/dashboard/{tenant_id}")
-async def get_creator_dashboard(tenant_id: str):
-    """Get full dashboard data for a creator's tenant"""
+async def get_creator_dashboard(tenant_id: str, user: dict = Depends(get_current_user)):
+    """Get full dashboard data for a creator's tenant — requires auth"""
+    await _verify_tenant_access(user, tenant_id)
+    
     tenant = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0})
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -231,16 +246,13 @@ async def get_creator_dashboard(tenant_id: str):
 
 
 @router.put("/settings/{tenant_id}")
-async def update_creator_settings(tenant_id: str, data: dict):
-    """Update creator's bot settings"""
+async def update_creator_settings(tenant_id: str, data: dict, user: dict = Depends(get_current_user)):
+    """Update creator's bot settings — requires auth + tenant access"""
+    await _verify_tenant_access(user, tenant_id)
+    
     tenant = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0})
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
-
-    # Verify caller is the owner
-    caller_tg_id = str(data.get("telegram_user_id", ""))
-    if caller_tg_id != str(tenant.get("owner_telegram_id", "")):
-        raise HTTPException(status_code=403, detail="Only the tenant owner can update settings")
 
     update_fields = {}
     allowed = ["upi_id", "channel_id", "welcome_message", "website_link", "grace_period_days"]
@@ -287,8 +299,10 @@ async def update_creator_settings(tenant_id: str, data: dict):
 
 
 @router.post("/plans/{tenant_id}")
-async def create_tenant_plan(tenant_id: str, data: dict):
-    """Create a new plan for a tenant"""
+async def create_tenant_plan(tenant_id: str, data: dict, user: dict = Depends(get_current_user)):
+    """Create a new plan for a tenant — requires auth"""
+    await _verify_tenant_access(user, tenant_id)
+    
     tenant = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0})
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -310,8 +324,9 @@ async def create_tenant_plan(tenant_id: str, data: dict):
 
 
 @router.delete("/plans/{tenant_id}/{plan_id}")
-async def delete_tenant_plan(tenant_id: str, plan_id: str):
-    """Delete a plan for a tenant"""
+async def delete_tenant_plan(tenant_id: str, plan_id: str, user: dict = Depends(get_current_user)):
+    """Delete a plan for a tenant — requires auth"""
+    await _verify_tenant_access(user, tenant_id)
     result = await db.plans.delete_one({"id": plan_id, "tenant_id": tenant_id})
     return {"success": result.deleted_count > 0}
 
