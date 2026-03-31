@@ -66,6 +66,7 @@ const adminNavItems = [
 ];
 
 const superAdminNavItems = [
+  { path: "/dashboard/saas-management", label: "SaaS Management", icon: Crown, superAdminOnly: true },
   { path: "/dashboard/branding", label: "Branding", icon: Palette, superAdminOnly: true },
   { path: "/dashboard/super-admin", label: "Admin Support", icon: Shield, superAdminOnly: true },
   { path: "/dashboard/user-management", label: "User Management", icon: Users, superAdminOnly: true },

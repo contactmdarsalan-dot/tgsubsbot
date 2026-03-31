@@ -37,6 +37,7 @@ import MiniApp from "./pages/MiniApp";
 import MiniAppUsers from "./pages/MiniAppUsers";
 import CreatorOnboard from "./pages/CreatorOnboard";
 import CreatorDashboard from "./pages/CreatorDashboard";
+import SaaSManagement from "./pages/SaaSManagement";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -168,6 +169,7 @@ function AppRouter() {
         <Route path="bot-language" element={<BotLanguage />} />
         <Route path="miniapp-users" element={<MiniAppUsers />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="saas-management" element={<SaaSManagement />} />
       </Route>
     </Routes>
   );
