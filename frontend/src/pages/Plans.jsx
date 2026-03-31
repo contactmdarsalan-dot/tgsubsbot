@@ -36,6 +36,7 @@ export default function Plans() {
   const [promoteDialogOpen, setPromoteDialogOpen] = useState(false);
   const [promotePlan, setPromotePlan] = useState(null);
   const [groups, setGroups] = useState([]);
+  const [channels, setChannels] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState("");
   const [form, setForm] = useState({
     name: "",
@@ -52,6 +53,7 @@ export default function Plans() {
   useEffect(() => {
     fetchPlans();
     fetchGroups();
+    fetchChannels();
   }, []);
 
   const fetchGroups = async () => {
@@ -60,6 +62,15 @@ export default function Plans() {
       setGroups(response.data);
     } catch (error) {
       console.error("Failed to fetch groups");
+    }
+  };
+
+  const fetchChannels = async () => {
+    try {
+      const response = await axios.get(`${API}/channels`, getAuthHeaders());
+      setChannels(response.data || []);
+    } catch (error) {
+      console.error("Failed to fetch channels");
     }
   };
 
@@ -296,17 +307,48 @@ export default function Plans() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="channel_id">Channel ID (Optional)</Label>
-              <Input
-                id="channel_id"
-                value={form.channel_id}
-                onChange={(e) => setForm({ ...form, channel_id: e.target.value })}
-                placeholder="-1001234567890"
-                data-testid="plan-channel-input"
-                className="bg-muted/50 border-transparent focus:border-primary font-mono text-sm"
-              />
+              <Label htmlFor="channel_id" className="text-primary font-semibold">Channel / Group (for access after payment)</Label>
+              {channels.length > 0 || groups.length > 0 ? (
+                <Select
+                  value={form.channel_id || "__none__"}
+                  onValueChange={(val) => setForm({ ...form, channel_id: val === "__none__" ? "" : val })}
+                >
+                  <SelectTrigger data-testid="plan-channel-select" className="bg-muted/50 border-primary/30">
+                    <SelectValue placeholder="Select channel for this plan..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">-- No Channel (use default) --</SelectItem>
+                    {channels.map((ch) => (
+                      <SelectItem key={ch.id || ch.channel_id} value={ch.telegram_channel_id || ch.channel_id || ch.id}>
+                        {ch.name} ({ch.telegram_channel_id || ch.channel_id})
+                      </SelectItem>
+                    ))}
+                    {groups.map((g) => (
+                      <SelectItem key={g.id || g.chat_id} value={g.chat_id || g.id}>
+                        {g.name} ({g.chat_id})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  id="channel_id"
+                  value={form.channel_id}
+                  onChange={(e) => setForm({ ...form, channel_id: e.target.value })}
+                  placeholder="-1001234567890 (Telegram channel/group ID)"
+                  data-testid="plan-channel-input"
+                  className="bg-muted/50 border-primary/30 focus:border-primary font-mono text-sm"
+                />
+              )}
+              {!form.channel_id && (
+                <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-md">
+                  <p className="text-xs text-amber-400 font-medium">
+                    Warning: No channel set! All subscribers will get the DEFAULT channel link. Set a specific channel for this plan to avoid wrong links.
+                  </p>
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
-                Leave empty to use default channel. Each plan can have its own channel.
+                Each plan should have its own channel. Without it, all plans share the same channel.
               </p>
             </div>
 
@@ -405,6 +447,18 @@ export default function Plans() {
                   <Clock className="w-4 h-4" />
                   <span className="text-sm">{plan.duration_days} days</span>
                 </div>
+
+                {!plan.channel_id && (
+                  <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-500/10 border border-amber-500/30 rounded-md">
+                    <span className="text-xs text-amber-400 font-medium">No channel set - using default</span>
+                  </div>
+                )}
+
+                {plan.channel_id && (
+                  <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-md">
+                    <span className="text-xs text-emerald-400 font-mono">{plan.channel_id}</span>
+                  </div>
+                )}
 
                 {plan.features && plan.features.length > 0 && (
                   <ul className="space-y-2 pt-2 border-t border-border">

@@ -328,8 +328,10 @@ async def add_to_channel(user_id: str, plan_channel_id: str = None, plan_name: s
 
     if plan_channel_id:
         channel_id = plan_channel_id
+        logger.info(f"Using plan-specific channel: {channel_id} for plan '{plan_name}'")
     elif use_default:
-        channel_id = settings.get("telegram_channel_id", "")
+        channel_id = settings.get("telegram_channel_id", "") or TELEGRAM_CHANNEL_ID
+        logger.warning(f"Plan '{plan_name}' has no channel_id set! Falling back to default channel: {channel_id}")
     else:
         channel_id = ""
 

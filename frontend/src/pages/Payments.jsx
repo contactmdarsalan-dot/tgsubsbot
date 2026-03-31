@@ -634,16 +634,21 @@ export default function Payments() {
                       </TableCell>
                       <TableCell>
                         {(payment.screenshot_url || payment.screenshot_file_id) ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
+                          <div 
+                            className="w-12 h-12 rounded-lg overflow-hidden bg-muted cursor-pointer hover:opacity-80 transition-opacity border border-border/30"
                             onClick={() => loadScreenshot(payment)}
-                            className="gap-1"
                             data-testid={`view-screenshot-${payment.id}`}
                           >
-                            <Eye className="w-4 h-4" />
-                            View
-                          </Button>
+                            <img 
+                              src={`${API}/telegram/file/${payment.screenshot_file_id}`}
+                              alt="SS"
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.parentElement.innerHTML = '<div class="w-full h-full flex items-center justify-center"><svg class="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>';
+                              }}
+                            />
+                          </div>
                         ) : (
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Clock className="w-3 h-3" />
