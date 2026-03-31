@@ -16,7 +16,7 @@ import sys
 # Add backend to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://bot-creator-platform.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://admin-dashboard-mvp.preview.emergentagent.com')
 
 # Test credentials from test_credentials.md
 SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"
