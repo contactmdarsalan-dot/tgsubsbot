@@ -426,8 +426,8 @@ async def forgot_password(request: Request, data: dict):
     email_result = await send_email(email, "Password Reset - TGSubsBot", email_html)
     
     response = {"message": "If the email exists, a reset code has been sent"}
-    if email_result.get("status") == "skipped":
-        # Email not configured, return OTP for testing
+    if email_result.get("status") != "success":
+        # Email not sent (API key missing or sending failed), return OTP for testing
         response["test_otp"] = otp
     return response
 
