@@ -8,42 +8,35 @@ Build a market-ready SaaS product for Telegram subscription management with Mini
 /app/backend/routes/
 ├── auth.py, admin.py, core.py, features.py
 ├── telegram_webhook.py
-└── miniapp.py         # Mini App: Plans, Phone Login, UPI Payment, AI Support, Referral, Notifications, ADMIN PANEL
+└── miniapp.py         # Mini App: Plans, Phone Login, UPI Payment, Screenshot Upload + AI Verify, Admin Panel
 /app/frontend/src/pages/
-├── MiniApp.jsx + MiniApp.css  # Telegram Mini App (Dark glassmorphism theme)
-├── MiniAppUsers.jsx           # Admin dashboard for phone numbers
-├── Settings.jsx               # Mini App config (QR + UPI)
-├── Plans.jsx, Payments.jsx, etc.
+├── MiniApp.jsx + MiniApp.css  # Telegram Mini App (Dark glassmorphism)
+├── MiniAppUsers.jsx, Settings.jsx, Payments.jsx, Plans.jsx, etc.
 ```
 
 ## Implementation Log
 
-### Mar 31, 2026 - Admin Panel in Mini App (v5)
-- [x] **Admin Panel**: Full admin dashboard inside Mini App with permission-based access
-- [x] **Stats Dashboard**: Revenue, Active Subs, Total Users, Pending Payments
-- [x] **Payment Verification**: Approve/Reject pending payments with screenshots, auto-notifies users via Telegram
-- [x] **Broadcast**: Send messages to all bot users from Mini App
-- [x] **Live Sessions**: Create, manage, and announce live sessions to subscribers
-- [x] **Subscribers List**: View all subscribers with plan details
-- [x] **Permission-based**: Each admin only sees actions they have permission for
-- [x] **Testing**: 100% pass (iteration_11: 20/20 backend + all frontend)
+### Mar 31, 2026 - Screenshot Upload + Copy Fix (v6)
+- [x] **Copy button**: Fixed clipboard API + textarea fallback for Telegram WebApp + showAlert
+- [x] **Screenshot upload**: "I've Paid" → upload screen → "Upload & Verify" button
+- [x] **AI Verification**: GPT-5.2 Vision analyzes screenshots, auto-approves real payments
+- [x] **Payment record**: Creates record with screenshot_url, notifies admins via Telegram
+- [x] **Dashboard fix**: Payment modal now uses direct URL (was blob fetch failing)
+- [x] **Testing**: 100% pass (iteration_12: 9/9 backend + all frontend)
 
-### Mar 31, 2026 - QR Code + Mini App UI Fixes (v4)
-- [x] Auto-generates UPI QR from UPI ID using qrcode library
-- [x] Inline payment section below selected plan (not at bottom)
-- [x] Scrollable UPI sheet, UPI ID word-break fix
-- [x] Telegram bot local file upload for QR
+### Mar 31, 2026 - Admin Panel in Mini App (v5)
+- [x] Stats Dashboard, Payment Verification, Broadcast, Live Sessions, Subscribers
+- [x] Testing: 100% pass (iteration_11: 20/20 backend + all frontend)
+
+### Mar 31, 2026 - QR Code + UI Fixes (v4)
+- [x] Auto-generates UPI QR from UPI ID, inline payment, scrollable sheet
 - [x] Testing: 100% pass (iteration_10)
 
-### Previous Sessions
-- Mini App v1-v3: Plans, UPI Payment, AI Support Chat (GPT-5.2), Phone Login, Glassmorphism UI
-- Backend refactoring (9400 lines -> 79 lines), Docker fix
-- Channel management, Layout fixes, Profile page, Forgot Password
-- Payment optimization, Tenant/Platform Users, Support CRUD
+### Previous: Mini App v1-v3, Backend refactoring, Layout fixes, etc.
 
 ## Backlog
-- (P0) Production Deploy: "Save to Github" -> Coolify redeploy
-- (P1) RESEND_API_KEY for email OTP (MOCKED)
+- (P0) Production Deploy: "Save to Github" → Coolify redeploy
+- (P1) RESEND_API_KEY added but domain not verified → verify domain at resend.com/domains
 - (P2) Custom Domain mapping per tenant
 - (P3) WhatsApp integration
 - (P3) Multi-language bot support
@@ -53,13 +46,8 @@ Build a market-ready SaaS product for Telegram subscription management with Mini
 - Test Admin Telegram ID: 123456789
 - Bot Token: 8275964628:AAH8U7ECRII7eyAySt7U2pyDQhLcnZunTnY
 
-## Key Mini App Admin Endpoints
-- `GET /api/miniapp/admin/check/{tg_id}` - Check admin status + permissions
-- `GET /api/miniapp/admin/stats/{tg_id}` - Dashboard stats
-- `GET /api/miniapp/admin/pending-payments/{tg_id}` - Pending payments list
-- `POST /api/miniapp/admin/payment-action` - Approve/Reject payment
-- `GET /api/miniapp/admin/subscribers/{tg_id}` - Subscribers list
-- `POST /api/miniapp/admin/broadcast` - Send broadcast
-- `GET /api/miniapp/admin/live-sessions/{tg_id}` - Live sessions list
-- `POST /api/miniapp/admin/live-session` - Create live session
-- `POST /api/miniapp/admin/announce-live/{session_id}` - Announce live
+## Key Endpoints
+- `POST /api/miniapp/upload-screenshot` - Upload screenshot + AI verify
+- `GET /api/miniapp/upi-details` - UPI ID + QR code (auto-generates)
+- `GET/POST /api/miniapp/admin/*` - Admin panel endpoints
+- `GET /api/miniapp/plans` - Active plans
