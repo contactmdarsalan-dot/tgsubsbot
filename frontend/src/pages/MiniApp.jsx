@@ -65,7 +65,7 @@ export default function MiniApp() {
   const [newLive, setNewLive] = useState({ title: "", description: "", scheduled_date: "", scheduled_time: "", price: 0, stream_link: "" });
   const [paidPosts, setPaidPosts] = useState([]);
   const [showCreatePost, setShowCreatePost] = useState(false);
-  const [newPost, setNewPost] = useState({ caption: "", price: 0 });
+  const [newPost, setNewPost] = useState({ caption: "", price: 0, blur_level: 10 });
 
   // Payment
   const [payProcessing, setPayProcessing] = useState(false);
@@ -567,6 +567,16 @@ export default function MiniApp() {
     } catch (e) { console.error(e); }
   };
 
+  const updateBlurLevel = async (postId, blurLevel) => {
+    try {
+      await fetch(`${API}/miniapp/admin/paid-post/${postId}/blur`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telegram_user_id: userId, blur_level: blurLevel }),
+      });
+      setPaidPosts(prev => prev.map(p => p.id === postId ? { ...p, blur_level: blurLevel } : p));
+    } catch (e) { console.error(e); }
+  };
+
   // ===== LOADING SCREEN =====
   if (loading) {
     return (
@@ -1048,7 +1058,6 @@ export default function MiniApp() {
               <div className="ma-admin-tabs" data-testid="admin-sub-tabs">
                 {[
                   { id: "stats", label: "Stats", perm: null },
-                  ...(adminPerms.includes("verify_payments") ? [{ id: "payments", label: "Payments", perm: "verify_payments" }] : []),
                   ...(adminPerms.includes("broadcast") ? [{ id: "broadcast", label: "Broadcast", perm: "broadcast" }] : []),
                   ...(adminPerms.includes("live_streams") ? [{ id: "live", label: "Live", perm: "live_streams" }] : []),
                   { id: "posts", label: "Paid Posts", perm: null },
@@ -1056,7 +1065,6 @@ export default function MiniApp() {
                 ].map(t => (
                   <button key={t.id} className={`ma-admin-tab ${adminSubTab === t.id ? "active" : ""}`} onClick={() => setAdminSubTab(t.id)} data-testid={`admin-tab-${t.id}`}>
                     {t.label}
-                    {t.id === "payments" && pendingPayments.length > 0 && <span className="ma-count-dot">{pendingPayments.length}</span>}
                   </button>
                 ))}
               </div>
@@ -1084,30 +1092,6 @@ export default function MiniApp() {
                         <span className="ma-stat-value">{adminStats.pending_payments}</span>
                         <span className="ma-stat-label">Pending</span>
                       </div>
-                    </div>
-                  )}
-
-                  {/* PENDING PAYMENTS */}
-                  {adminSubTab === "payments" && (
-                    <div className="ma-admin-list" data-testid="admin-payments-list">
-                      {pendingPayments.length === 0 ? (
-                        <div className="ma-empty">No pending payments</div>
-                      ) : pendingPayments.map(p => (
-                        <div key={p.id} className="ma-admin-item" data-testid={`payment-${p.id}`}>
-                          <div className="ma-admin-item-top">
-                            <strong>{p.telegram_username || p.telegram_user_id}</strong>
-                            <span className="ma-amt-tag">{p.amount}</span>
-                          </div>
-                          <p className="ma-admin-item-sub">{p.plan_name || "Unknown Plan"} &middot; {p.created_at?.split("T")[0] || ""}</p>
-                          {p.screenshot_file_id && (
-                            <img src={`${API}/telegram/file/${p.screenshot_file_id}`} alt="Screenshot" className="ma-admin-screenshot" loading="lazy" />
-                          )}
-                          <div className="ma-admin-actions">
-                            <button className="ma-btn-approve" onClick={() => handlePaymentAction(p.id, "approve")} data-testid={`approve-${p.id}`}>Approve</button>
-                            <button className="ma-btn-reject" onClick={() => handlePaymentAction(p.id, "reject")} data-testid={`reject-${p.id}`}>Reject</button>
-                          </div>
-                        </div>
-                      ))}
                     </div>
                   )}
 
@@ -1178,6 +1162,11 @@ export default function MiniApp() {
                         <div className="ma-admin-create-form" data-testid="create-post-form">
                           <textarea className="ma-input ma-textarea" placeholder="Post content / caption..." value={newPost.caption} onChange={e => setNewPost(p => ({...p, caption: e.target.value}))} rows={3} />
                           <input className="ma-input" type="number" placeholder="Price (0 = free)" value={newPost.price} onChange={e => setNewPost(p => ({...p, price: parseInt(e.target.value) || 0}))} />
+                          <div className="ma-blur-control">
+                            <label>Blur Level: <strong>{newPost.blur_level || 10}</strong></label>
+                            <input type="range" min="0" max="50" value={newPost.blur_level || 10} onChange={e => setNewPost(p => ({...p, blur_level: parseInt(e.target.value)}))} className="ma-range" />
+                            <div className="ma-blur-labels"><span>None</span><span>Heavy</span></div>
+                          </div>
                           <button className="ma-btn-accent" onClick={createPaidPost} disabled={!newPost.caption.trim()} data-testid="save-post-btn">Create Post</button>
                         </div>
                       )}
@@ -1188,11 +1177,15 @@ export default function MiniApp() {
                         <div key={p.id} className="ma-admin-item" data-testid={`post-${p.id}`}>
                           <div className="ma-admin-item-top">
                             <strong className="ma-post-caption">{p.caption?.substring(0, 60) || "Untitled"}{p.caption?.length > 60 ? "..." : ""}</strong>
-                            <span className={`ma-status-tag ${p.is_active ? "active" : "completed"}`}>{p.is_active ? "Active" : "Inactive"}</span>
+                            <span className={`ma-status-tag ${p.is_active ? "active" : "completed"}`}>{p.is_active ? "Active" : "Off"}</span>
                           </div>
                           <p className="ma-admin-item-sub">
-                            {p.price > 0 ? `₹${p.price}` : "FREE"} &middot; {p.unlock_count || 0} unlocks &middot; {p.created_at?.split("T")[0] || ""}
+                            {p.price > 0 ? `₹${p.price}` : "FREE"} &middot; {p.unlock_count || 0} unlocks &middot; Blur: {p.blur_level ?? 10}
                           </p>
+                          <div className="ma-blur-control compact">
+                            <label>Blur: {p.blur_level ?? 10}</label>
+                            <input type="range" min="0" max="50" value={p.blur_level ?? 10} onChange={e => updateBlurLevel(p.id, parseInt(e.target.value))} className="ma-range" />
+                          </div>
                           <div className="ma-admin-actions">
                             <button className={p.is_active ? "ma-btn-reject" : "ma-btn-approve"} onClick={() => togglePost(p.id)} data-testid={`toggle-${p.id}`}>
                               {p.is_active ? "Deactivate" : "Activate"}
@@ -1243,7 +1236,6 @@ export default function MiniApp() {
           >
             {tab.icon}
             <span>{tab.label}</span>
-            {tab.id === "admin" && adminStats?.pending_payments > 0 && <span className="ma-admin-badge">{adminStats.pending_payments}</span>}
           </button>
         ))}
       </div>

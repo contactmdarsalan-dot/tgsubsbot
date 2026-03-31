@@ -1227,6 +1227,7 @@ async def miniapp_admin_create_paid_post(data: dict):
         "id": post_id,
         "caption": data.get("caption", ""),
         "price": data.get("price", 0),
+        "blur_level": data.get("blur_level", 10),
         "content_type": "text",
         "is_active": True,
         "unlock_count": 0,
@@ -1253,6 +1254,25 @@ async def miniapp_toggle_paid_post(post_id: str, data: dict):
     new_status = not post.get("is_active", True)
     await db.paid_posts.update_one({"id": post_id}, {"$set": {"is_active": new_status}})
     return {"success": True, "is_active": new_status}
+
+
+@router.post("/admin/paid-post/{post_id}/blur")
+async def miniapp_update_blur(post_id: str, data: dict):
+    """Update blur level for a paid post"""
+    telegram_user_id = data.get("telegram_user_id", "")
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+
+    blur_level = data.get("blur_level", 10)
+    if blur_level < 0:
+        blur_level = 0
+    if blur_level > 50:
+        blur_level = 50
+
+    await db.paid_posts.update_one({"id": post_id}, {"$set": {"blur_level": blur_level}})
+    return {"success": True, "blur_level": blur_level}
+
 
 
 @router.post("/admin/paid-post/{post_id}/broadcast")
