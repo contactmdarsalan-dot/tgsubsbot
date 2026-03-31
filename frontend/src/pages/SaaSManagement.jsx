@@ -73,7 +73,7 @@ export default function SaaSManagement() {
   const [adminDialog, setAdminDialog] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [tenantAdmins, setTenantAdmins] = useState([]);
-  const [newAdmin, setNewAdmin] = useState({ telegram_user_id: "", name: "", email: "", role: "admin" });
+  const [newAdmin, setNewAdmin] = useState({ telegram_user_id: "", name: "", email: "", role: "admin", permissions: ["manage_bot", "verify_payments", "broadcast", "live_streams", "paid_posts", "add_subscribers"] });
 
   const fetchPlans = useCallback(async () => {
     try {
@@ -208,7 +208,7 @@ export default function SaaSManagement() {
       toast.success("Admin assigned");
       const { data } = await axios.get(`${API}/saas/tenants/${selectedTenant.tenant_id}/admins`, getAuth());
       setTenantAdmins(data);
-      setNewAdmin({ telegram_user_id: "", name: "", email: "", role: "admin" });
+      setNewAdmin({ telegram_user_id: "", name: "", email: "", role: "admin", permissions: ["manage_bot", "verify_payments", "broadcast", "live_streams", "paid_posts", "add_subscribers"] });
       fetchTenants();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Failed");
@@ -401,6 +401,9 @@ export default function SaaSManagement() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => openAdminDialog(t)} data-testid={`manage-admins-btn-${t.tenant_id}`} title="Manage Admins">
+                          <UserPlus className="w-4 h-4 text-blue-400" />
+                        </Button>
                         <Button variant="ghost" size="icon" onClick={() => openTenantDialog(t)} data-testid={`edit-tenant-${t.tenant_id}`} title="Edit"><Edit className="w-4 h-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => migrateData(t)} disabled={migrating} data-testid={`migrate-${t.tenant_id}`} title="Migrate data to this tenant">
                           {migrating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRightLeft className="w-4 h-4 text-amber-500" />}
@@ -502,6 +505,11 @@ export default function SaaSManagement() {
                         <p className="text-sm font-medium">{a.name || "Admin"}</p>
                         <p className="text-xs text-muted-foreground">TG: {a.telegram_user_id} &middot; {a.role}</p>
                         {a.email && <p className="text-xs text-muted-foreground">{a.email}</p>}
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(a.permissions || []).map(p => (
+                            <span key={p} className="text-[10px] bg-muted px-1.5 py-0.5 rounded">{p.replace(/_/g, " ")}</span>
+                          ))}
+                        </div>
                       </div>
                       <Button variant="ghost" size="icon" onClick={() => removeAdmin(a.id)} data-testid={`remove-admin-${a.id}`}>
                         <Trash2 className="w-4 h-4 text-destructive" />
@@ -519,6 +527,23 @@ export default function SaaSManagement() {
                 <Input placeholder="Telegram User ID *" value={newAdmin.telegram_user_id} onChange={e => setNewAdmin(p => ({ ...p, telegram_user_id: e.target.value }))} data-testid="new-admin-tg-input" />
                 <Input placeholder="Name" value={newAdmin.name} onChange={e => setNewAdmin(p => ({ ...p, name: e.target.value }))} data-testid="new-admin-name-input" />
                 <Input placeholder="Email (optional)" value={newAdmin.email} onChange={e => setNewAdmin(p => ({ ...p, email: e.target.value }))} />
+                <div>
+                  <Label className="mb-1 block text-xs text-muted-foreground">Permissions</Label>
+                  <div className="flex flex-wrap gap-1.5" data-testid="admin-permissions">
+                    {["manage_bot", "verify_payments", "broadcast", "live_streams", "paid_posts", "add_subscribers", "manage_plans", "manage_users"].map(perm => (
+                      <Badge key={perm} variant={newAdmin.permissions?.includes(perm) ? "default" : "outline"}
+                        className="cursor-pointer select-none text-xs" data-testid={`perm-${perm}`}
+                        onClick={() => setNewAdmin(p => ({
+                          ...p,
+                          permissions: p.permissions?.includes(perm)
+                            ? p.permissions.filter(x => x !== perm)
+                            : [...(p.permissions || []), perm]
+                        }))}>
+                        {perm.replace(/_/g, " ")}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
                 <Button onClick={assignAdmin} disabled={!newAdmin.telegram_user_id.trim()} className="w-full" data-testid="assign-admin-btn">
                   <UserPlus className="w-4 h-4 mr-1" /> Assign Admin
                 </Button>

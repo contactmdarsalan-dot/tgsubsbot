@@ -1139,8 +1139,6 @@ async def miniapp_admin_live_sessions(telegram_user_id: str):
     admin = await _verify_miniapp_admin(telegram_user_id)
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
-    if "live_streams" not in admin.get("permissions", []):
-        raise HTTPException(status_code=403, detail="No live stream permission")
 
     sessions = await db.live_sessions.find(
         tenant_query({}, admin.get("tenant_id", DEFAULT_TENANT_ID)), {"_id": 0}
@@ -1155,8 +1153,6 @@ async def miniapp_admin_create_live(data: dict):
     admin = await _verify_miniapp_admin(telegram_user_id)
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
-    if "live_streams" not in admin.get("permissions", []):
-        raise HTTPException(status_code=403, detail="No live stream permission")
 
     session_id = str(uuid.uuid4())
     session = {

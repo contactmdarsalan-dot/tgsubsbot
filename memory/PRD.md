@@ -26,17 +26,17 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 13. Live Tab for Users (public sessions + ticket purchase)
 14. Creator Self-Service Onboarding (/creator-onboard)
 15. Creator Dashboard (/creator-dashboard)
-16. SaaS Landing Page (/) - Dark rose/crimson color palette
-17. **Extend Subscription** - Active users see "Extend Subscription" with +days logic
-18. **Expiry Warning** - Yellow warning banner when 3 days or less remain
-19. **Live Management Fixes** - End Stream, Delete, descriptions, metadata tags
-20. **SaaS Management Page** (/dashboard/saas-management) - Bot Plans CRUD with Feature Lists + Tenant CRUD + Admin Assignment
-21. **Data Migration** - All 520 docs migrated from "default" to "Anamika" (tenant_85ee971d0285)
-22. **Landing Page Pricing** - Dynamic pricing section fetching from /api/dashboard-plans
-23. **Project Color Palette** - Landing page updated to dark rose/crimson (hsl(346,80%,50%))
+16. SaaS Landing Page (/) - Dark rose/crimson color palette with dynamic pricing
+17. Extend Subscription + 3-day expiry warning
+18. Live Management Fixes - End Stream, Delete, descriptions
+19. SaaS Management Page (/dashboard/saas-management) - Bot Plans CRUD + Tenant CRUD + Admin Assignment with permissions
+20. Data Migration API (/api/saas/migrate-to-tenant) + Quick Setup button
+21. Landing page Dashboard button for logged-in users
+22. Admin Live Management permission fix (removed strict live_streams check)
+23. Tenant Admin management with permissions (manage bot, verify payments, broadcast, live streams, paid posts, add subscribers, manage plans, manage users)
 
 ## Tenants
-- **Anamika** (tenant_85ee971d0285): 12 users, 46 subscribers, 185 payments, ₹34,206 revenue
+- **Anamika** (tenant_85ee971d0285): Production data migrated here
 - **Kaloo** (default): Empty, ready for new bot
 
 ## Testing: Iterations 10-19 all 100% passing

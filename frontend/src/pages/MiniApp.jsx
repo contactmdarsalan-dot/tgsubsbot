@@ -483,14 +483,20 @@ export default function MiniApp() {
         fetch(`${API}/miniapp/admin/stats/${userId}`),
         adminPerms.includes("verify_payments") ? fetch(`${API}/miniapp/admin/pending-payments/${userId}`) : null,
         fetch(`${API}/miniapp/admin/subscribers/${userId}`),
-        fetch(`${API}/miniapp/admin/live-sessions/${userId}`),
-        fetch(`${API}/miniapp/admin/paid-posts/${userId}`),
+        fetch(`${API}/miniapp/admin/live-sessions/${userId}`).catch(() => null),
+        fetch(`${API}/miniapp/admin/paid-posts/${userId}`).catch(() => null),
       ]);
       setAdminStats(await statsRes.json());
       if (paymentsRes) setPendingPayments(await paymentsRes.json());
       setAdminSubs(await subsRes.json());
-      setLiveSessions(await liveRes.json());
-      if (postsRes) setPaidPosts(await postsRes.json());
+      if (liveRes && liveRes.ok) {
+        const liveData = await liveRes.json();
+        setLiveSessions(Array.isArray(liveData) ? liveData : []);
+      }
+      if (postsRes && postsRes.ok) {
+        const postsData = await postsRes.json();
+        setPaidPosts(Array.isArray(postsData) ? postsData : []);
+      }
     } catch (e) { console.error("Admin fetch error:", e); }
     finally { setAdminLoading(false); }
   };
