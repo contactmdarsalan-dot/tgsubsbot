@@ -14,6 +14,7 @@ from services.telegram import (
 from services.payment import detect_payment_screenshot, create_blurred_image, analyze_payment_screenshot_with_ai
 from services.chat_pool import get_available_chat_group, assign_chat_group
 from services.bot_activity import log_bot_activity
+from services.tenant import DEFAULT_TENANT_ID, tenant_query
 from config import logger, TELEGRAM_CHANNEL_ID, EMERGENT_LLM_KEY
 from rate_limiter import limiter
 from datetime import datetime, timezone, timedelta
@@ -158,6 +159,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "price": post_price,
                         "unlock_count": 0,
                         "is_active": True,
+                        "tenant_id": DEFAULT_TENANT_ID,
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
                     await db.paid_posts.insert_one(paid_post)
@@ -610,6 +612,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             "razorpay_order_id": None,
                             "razorpay_payment_id": None,
                             "status": "pending",
+                            "tenant_id": DEFAULT_TENANT_ID,
                             "created_at": datetime.now(timezone.utc).isoformat()
                         }
                         await db.payments.insert_one(payment_obj)
@@ -715,6 +718,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "screenshot_file_id": photo_file_id,
                         "status": "verified",
                         "auto_verified": True,
+                        "tenant_id": DEFAULT_TENANT_ID,
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
                     await db.payments.insert_one(payment_obj)
@@ -792,6 +796,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             "end_date": end_date.isoformat(),
                             "grace_end_date": grace_end.isoformat(),
                             "reminder_sent": False,
+                            "tenant_id": DEFAULT_TENANT_ID,
                             "created_at": datetime.now(timezone.utc).isoformat()
                         }
                         await db.subscribers.insert_one(subscriber_obj)
@@ -1162,6 +1167,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 "end_date": end_date.isoformat(),
                                 "grace_end_date": grace_end.isoformat(),
                                 "reminder_sent": False,
+                                "tenant_id": payment.get("tenant_id", DEFAULT_TENANT_ID),
                                 "created_at": datetime.now(timezone.utc).isoformat()
                             }
                             await db.subscribers.insert_one(subscriber_obj)
@@ -1430,6 +1436,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 "telegram_username": username,
                                 "amount": 0,
                                 "status": "approved",
+                                "tenant_id": session.get("tenant_id", DEFAULT_TENANT_ID),
                                 "created_at": datetime.now(timezone.utc).isoformat()
                             }
                             await db.live_tickets.insert_one(ticket)
@@ -2094,9 +2101,11 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     "user_id": str(chat_id),
                     "username": username or "",
                     "first_name": first_name or "",
+                    "telegram_user_id": str(chat_id),
                     "last_seen": datetime.now(timezone.utc).isoformat()
                 }, "$setOnInsert": {
-                    "created_at": datetime.now(timezone.utc).isoformat()
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "tenant_id": DEFAULT_TENANT_ID,
                 }},
                 upsert=True
             )
@@ -2234,6 +2243,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "price": post_price,
                         "unlock_count": 0,
                         "is_active": True,
+                        "tenant_id": DEFAULT_TENANT_ID,
                         "created_at": datetime.now(timezone.utc).isoformat(),
                         "created_via": "private_message"  # Mark as created via private message
                     }
@@ -2487,18 +2497,37 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     photo_file_id = photo[-1]["file_id"] if photo else None
                     
                     # Send analyzing message
-                    await send_telegram_message(chat_id, "🔍 <b>Analyzing your screenshot...</b>\n\n⏳ Verifying payment...", bot_token)
+                    await send_telegram_message(chat_id, "🔍 <b>Analyzing your screenshot...</b>\n\n⏳ AI Verifying payment...", bot_token)
                     
-                    # Create ticket with pending status (admin will verify)
+                    ticket_price = pending.get("expected_amount", 0) or session.get("price", 0)
+                    ticket_status = "pending"
+                    ai_result = {}
+                    
+                    # Try AI verification if we can download the image
+                    try:
+                        if photo_file_id:
+                            image_bytes = await download_telegram_photo(photo_file_id, bot_token)
+                            if image_bytes:
+                                expected_upi = settings.get("payment_upi_id") or settings.get("upi_id", "")
+                                ai_result = await analyze_payment_screenshot_with_ai(image_bytes, ticket_price, expected_upi)
+                                
+                                if ai_result.get("auto_approve_recommended"):
+                                    ticket_status = "approved"
+                    except Exception as e:
+                        logger.error(f"AI verification for live ticket failed: {e}")
+                    
+                    # Create ticket
                     ticket = {
                         "id": str(uuid.uuid4()),
                         "session_id": session_id,
                         "session_title": session.get("title", ""),
                         "telegram_user_id": chat_id,
                         "telegram_username": username,
-                        "amount": pending.get("expected_amount", 0),
+                        "amount": ticket_price,
                         "screenshot_file_id": photo_file_id,
-                        "status": "pending",
+                        "status": ticket_status,
+                        "ai_verification": ai_result if ai_result else None,
+                        "tenant_id": session.get("tenant_id", DEFAULT_TENANT_ID),
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
                     await db.live_tickets.insert_one(ticket)
@@ -2506,11 +2535,45 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     # Clear pending
                     await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
                     
-                    msg = "📸 <b>Screenshot Received!</b>\n\n"
-                    msg += f"🎟 Ticket for: <b>{session.get('title')}</b>\n\n"
-                    msg += "⏳ Admin will verify your payment and approve your ticket.\n"
-                    msg += "You'll receive stream link once approved! 🎉"
+                    if ticket_status == "approved":
+                        # Auto-approved by AI
+                        await db.live_sessions.update_one(
+                            {"id": session_id}, {"$inc": {"tickets_sold": 1}}
+                        )
+                        
+                        msg = "✅ <b>Ticket Approved! (AI Verified)</b>\n\n"
+                        msg += f"🎟 Session: <b>{session.get('title')}</b>\n"
+                        if ai_result.get("confidence_score"):
+                            msg += f"🤖 Confidence: {ai_result['confidence_score']}%\n\n"
+                        if session.get("stream_link") and session.get("status") == "live":
+                            msg += f"🔗 Stream Link: {session['stream_link']}\n\n"
+                            msg += "Enjoy the stream!"
+                        else:
+                            msg += "🔔 Stream link will be sent when we go live!"
+                    else:
+                        msg = "📸 <b>Screenshot Received!</b>\n\n"
+                        msg += f"🎟 Ticket for: <b>{session.get('title')}</b>\n\n"
+                        msg += "⏳ Admin will verify your payment and approve your ticket.\n"
+                        msg += "You'll receive stream link once approved!"
+                    
                     await send_telegram_message(chat_id, msg, bot_token)
+                    
+                    # Notify admins
+                    admin_ids = settings.get("telegram_admin_ids", [])
+                    status_emoji = "✅" if ticket_status == "approved" else "⏳"
+                    admin_msg = f"{status_emoji} <b>Live Ticket Purchase</b>\n\n"
+                    admin_msg += f"Session: {session.get('title', '')}\n"
+                    admin_msg += f"User: {chat_id} (@{username})\n"
+                    admin_msg += f"Amount: ₹{ticket_price}\n"
+                    admin_msg += f"Status: {ticket_status.upper()}\n"
+                    if ai_result.get("confidence_score"):
+                        admin_msg += f"AI: {ai_result['confidence_score']}% confidence"
+                    for aid in admin_ids:
+                        try:
+                            await send_telegram_message(aid, admin_msg, bot_token)
+                        except Exception:
+                            pass
+                    
                     return {"ok": True}
                 else:
                     await send_telegram_message(chat_id, "❌ Session not found or ended.", bot_token)
@@ -2651,6 +2714,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                     "payment_method": "qr_screenshot",
                                     "start_date": datetime.now(timezone.utc).isoformat(),
                                     "end_date": (datetime.now(timezone.utc) + timedelta(days=plan['duration_days'])).isoformat(),
+                                    "tenant_id": DEFAULT_TENANT_ID,
                                     "created_at": datetime.now(timezone.utc).isoformat()
                                 }
                                 await db.subscribers.insert_one(new_subscriber)
@@ -2673,6 +2737,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 "ai_confidence": ai_result.get("confidence_score") if ai_result.get("ai_enabled") else None,
                                 "ai_extracted_data": ai_result.get("extracted_data") if ai_result.get("ai_enabled") else None,
                                 "ai_fake_indicators": ai_result.get("fake_indicators", []) if ai_result.get("ai_enabled") else [],
+                                "tenant_id": DEFAULT_TENANT_ID,
                                 "created_at": datetime.now(timezone.utc).isoformat(),
                                 "verified_at": datetime.now(timezone.utc).isoformat()
                             }
@@ -2969,6 +3034,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                     "status": "pending",
                                     "ocr_result": ocr_result,
                                     "ai_result": ai_result if ai_result.get("ai_enabled") else None,
+                                    "tenant_id": DEFAULT_TENANT_ID,
                                     "created_at": datetime.now(timezone.utc).isoformat()
                                 }
                                 await db.payments.insert_one(payment_pending)
@@ -2996,6 +3062,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             "payment_method": "qr_screenshot",
                             "screenshot_file_id": photo_file_id,
                             "status": "pending",
+                            "tenant_id": DEFAULT_TENANT_ID,
                             "created_at": datetime.now(timezone.utc).isoformat()
                         }
                         await db.payments.insert_one(payment_pending)
@@ -3692,6 +3759,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             "status": "scheduled",
                             "tickets_sold": 0,
                             "created_by": username or chat_id,
+                            "tenant_id": DEFAULT_TENANT_ID,
                             "created_at": now.isoformat()
                         }
                         await db.live_sessions.insert_one(session)
@@ -3794,6 +3862,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     "superchat_min_amount": 10,
                     "status": "scheduled",
                     "tickets_sold": 0,
+                    "tenant_id": DEFAULT_TENANT_ID,
                     "created_at": now.isoformat(),
                     "created_by": username or chat_id
                 }
@@ -3919,6 +3988,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "tickets_sold": 0,
                         "superchat_total": 0,
                         "created_by": username or chat_id,
+                        "tenant_id": DEFAULT_TENANT_ID,
                         "created_at": now.isoformat()
                     }
                     

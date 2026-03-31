@@ -8,6 +8,7 @@ from services.telegram import (
 )
 from services.payment import detect_payment_screenshot, analyze_payment_screenshot_with_ai
 from services.bot_activity import log_bot_activity
+from services.tenant import DEFAULT_TENANT_ID
 from config import logger, RAZORPAY_KEY_ID, razorpay_client
 from models import (
     SubscriptionPlanCreate, SubscriptionPlan, SubscriberCreate, Subscriber,
@@ -64,6 +65,7 @@ async def create_plan(plan: SubscriptionPlanCreate, user = Depends(get_current_u
     plan_obj = SubscriptionPlan(**plan.model_dump())
     doc = plan_obj.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
+    doc['tenant_id'] = DEFAULT_TENANT_ID
     await db.plans.insert_one(doc)
     return plan_obj
 
@@ -158,7 +160,7 @@ async def create_subscriber(subscriber: SubscriberCreate, background_tasks: Back
     for field in ['start_date', 'end_date', 'grace_end_date', 'created_at']:
         if doc.get(field):
             doc[field] = doc[field].isoformat()
-    
+    doc['tenant_id'] = DEFAULT_TENANT_ID
     await db.subscribers.insert_one(doc)
     
     # Send welcome message and channel invite (use plan's channel if set)
@@ -649,6 +651,7 @@ async def verify_bot_checkout(data: dict, background_tasks: BackgroundTasks):
         "razorpay_order_id": data['razorpay_order_id'],
         "razorpay_payment_id": data['razorpay_payment_id'],
         "status": "verified",
+        "tenant_id": DEFAULT_TENANT_ID,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.payments.insert_one(payment_obj)
@@ -674,6 +677,7 @@ async def verify_bot_checkout(data: dict, background_tasks: BackgroundTasks):
         "end_date": end_date.isoformat(),
         "grace_end_date": grace_end.isoformat(),
         "reminder_sent": False,
+        "tenant_id": DEFAULT_TENANT_ID,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.subscribers.insert_one(subscriber_obj)
@@ -722,6 +726,7 @@ async def create_razorpay_order(payment: PaymentCreate, user = Depends(get_curre
     
     doc = payment_obj.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
+    doc['tenant_id'] = DEFAULT_TENANT_ID
     await db.payments.insert_one(doc)
     
     return {"order_id": order["id"], "payment_id": payment_obj.id, "key_id": RAZORPAY_KEY_ID}
@@ -777,6 +782,7 @@ async def create_manual_payment(payment: PaymentCreate, user = Depends(get_curre
     
     doc = payment_obj.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
+    doc['tenant_id'] = DEFAULT_TENANT_ID
     await db.payments.insert_one(doc)
     
     return {"payment_id": payment_obj.id, "message": "Manual payment created, waiting for verification"}
@@ -1012,6 +1018,7 @@ async def create_subscriber_task(subscriber_create: SubscriberCreate, plan: dict
         doc['end_date'] = doc['end_date'].isoformat()
         doc['grace_end_date'] = doc['grace_end_date'].isoformat()
         doc['created_at'] = doc['created_at'].isoformat()
+        doc['tenant_id'] = DEFAULT_TENANT_ID
         
         await db.subscribers.insert_one(doc)
         

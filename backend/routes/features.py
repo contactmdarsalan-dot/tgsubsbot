@@ -12,6 +12,7 @@ from services.telegram import (
 )
 from services.payment import create_blurred_image
 from services.bot_activity import log_bot_activity
+from services.tenant import DEFAULT_TENANT_ID
 from config import logger
 from models import MessageTemplate
 from pydantic import BaseModel
@@ -183,6 +184,7 @@ async def send_broadcast(request: BroadcastRequest, background_tasks: Background
         "sent_count": 0,
         "failed_count": 0,
         "status": "in_progress",
+        "tenant_id": DEFAULT_TENANT_ID,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": user.get("email", "")
     }
@@ -301,6 +303,7 @@ async def broadcast_paid_post(post_id: str, data: dict, background_tasks: Backgr
         "sent_count": 0,
         "failed_count": 0,
         "status": "in_progress",
+        "tenant_id": DEFAULT_TENANT_ID,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.broadcasts.insert_one(broadcast_record)

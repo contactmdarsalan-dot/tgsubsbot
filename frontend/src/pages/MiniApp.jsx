@@ -79,6 +79,15 @@ export default function MiniApp() {
   // More menu
   const [moreOpen, setMoreOpen] = useState(false);
 
+  // Live sessions (user view)
+  const [publicLiveSessions, setPublicLiveSessions] = useState([]);
+  const [liveTicketFile, setLiveTicketFile] = useState(null);
+  const [liveTicketPreview, setLiveTicketPreview] = useState(null);
+  const [liveTicketUploading, setLiveTicketUploading] = useState(false);
+  const [liveTicketResult, setLiveTicketResult] = useState(null);
+  const [selectedLiveSession, setSelectedLiveSession] = useState(null);
+  const liveFileInputRef = useRef(null);
+
   const getTelegramUser = useCallback(() => {
     if (tg?.initDataUnsafe?.user) return tg.initDataUnsafe.user;
     // Fallback for testing: ?tg_id=123456789
@@ -429,6 +438,34 @@ export default function MiniApp() {
     if (tab === "referral") fetchReferral();
     if (tab === "history") fetchPayments();
     if (tab === "admin") fetchAdminData();
+    if (tab === "live") fetchPublicLive();
+  };
+
+  const fetchPublicLive = async () => {
+    try {
+      const res = await fetch(`${API}/miniapp/live-sessions/public`);
+      setPublicLiveSessions((await res.json()) || []);
+    } catch (e) { console.error(e); }
+  };
+
+  const handleLiveTicketUpload = async (session) => {
+    if (!liveTicketFile || !session) return;
+    setLiveTicketUploading(true);
+    setLiveTicketResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", liveTicketFile);
+      formData.append("telegram_user_id", userId);
+      formData.append("session_id", session.id);
+      const res = await fetch(`${API}/miniapp/live-ticket/upload-screenshot`, { method: "POST", body: formData });
+      const data = await res.json();
+      setLiveTicketResult(data);
+      if (data.ai_verified) fetchPublicLive();
+    } catch (e) {
+      setLiveTicketResult({ success: false, error: "Upload failed" });
+    } finally {
+      setLiveTicketUploading(false);
+    }
   };
 
   // ---- Admin Data ----
@@ -1048,6 +1085,85 @@ export default function MiniApp() {
             </motion.div>
           )}
 
+          {/* ===== LIVE SESSIONS (User) ===== */}
+          {activeTab === "live" && (
+            <motion.div key="live" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="ma-tab" data-testid="miniapp-live-tab">
+              <h2 className="ma-title">Live Sessions</h2>
+              {publicLiveSessions.length === 0 ? <div className="ma-empty"><p>No upcoming live sessions</p></div> : (
+                <div className="ma-list">
+                  {publicLiveSessions.map((s, i) => (
+                    <div key={s.id} className="ma-glass-card" style={{ marginBottom: "12px" }} data-testid={`live-session-${i}`}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <p className="ma-list-title" style={{ fontSize: "15px", fontWeight: 600 }}>{s.title || "Live Session"}</p>
+                          <p className="ma-list-sub">{s.scheduled_date} {s.scheduled_time && `· ${s.scheduled_time}`}</p>
+                        </div>
+                        <span className={`ma-badge ${s.status === "live" ? "live" : "scheduled"}`} style={{
+                          padding: "3px 10px", borderRadius: "10px", fontSize: "11px", fontWeight: 600,
+                          background: s.status === "live" ? "rgba(239,68,68,0.25)" : "rgba(124,58,237,0.2)",
+                          color: s.status === "live" ? "#ef4444" : "#a78bfa"
+                        }}>{s.status === "live" ? "LIVE" : s.status?.toUpperCase()}</span>
+                      </div>
+                      {s.description && <p className="ma-list-sub" style={{ marginTop: "6px" }}>{s.description}</p>}
+                      <div style={{ marginTop: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ color: "#e0e0e0", fontSize: "14px" }}>{s.price > 0 ? `₹${s.price}` : "FREE"}</span>
+                        <span style={{ color: "#aaa", fontSize: "12px" }}>{s.tickets_sold || 0} tickets sold</span>
+                      </div>
+
+                      {s.status === "live" && s.stream_link && (
+                        <a href={s.stream_link} target="_blank" rel="noopener noreferrer" className="ma-btn-accent" style={{ marginTop: "10px", display: "block", textAlign: "center", textDecoration: "none" }} data-testid={`live-join-${i}`}>Join Stream</a>
+                      )}
+
+                      {s.price > 0 && (
+                        <div style={{ marginTop: "10px" }}>
+                          {selectedLiveSession?.id === s.id ? (
+                            <div className="ma-glass-card" style={{ padding: "10px" }}>
+                              <p style={{ fontSize: "13px", marginBottom: "8px", color: "#e0e0e0" }}>Upload payment screenshot for ₹{s.price}</p>
+                              <input type="file" accept="image/*" ref={liveFileInputRef} style={{ display: "none" }}
+                                onChange={(e) => {
+                                  const f = e.target.files[0];
+                                  if (f) { setLiveTicketFile(f); setLiveTicketPreview(URL.createObjectURL(f)); }
+                                }}
+                              />
+                              {liveTicketPreview && <img src={liveTicketPreview} alt="preview" style={{ width: "100%", maxHeight: "150px", objectFit: "contain", borderRadius: "8px", marginBottom: "8px" }} />}
+                              <div style={{ display: "flex", gap: "8px" }}>
+                                <button className="ma-btn-ghost" onClick={() => liveFileInputRef.current?.click()} data-testid={`live-pick-file-${i}`}>
+                                  {liveTicketFile ? "Change" : "Pick Image"}
+                                </button>
+                                {liveTicketFile && (
+                                  <button className="ma-btn-accent" disabled={liveTicketUploading} onClick={() => handleLiveTicketUpload(s)} data-testid={`live-upload-${i}`}>
+                                    {liveTicketUploading ? "Verifying..." : "Upload & Verify"}
+                                  </button>
+                                )}
+                              </div>
+                              {liveTicketResult && (
+                                <div style={{ marginTop: "10px", padding: "8px", borderRadius: "8px", background: liveTicketResult.ai_verified ? "rgba(34,197,94,0.15)" : "rgba(250,204,21,0.15)" }}>
+                                  <p style={{ fontSize: "13px", fontWeight: 600, color: liveTicketResult.ai_verified ? "#22c55e" : "#facc15" }}>
+                                    {liveTicketResult.ai_verified ? "Ticket Approved (AI Verified)" : "Submitted for Review"}
+                                  </p>
+                                  {liveTicketResult.ai_result?.confidence > 0 && <p style={{ fontSize: "11px", color: "#aaa" }}>AI Confidence: {liveTicketResult.ai_result.confidence}%</p>}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <button className="ma-btn-ghost" onClick={() => {
+                              setSelectedLiveSession(s);
+                              setLiveTicketFile(null);
+                              setLiveTicketPreview(null);
+                              setLiveTicketResult(null);
+                            }} data-testid={`live-buy-ticket-${i}`}>
+                              Buy Ticket - ₹{s.price}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+
           {/* ===== ADMIN TAB ===== */}
           {activeTab === "admin" && isAdmin && (
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} data-testid="miniapp-admin-panel">
@@ -1253,12 +1369,13 @@ export default function MiniApp() {
           { id: "plans", label: "Plans", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> },
           { id: "status", label: "Status", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> },
           ...(isAdmin ? [{ id: "admin", label: "Admin", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg> }] : []),
+          { id: "live", label: "Live", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg> },
           { id: "support", label: "Support", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
           { id: "more", label: "More", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg> },
         ].map((tab) => (
           <button
             key={tab.id}
-            className={`ma-nav-btn ${(activeTab === tab.id || (tab.id === "more" && ["referral", "help", "notifications"].includes(activeTab))) ? "active" : ""}`}
+            className={`ma-nav-btn ${(activeTab === tab.id || (tab.id === "more" && ["referral", "help", "notifications", "live"].includes(activeTab))) ? "active" : ""}`}
             data-testid={`miniapp-nav-${tab.id}`}
             onClick={() => tab.id === "more" ? setMoreOpen(!moreOpen) : switchTab(tab.id)}
           >

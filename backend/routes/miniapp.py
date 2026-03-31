@@ -1,8 +1,11 @@
 """Mini App endpoints - Plans, Payments, Support AI, Referral, Notifications"""
-from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Form, Query
 from database import db
 from services.telegram import get_bot_settings, send_telegram_message, send_telegram_photo, add_to_channel
 from services.payment import analyze_payment_screenshot_with_ai
+from services.tenant import (
+    DEFAULT_TENANT_ID, resolve_tenant_from_admin_tg_id, tenant_query
+)
 from config import logger, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, razorpay_client, EMERGENT_LLM_KEY
 from datetime import datetime, timezone, timedelta
 import uuid
@@ -41,12 +44,14 @@ async def miniapp_phone_login(data: dict):
         }
 
     # Register new user
+    tenant_id = data.get("tenant_id", DEFAULT_TENANT_ID)
     user_doc = {
         "id": str(uuid.uuid4()),
         "phone": phone,
         "telegram_user_id": telegram_user_id,
         "telegram_username": telegram_username,
         "discount_percent": 20,
+        "tenant_id": tenant_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.miniapp_users.insert_one(user_doc)
@@ -283,6 +288,7 @@ async def miniapp_create_razorpay_order(data: dict):
         raise HTTPException(status_code=500, detail="Failed to create payment order")
 
     # Store order in DB
+    tenant_id = data.get("tenant_id", DEFAULT_TENANT_ID)
     order_doc = {
         "id": str(uuid.uuid4()),
         "razorpay_order_id": razor_order["id"],
@@ -295,6 +301,7 @@ async def miniapp_create_razorpay_order(data: dict):
         "telegram_username": telegram_username,
         "status": "created",
         "source": "miniapp",
+        "tenant_id": tenant_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.bot_orders.insert_one(order_doc)
@@ -365,6 +372,7 @@ async def miniapp_verify_payment(data: dict, background_tasks: BackgroundTasks):
         "coupon_code": order.get("coupon_code"),
         "status": "verified",
         "source": "miniapp",
+        "tenant_id": order.get("tenant_id", DEFAULT_TENANT_ID),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.payments.insert_one(payment_obj)
@@ -390,6 +398,7 @@ async def miniapp_verify_payment(data: dict, background_tasks: BackgroundTasks):
         "end_date": end_date.isoformat(),
         "grace_end_date": grace_end.isoformat(),
         "reminder_sent": False,
+        "tenant_id": order.get("tenant_id", DEFAULT_TENANT_ID),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.subscribers.insert_one(subscriber_obj)
@@ -477,6 +486,7 @@ async def miniapp_upload_screenshot(
         "screenshot_url": screenshot_url,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "source": "miniapp",
+        "tenant_id": DEFAULT_TENANT_ID,
     }
     
     # Run AI Verification
@@ -902,6 +912,14 @@ async def _verify_miniapp_admin(telegram_user_id: str):
     return admin
 
 
+async def _get_admin_tenant(telegram_user_id: str) -> str:
+    """Get the tenant_id for an admin. Falls back to default."""
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if admin and admin.get("tenant_id"):
+        return admin["tenant_id"]
+    return DEFAULT_TENANT_ID
+
+
 @router.get("/admin/check/{telegram_user_id}")
 async def miniapp_admin_check(telegram_user_id: str):
     """Check if user is an admin and return their permissions"""
@@ -923,13 +941,18 @@ async def miniapp_admin_stats(telegram_user_id: str):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    total_subs = await db.subscribers.count_documents({})
-    active_subs = await db.subscribers.count_documents({"status": "active"})
-    pending_payments = await db.payments.count_documents({"status": "pending"})
+    tenant_id = admin.get("tenant_id", DEFAULT_TENANT_ID)
+
+    def tq(q):
+        return tenant_query(q, tenant_id)
+
+    total_subs = await db.subscribers.count_documents(tq({}))
+    active_subs = await db.subscribers.count_documents(tq({"status": "active"}))
+    pending_payments = await db.payments.count_documents(tq({"status": "pending"}))
     
     # Calculate revenue
     pipeline = [
-        {"$match": {"status": {"$in": ["verified", "approved"]}}},
+        {"$match": tq({"status": {"$in": ["verified", "approved"]}})},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]
     rev_result = await db.payments.aggregate(pipeline).to_list(1)
@@ -953,7 +976,7 @@ async def miniapp_admin_pending_payments(telegram_user_id: str):
         raise HTTPException(status_code=403, detail="No payment verification permission")
 
     payments_list = await db.payments.find(
-        {"status": "pending"}, {"_id": 0}
+        tenant_query({"status": "pending"}, admin.get("tenant_id", DEFAULT_TENANT_ID)), {"_id": 0}
     ).sort("created_at", -1).to_list(50)
     return payments_list
 
@@ -1041,7 +1064,7 @@ async def miniapp_admin_subscribers(telegram_user_id: str):
         raise HTTPException(status_code=403, detail="Not an admin")
 
     subs = await db.subscribers.find(
-        {}, {"_id": 0}
+        tenant_query({}, admin.get("tenant_id", DEFAULT_TENANT_ID)), {"_id": 0}
     ).sort("start_date", -1).to_list(100)
     return subs
 
@@ -1066,11 +1089,12 @@ async def miniapp_admin_broadcast(data: dict, background_tasks: BackgroundTasks)
         raise HTTPException(status_code=400, detail="Bot token not configured")
 
     # Get all bot users
-    bot_users = await db.bot_users.find({}, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+    tenant_id = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    bot_users = await db.bot_users.find(tenant_query({}, tenant_id), {"_id": 0, "telegram_user_id": 1}).to_list(10000)
     user_ids = [u["telegram_user_id"] for u in bot_users if u.get("telegram_user_id")]
 
     # Also get subscribers
-    subs = await db.subscribers.find({}, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+    subs = await db.subscribers.find(tenant_query({}, tenant_id), {"_id": 0, "telegram_user_id": 1}).to_list(10000)
     sub_ids = [s["telegram_user_id"] for s in subs if s.get("telegram_user_id")]
     
     all_ids = list(set(user_ids + sub_ids))
@@ -1086,6 +1110,7 @@ async def miniapp_admin_broadcast(data: dict, background_tasks: BackgroundTasks)
         "sent": 0,
         "failed": 0,
         "status": "sending",
+        "tenant_id": tenant_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
 
@@ -1118,7 +1143,7 @@ async def miniapp_admin_live_sessions(telegram_user_id: str):
         raise HTTPException(status_code=403, detail="No live stream permission")
 
     sessions = await db.live_sessions.find(
-        {}, {"_id": 0}
+        tenant_query({}, admin.get("tenant_id", DEFAULT_TENANT_ID)), {"_id": 0}
     ).sort("created_at", -1).to_list(20)
     return sessions
 
@@ -1149,6 +1174,7 @@ async def miniapp_admin_create_live(data: dict):
         "tickets_sold": 0,
         "started_at": "",
         "created_by": admin.get("name", "Admin"),
+        "tenant_id": admin.get("tenant_id", DEFAULT_TENANT_ID),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.live_sessions.insert_one(session)
@@ -1185,7 +1211,8 @@ async def miniapp_admin_announce_live(session_id: str, data: dict):
     msg += f"\n🔗 Don't miss it!"
 
     # Get all users
-    bot_users = await db.bot_users.find({}, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    bot_users = await db.bot_users.find(tenant_query({}, admin_tenant), {"_id": 0, "telegram_user_id": 1}).to_list(10000)
     sent = 0
     for u in bot_users:
         uid = u.get("telegram_user_id")
@@ -1210,7 +1237,7 @@ async def miniapp_admin_paid_posts(telegram_user_id: str):
         raise HTTPException(status_code=403, detail="Not an admin")
 
     posts = await db.paid_posts.find(
-        {}, {"_id": 0}
+        tenant_query({}, admin.get("tenant_id", DEFAULT_TENANT_ID)), {"_id": 0}
     ).sort("created_at", -1).to_list(50)
     return posts
 
@@ -1237,6 +1264,7 @@ async def miniapp_admin_create_paid_post(data: dict):
         "is_active": True,
         "unlock_count": 0,
         "created_by": admin.get("name", "Admin"),
+        "tenant_id": admin.get("tenant_id", DEFAULT_TENANT_ID),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.paid_posts.insert_one(post)
@@ -1294,7 +1322,8 @@ async def miniapp_broadcast_paid_post(post_id: str, data: dict, background_tasks
 
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
-    bot_users = await db.bot_users.find({}, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    bot_users = await db.bot_users.find(tenant_query({}, admin_tenant), {"_id": 0, "telegram_user_id": 1}).to_list(10000)
     user_ids = [u["telegram_user_id"] for u in bot_users if u.get("telegram_user_id")]
 
     price = post.get("price", 0)
@@ -1331,7 +1360,8 @@ async def miniapp_go_live(session_id: str, data: dict):
 
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
-    bot_users = await db.bot_users.find({}, {"_id": 0, "telegram_user_id": 1}).to_list(10000)
+    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    bot_users = await db.bot_users.find(tenant_query({}, admin_tenant), {"_id": 0, "telegram_user_id": 1}).to_list(10000)
 
     msg = f"🔴 <b>LIVE NOW!</b>\n\n"
     msg += f"📺 {session.get('title', 'Live Session')}\n"
@@ -1362,3 +1392,202 @@ async def miniapp_delete_live(session_id: str, data: dict):
 
     result = await db.live_sessions.delete_one({"id": session_id})
     return {"success": result.deleted_count > 0}
+
+
+
+# ============== TENANT MANAGEMENT ==============
+
+@router.get("/admin/tenant/{telegram_user_id}")
+async def miniapp_get_tenant(telegram_user_id: str):
+    """Get current tenant info for an admin"""
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+    
+    tenant_id = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    tenant = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0})
+    if not tenant:
+        tenant = {"tenant_id": tenant_id, "name": "Default Creator", "status": "active"}
+    return tenant
+
+
+@router.post("/admin/tenant/create")
+async def miniapp_create_tenant(data: dict):
+    """Register a new tenant (creator). Called when a new creator onboards."""
+    telegram_user_id = data.get("telegram_user_id", "")
+    admin = await _verify_miniapp_admin(telegram_user_id)
+    if not admin:
+        raise HTTPException(status_code=403, detail="Not an admin")
+
+    tenant_name = data.get("name", "").strip()
+    if not tenant_name:
+        raise HTTPException(status_code=400, detail="Tenant name required")
+
+    tenant_id = f"tenant_{uuid.uuid4().hex[:12]}"
+    tenant = {
+        "id": str(uuid.uuid4()),
+        "tenant_id": tenant_id,
+        "name": tenant_name,
+        "owner_telegram_id": telegram_user_id,
+        "bot_token": data.get("bot_token", ""),
+        "upi_id": data.get("upi_id", ""),
+        "status": "active",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.tenants.insert_one(tenant)
+
+    # Update the admin's tenant_id
+    await db.telegram_admins.update_one(
+        {"telegram_user_id": str(telegram_user_id)},
+        {"$set": {"tenant_id": tenant_id}}
+    )
+
+    tenant.pop("_id", None)
+    return {"success": True, "tenant": tenant}
+
+
+
+
+# ============== LIVE TICKET PURCHASE WITH AI VERIFY ==============
+
+@router.post("/live-ticket/upload-screenshot")
+async def miniapp_live_ticket_upload_screenshot(
+    file: UploadFile = File(...),
+    telegram_user_id: str = Form(""),
+    session_id: str = Form(""),
+):
+    """Upload payment screenshot for live ticket purchase, AI auto-verify."""
+    if not file:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+
+    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Live session not found")
+
+    # Read image bytes
+    image_bytes = await file.read()
+    if len(image_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+
+    # Save screenshot locally
+    uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+    os.makedirs(uploads_path, exist_ok=True)
+    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"live_ss_{uuid.uuid4().hex[:10]}.{ext}"
+    filepath = os.path.join(uploads_path, filename)
+    with open(filepath, "wb") as f:
+        f.write(image_bytes)
+
+    screenshot_url = f"/api/uploads/{filename}"
+
+    # Get settings for AI verification
+    settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
+    expected_upi = settings.get("payment_upi_id") or settings.get("upi_id", "")
+    ticket_price = session.get("price", 0)
+
+    # Create live ticket record
+    ticket_id = str(uuid.uuid4())
+    ticket = {
+        "id": ticket_id,
+        "session_id": session_id,
+        "telegram_user_id": str(telegram_user_id),
+        "amount": ticket_price,
+        "screenshot_url": screenshot_url,
+        "status": "pending",
+        "payment_method": "miniapp_upi",
+        "tenant_id": session.get("tenant_id", DEFAULT_TENANT_ID),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Run AI Verification (same as plan screenshot verification)
+    ai_result = {}
+    try:
+        ai_result = await analyze_payment_screenshot_with_ai(image_bytes, ticket_price, expected_upi)
+        ticket["ai_verification"] = ai_result
+
+        if ai_result.get("auto_approve_recommended"):
+            ticket["status"] = "approved"
+            ticket["verified_by"] = "AI (GPT-5.2)"
+            ticket["verified_at"] = datetime.now(timezone.utc).isoformat()
+    except Exception as e:
+        logger.error(f"AI verification error for live ticket: {e}")
+        ai_result = {"error": str(e), "ai_enabled": False}
+
+    await db.live_tickets.insert_one(ticket)
+    del ticket["_id"]
+
+    # If AI approved, increment tickets_sold
+    if ticket["status"] == "approved":
+        await db.live_sessions.update_one(
+            {"id": session_id},
+            {"$inc": {"tickets_sold": 1}}
+        )
+
+        # Send stream link if live
+        if session.get("stream_link") and session.get("status") == "live":
+            bot_token = settings.get("telegram_bot_token", "")
+            if bot_token and telegram_user_id:
+                msg = "✅ <b>Ticket Approved!</b>\n\n"
+                msg += f"📺 Session: <b>{session.get('title', '')}</b>\n"
+                msg += f"🔗 Stream: {session['stream_link']}\n\n"
+                msg += "Enjoy the stream!"
+                try:
+                    await send_telegram_message(telegram_user_id, msg, bot_token)
+                except Exception:
+                    pass
+
+    # Notify admins about new ticket
+    bot_token = settings.get("telegram_bot_token", "")
+    admin_ids = settings.get("telegram_admin_ids", [])
+    if bot_token and admin_ids:
+        status_emoji = "✅" if ticket["status"] == "approved" else "⏳"
+        admin_msg = f"{status_emoji} <b>New Live Ticket Purchase</b>\n\n"
+        admin_msg += f"Session: {session.get('title', '')}\n"
+        admin_msg += f"User: {telegram_user_id}\n"
+        admin_msg += f"Amount: ₹{ticket_price}\n"
+        admin_msg += f"Status: {ticket['status'].upper()}\n"
+        if ai_result.get("ai_enabled"):
+            admin_msg += f"AI Confidence: {ai_result.get('confidence_score', 0)}%"
+
+        for admin_id in admin_ids:
+            try:
+                await send_telegram_message(admin_id, admin_msg, bot_token)
+            except Exception:
+                pass
+
+    return {
+        "success": True,
+        "ticket_id": ticket_id,
+        "status": ticket["status"],
+        "ai_verified": ticket["status"] == "approved",
+        "ai_result": {
+            "enabled": ai_result.get("ai_enabled", False),
+            "is_payment": ai_result.get("is_payment_screenshot", False),
+            "confidence": ai_result.get("confidence_score", 0),
+            "reason": ai_result.get("reason", ""),
+            "auto_approved": ai_result.get("auto_approve_recommended", False),
+        }
+    }
+
+
+@router.get("/live-sessions/public")
+async def miniapp_get_live_sessions_public():
+    """Get active/scheduled live sessions for regular users (public, no auth)"""
+    sessions = await db.live_sessions.find(
+        {"status": {"$in": ["scheduled", "announced", "live"]}},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(20)
+    return sessions
+
+
+@router.get("/live-ticket/status/{telegram_user_id}/{session_id}")
+async def miniapp_live_ticket_status(telegram_user_id: str, session_id: str):
+    """Check if user already has a ticket for a live session"""
+    ticket = await db.live_tickets.find_one(
+        {"telegram_user_id": str(telegram_user_id), "session_id": session_id,
+         "status": {"$in": ["approved", "pending"]}},
+        {"_id": 0}
+    )
+    if ticket:
+        return {"has_ticket": True, "status": ticket["status"], "ticket_id": ticket["id"]}
+    return {"has_ticket": False}
