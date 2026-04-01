@@ -620,22 +620,229 @@ async def delete_admin_user(user_id: str, user = Depends(get_current_user)):
 
 @router.get("/admin/stats")
 async def get_admin_stats(user = Depends(get_current_user)):
-    """Get dashboard stats for super admin"""
+    """Comprehensive platform-level stats for Super Admin Control Center"""
     await verify_super_admin(user)
-    
+
+    # Core counts
     total_users = await db.users.count_documents({})
-    active_subscribers = await db.users.count_documents({"dashboard_subscription_status": "active"})
+    total_tenants = await db.tenants.count_documents({})
+    active_tenants = await db.tenants.count_documents({"status": "active"})
+    total_tenant_admins = await db.users.count_documents({"role": "tenant_admin"})
+    active_dash_subs = await db.users.count_documents({"dashboard_subscription_status": "active"})
     pending_requests = await db.dashboard_subscriptions.count_documents({"status": "pending"})
-    
-    # Calculate revenue from approved subscriptions
-    approved_subs = await db.dashboard_subscriptions.find({"status": "approved"}, {"_id": 0}).to_list(10000)
-    total_revenue = sum(sub.get("amount", 0) for sub in approved_subs)
-    
+
+    # Bot-level stats across all tenants
+    total_bot_users = await db.bot_users.count_documents({})
+    total_subscribers = await db.subscribers.count_documents({})
+    active_bot_subs = await db.subscribers.count_documents({"status": "active"})
+    expired_bot_subs = await db.subscribers.count_documents({"status": "expired"})
+    total_payments = await db.payments.count_documents({})
+    pending_payments = await db.payments.count_documents({"status": "pending"})
+    verified_payments = await db.payments.count_documents({"status": {"$in": ["verified", "approved"]}})
+
+    # Trial stats
+    trial_cfg = await get_trial_config()
+    trial_users = await db.users.count_documents({"trial_end_date": {"$exists": True}})
+
+    # Revenue — platform (dashboard subs)
+    platform_rev_pipeline = [
+        {"$match": {"status": "approved"}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    platform_rev = await db.dashboard_subscriptions.aggregate(platform_rev_pipeline).to_list(1)
+    platform_revenue = platform_rev[0]["total"] if platform_rev else 0
+
+    # Revenue — all tenants (bot payments)
+    tenant_rev_pipeline = [
+        {"$match": {"status": {"$in": ["verified", "approved"]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    tenant_rev = await db.payments.aggregate(tenant_rev_pipeline).to_list(1)
+    total_tenant_revenue = tenant_rev[0]["total"] if tenant_rev else 0
+
+    # Monthly revenue (last 30 days)
+    thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    monthly_pipeline = [
+        {"$match": {"status": {"$in": ["verified", "approved"]}, "created_at": {"$gte": thirty_days_ago}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    monthly_rev = await db.payments.aggregate(monthly_pipeline).to_list(1)
+    monthly_revenue = monthly_rev[0]["total"] if monthly_rev else 0
+
+    # Top tenants by revenue
+    top_tenants_pipeline = [
+        {"$match": {"status": {"$in": ["verified", "approved"]}}},
+        {"$group": {"_id": "$tenant_id", "revenue": {"$sum": "$amount"}, "count": {"$sum": 1}}},
+        {"$sort": {"revenue": -1}},
+        {"$limit": 5}
+    ]
+    top_tenants_raw = await db.payments.aggregate(top_tenants_pipeline).to_list(5)
+    top_tenants = []
+    for tr in top_tenants_raw:
+        t = await db.tenants.find_one({"tenant_id": tr["_id"]}, {"_id": 0, "name": 1, "tenant_id": 1, "email": 1})
+        top_tenants.append({
+            "tenant_id": tr["_id"],
+            "name": t.get("name", tr["_id"]) if t else tr["_id"],
+            "email": t.get("email", "") if t else "",
+            "revenue": tr["revenue"],
+            "payment_count": tr["count"],
+        })
+
+    # Recent platform activity
+    recent_tenants = await db.tenants.find({}, {"_id": 0, "name": 1, "tenant_id": 1, "status": 1, "created_at": 1, "email": 1}).sort("created_at", -1).to_list(5)
+    recent_subs = await db.dashboard_subscriptions.find({}, {"_id": 0}).sort("created_at", -1).to_list(5)
+    for s in recent_subs:
+        u = await db.users.find_one({"id": s.get("user_id")}, {"_id": 0, "name": 1, "email": 1})
+        s["user_name"] = u.get("name", "") if u else ""
+        s["user_email"] = u.get("email", "") if u else ""
+
+    # Revenue by day (last 14 days chart)
+    fourteen_days_ago = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    daily_pipeline = [
+        {"$match": {"status": {"$in": ["verified", "approved"]}, "created_at": {"$gte": fourteen_days_ago}}},
+        {"$addFields": {"date_str": {"$substr": ["$created_at", 0, 10]}}},
+        {"$group": {"_id": "$date_str", "revenue": {"$sum": "$amount"}, "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}}
+    ]
+    daily_rev = await db.payments.aggregate(daily_pipeline).to_list(14)
+    daily_chart = [{"date": d["_id"], "revenue": d["revenue"], "payments": d["count"]} for d in daily_rev]
+
     return {
-        "total_users": total_users,
-        "active_subscribers": active_subscribers,
-        "pending_requests": pending_requests,
-        "total_revenue": total_revenue
+        "platform": {
+            "total_users": total_users,
+            "total_tenants": total_tenants,
+            "active_tenants": active_tenants,
+            "total_tenant_admins": total_tenant_admins,
+            "active_dash_subscriptions": active_dash_subs,
+            "pending_requests": pending_requests,
+            "platform_revenue": platform_revenue,
+        },
+        "bot_ecosystem": {
+            "total_bot_users": total_bot_users,
+            "total_subscribers": total_subscribers,
+            "active_subscribers": active_bot_subs,
+            "expired_subscribers": expired_bot_subs,
+            "total_payments": total_payments,
+            "pending_payments": pending_payments,
+            "verified_payments": verified_payments,
+        },
+        "revenue": {
+            "total_tenant_revenue": total_tenant_revenue,
+            "monthly_revenue": monthly_revenue,
+            "daily_chart": daily_chart,
+        },
+        "trials": {
+            "enabled": trial_cfg.get("enabled", False),
+            "duration_days": trial_cfg.get("duration_days", 7),
+            "total_trial_users": trial_users,
+        },
+        "top_tenants": top_tenants,
+        "recent_tenants": recent_tenants,
+        "recent_subscriptions": recent_subs,
+    }
+
+
+@router.get("/admin/tenant-profile/{tenant_id}")
+async def get_tenant_profile(tenant_id: str, user = Depends(get_current_user)):
+    """Get comprehensive profile data for a specific tenant"""
+    await verify_super_admin(user)
+
+    tenant = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0})
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    # Dashboard admin users for this tenant
+    dashboard_admins = await db.users.find(
+        {"tenant_id": tenant_id, "role": "tenant_admin"},
+        {"_id": 0, "password": 0, "password_hash": 0}
+    ).to_list(50)
+
+    # Telegram admins
+    tg_admins = await db.telegram_admins.find(
+        {"tenant_id": tenant_id}, {"_id": 0}
+    ).to_list(50)
+
+    # Plans
+    plans = await db.plans.find(
+        {"tenant_id": tenant_id}, {"_id": 0}
+    ).to_list(100)
+
+    # Subscribers
+    subscribers = await db.subscribers.find(
+        {"tenant_id": tenant_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    active_subs = sum(1 for s in subscribers if s.get("status") == "active")
+    expired_subs = sum(1 for s in subscribers if s.get("status") == "expired")
+
+    # Payments
+    payments = await db.payments.find(
+        {"tenant_id": tenant_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    total_payments = len(payments)
+    verified_payments = sum(1 for p in payments if p.get("status") in ("verified", "approved"))
+    pending_payments = sum(1 for p in payments if p.get("status") == "pending")
+
+    # Revenue
+    rev_pipeline = [
+        {"$match": {"tenant_id": tenant_id, "status": {"$in": ["verified", "approved"]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    rev = await db.payments.aggregate(rev_pipeline).to_list(1)
+    total_revenue = rev[0]["total"] if rev else 0
+
+    # Monthly revenue
+    thirty_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    monthly_pipeline = [
+        {"$match": {"tenant_id": tenant_id, "status": {"$in": ["verified", "approved"]}, "created_at": {"$gte": thirty_ago}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    monthly_rev = await db.payments.aggregate(monthly_pipeline).to_list(1)
+    monthly_revenue = monthly_rev[0]["total"] if monthly_rev else 0
+
+    # Bot users
+    bot_users_count = await db.bot_users.count_documents({"tenant_id": tenant_id})
+
+    # Broadcasts
+    broadcasts = await db.broadcasts.count_documents({"tenant_id": tenant_id})
+
+    # Revenue chart (last 30 days)
+    daily_pipeline = [
+        {"$match": {"tenant_id": tenant_id, "status": {"$in": ["verified", "approved"]}, "created_at": {"$gte": thirty_ago}}},
+        {"$addFields": {"date_str": {"$substr": ["$created_at", 0, 10]}}},
+        {"$group": {"_id": "$date_str", "revenue": {"$sum": "$amount"}, "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}}
+    ]
+    daily_rev = await db.payments.aggregate(daily_pipeline).to_list(30)
+    revenue_chart = [{"date": d["_id"], "revenue": d["revenue"], "payments": d["count"]} for d in daily_rev]
+
+    # Plan distribution
+    plan_dist = []
+    for p in plans:
+        count = sum(1 for s in subscribers if s.get("plan_id") == p.get("id"))
+        plan_dist.append({"name": p.get("name", ""), "count": count, "price": p.get("price", 0)})
+
+    return {
+        "tenant": tenant,
+        "stats": {
+            "total_revenue": total_revenue,
+            "monthly_revenue": monthly_revenue,
+            "bot_users": bot_users_count,
+            "total_subscribers": len(subscribers),
+            "active_subscribers": active_subs,
+            "expired_subscribers": expired_subs,
+            "total_payments": total_payments,
+            "verified_payments": verified_payments,
+            "pending_payments": pending_payments,
+            "total_plans": len(plans),
+            "total_broadcasts": broadcasts,
+        },
+        "dashboard_admins": dashboard_admins,
+        "telegram_admins": tg_admins,
+        "plans": plans,
+        "subscribers": subscribers[:50],
+        "recent_payments": payments[:20],
+        "revenue_chart": revenue_chart,
+        "plan_distribution": plan_dist,
     }
 
 @router.get("/admin/subscription-requests")
