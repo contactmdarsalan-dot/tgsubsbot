@@ -47,6 +47,7 @@ const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
 export default function LandingPage() {
   const navigate = useNavigate();
   const [marqueeIdx, setMarqueeIdx] = useState(0);
+  const isLoggedIn = !!localStorage.getItem("token");
 
   useEffect(() => {
     const t = setInterval(() => setMarqueeIdx(i => (i + 1) % payouts.length), 2500);
@@ -71,8 +72,16 @@ export default function LandingPage() {
             <a href="#how" className="hover:text-white transition-colors">How It Works</a>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate("/login")} className="text-sm text-white/70 hover:text-white transition-colors px-4 py-2" data-testid="nav-login">Login</button>
-            <button onClick={() => navigate("/login")} className="text-sm bg-[#E11D48] hover:bg-[#BE123C] text-white font-semibold rounded-full px-5 py-2 shadow-[0_0_15px_rgba(225,29,72,0.3)] transition-all hover:scale-105" data-testid="nav-signup">Start Free</button>
+            {isLoggedIn ? (
+              <button onClick={() => navigate("/dashboard")} className="text-sm bg-[#E11D48] hover:bg-[#BE123C] text-white font-semibold rounded-full px-5 py-2 shadow-[0_0_15px_rgba(225,29,72,0.3)] transition-all hover:scale-105 flex items-center gap-2" data-testid="nav-dashboard">
+                Dashboard <ArrowRight className="w-4 h-4" />
+              </button>
+            ) : (
+              <>
+                <button onClick={() => navigate("/login")} className="text-sm text-white/70 hover:text-white transition-colors px-4 py-2" data-testid="nav-login">Login</button>
+                <button onClick={() => navigate("/login")} className="text-sm bg-[#E11D48] hover:bg-[#BE123C] text-white font-semibold rounded-full px-5 py-2 shadow-[0_0_15px_rgba(225,29,72,0.3)] transition-all hover:scale-105" data-testid="nav-signup">Start Free</button>
+              </>
+            )}
           </div>
         </div>
       </nav>
