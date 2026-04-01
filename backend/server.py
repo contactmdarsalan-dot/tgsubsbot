@@ -8,11 +8,13 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import os
 import logging
 
+from fastapi.responses import Response
 from config import logger
 from database import client as mongo_client
 from rate_limiter import limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
+from services.storage import init_storage, get_object
 
 # Import route modules
 from routes.auth import router as auth_router
@@ -63,13 +65,24 @@ app.include_router(miniapp_user_router, prefix="/api")
 app.include_router(miniapp_admin_router, prefix="/api")
 app.include_router(tenant_router, prefix="/api")
 
-# Mount static files for uploads (must be under /api/ for Kubernetes routing)
+# Object storage file download endpoint
+@app.get("/api/files/{file_path:path}")
+async def download_file(file_path: str):
+    """Serve files from object storage"""
+    try:
+        data, content_type = get_object(file_path)
+        return Response(content=data, media_type=content_type)
+    except Exception:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="File not found")
+
+# Mount static files for uploads - backward compat for existing local files
 uploads_dir = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(uploads_dir, exist_ok=True)
 app.mount("/api/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 # CORS middleware — strict allowlist
-_default_origins = "https://tgsubsbot.com,https://www.tgsubsbot.com,https://admin-dashboard-mvp.preview.emergentagent.com"
+_default_origins = "https://tgsubsbot.com,https://www.tgsubsbot.com,https://trial-management-hub-1.preview.emergentagent.com"
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -84,6 +97,12 @@ async def startup():
     # Create MongoDB indexes
     from database import ensure_indexes
     await ensure_indexes()
+
+    # Initialize object storage
+    try:
+        init_storage()
+    except Exception as e:
+        logger.warning(f"Object storage init failed (uploads will use local fallback): {e}")
     
     scheduler.add_job(check_subscriptions, 'interval', hours=6)
     scheduler.add_job(send_followups, 'cron', day_of_week='mon,thu', hour=10)

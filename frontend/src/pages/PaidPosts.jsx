@@ -102,6 +102,17 @@ export default function PaidPosts() {
     }
   };
 
+  const handleDeleteUnlockRequest = async (requestId) => {
+    if (!window.confirm("Delete this unlock request?")) return;
+    try {
+      await axios.delete(`${API}/unlock-requests/${requestId}`, getAuthHeaders());
+      toast.success("Unlock request deleted");
+      fetchData();
+    } catch (error) {
+      toast.error("Failed to delete unlock request");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -497,6 +508,16 @@ export default function PaidPosts() {
                             Rejected
                           </Button>
                         ) : null}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                          onClick={() => handleDeleteUnlockRequest(request.id)}
+                          data-testid={`delete-unlock-${request.id}`}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Delete
+                        </Button>
                       </div>
                     </div>
                   </CardContent>

@@ -622,6 +622,17 @@ async def reject_unlock_request(request_id: str, user=Depends(get_current_user))
 
     return {"message": "Unlock request rejected"}
 
+
+@router.delete("/unlock-requests/{request_id}")
+async def delete_unlock_request(request_id: str, user=Depends(get_current_user)):
+    """Delete an unlock request"""
+    result = await db.unlock_requests.delete_one({"id": request_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Request not found")
+    return {"message": "Unlock request deleted"}
+
+
+
 @router.get("/telegram/file/{file_id}")
 async def get_telegram_file(file_id: str):
     """Serve Telegram file for admin preview"""

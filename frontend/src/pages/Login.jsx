@@ -15,7 +15,7 @@ const handleGoogleLogin = () => {
 };
 
 export default function Login() {
-  const [isLogin, setIsLogin] = useState(true);
+  const [isLogin, setIsLogin] = useState(false);
   const [loginMethod, setLoginMethod] = useState("email");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -262,7 +262,7 @@ export default function Login() {
           {/* Login Method Toggle */}
           {!forgotPassword ? (
             <>
-            <div className="flex gap-2 p-1.5 bg-muted/50 rounded-2xl border border-border/50">
+            <div className="flex gap-2 p-1.5 bg-white/5 rounded-2xl border border-white/10">
             <Button
               type="button"
               variant={loginMethod === "email" ? "default" : "ghost"}
@@ -307,7 +307,7 @@ export default function Login() {
                   <div className="space-y-2">
                     <Label htmlFor="phone" className="text-sm font-medium">Phone Number</Label>
                     <div className="flex gap-2">
-                      <div className="flex items-center px-4 bg-muted/50 rounded-xl text-sm text-muted-foreground border border-border/50">
+                      <div className="flex items-center px-4 bg-white/5 rounded-xl text-sm text-white/60 border border-white/10">
                         +91
                       </div>
                       <Input
@@ -316,8 +316,8 @@ export default function Login() {
                         placeholder="9876543210"
                         value={form.phone}
                         onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
-                        className="flex-1 bg-muted/30 border-border/50 rounded-xl h-12 focus:border-primary/50 focus:ring-primary/20"
-                        data-testid="phone-input"
+                    className="bg-muted/30 border-border/50 rounded-xl h-12 focus:border-primary/50 focus:ring-primary/20 text-white placeholder:text-white/30"
+                    data-testid="phone-input"
                       />
                     </div>
                   </div>
@@ -330,7 +330,7 @@ export default function Login() {
                       placeholder="Your name"
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      className="bg-muted/30 border-border/50 rounded-xl h-12 focus:border-primary/50"
+                      className="bg-white/5 border-white/10 rounded-xl h-12 text-white placeholder:text-white/30 focus:border-primary/50 focus:ring-primary/20"
                     />
                   </div>
 
@@ -356,7 +356,7 @@ export default function Login() {
                     Change Number
                   </Button>
 
-                  <div className="p-4 bg-muted/30 rounded-2xl text-center border border-border/50">
+                  <div className="p-4 bg-white/5 rounded-2xl text-center border border-white/10">
                     <p className="text-sm text-muted-foreground">OTP sent to</p>
                     <p className="font-medium text-foreground">+91 {form.phone}</p>
                   </div>
@@ -369,7 +369,7 @@ export default function Login() {
                       placeholder="123456"
                       value={form.otp}
                       onChange={(e) => setForm({ ...form, otp: e.target.value.replace(/\D/g, '').slice(0, 6) })}
-                      className="bg-muted/30 border-border/50 rounded-xl h-14 text-center text-2xl tracking-[0.5em] font-mono focus:border-primary/50"
+                      className="bg-white/5 border-white/10 rounded-xl h-14 text-center text-2xl text-white tracking-[0.5em] font-mono placeholder:text-white/30 focus:border-primary/50 focus:ring-primary/20"
                       maxLength={6}
                       data-testid="otp-input"
                     />
@@ -409,7 +409,7 @@ export default function Login() {
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     required={!isLogin}
-                    className="bg-muted/30 border-border/50 rounded-xl h-12 focus:border-primary/50"
+                    className="bg-white/5 border-white/10 rounded-xl h-12 text-white placeholder:text-white/30 focus:border-primary/50 focus:ring-primary/20"
                     data-testid="name-input"
                   />
                 </div>
@@ -424,7 +424,7 @@ export default function Login() {
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   required
-                  className="bg-muted/30 border-border/50 rounded-xl h-12 focus:border-primary/50"
+                  className="bg-white/5 border-white/10 rounded-xl h-12 text-white placeholder:text-white/30 focus:border-primary/50 focus:ring-primary/20"
                   data-testid="email-input"
                 />
               </div>
@@ -439,7 +439,7 @@ export default function Login() {
                     value={form.password}
                     onChange={(e) => setForm({ ...form, password: e.target.value })}
                     required
-                    className="bg-muted/30 border-border/50 rounded-xl h-12 pr-12 focus:border-primary/50"
+                    className="bg-white/5 border-white/10 rounded-xl h-12 pr-12 text-white placeholder:text-white/30 focus:border-primary/50 focus:ring-primary/20"
                     data-testid="password-input"
                   />
                   <button
@@ -479,10 +479,10 @@ export default function Login() {
           {/* Divider */}
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-border/50" />
+              <span className="w-full border-t border-white/10" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-4 text-muted-foreground">
+              <span className="px-4 text-white/40" style={{ background: "hsl(340,50%,4%)" }}>
                 Or continue with
               </span>
             </div>
@@ -492,7 +492,7 @@ export default function Login() {
           <Button
             type="button"
             variant="outline"
-            className="w-full gap-3 h-12 rounded-xl border-border/50 hover:bg-muted/50 hover:border-primary/30 transition-all duration-300"
+            className="w-full gap-3 h-12 rounded-xl border-white/10 bg-white/5 text-white hover:bg-white/10 hover:border-primary/30 transition-all duration-300"
             onClick={handleGoogleLogin}
             data-testid="google-login-btn"
           >
@@ -552,7 +552,7 @@ export default function Login() {
                       placeholder="you@example.com"
                       value={resetForm.email}
                       onChange={(e) => setResetForm({ ...resetForm, email: e.target.value })}
-                      className="bg-muted/30 border-border/50 rounded-xl h-12 focus:border-primary/50"
+                      className="bg-white/5 border-white/10 rounded-xl h-12 text-white placeholder:text-white/30 focus:border-primary/50 focus:ring-primary/20"
                       data-testid="reset-email-input"
                     />
                   </div>
@@ -568,7 +568,7 @@ export default function Login() {
                 </div>
               ) : (
                 <form onSubmit={handleResetPassword} className="space-y-5">
-                  <div className="p-4 bg-muted/30 rounded-2xl text-center border border-border/50">
+                  <div className="p-4 bg-white/5 rounded-2xl text-center border border-white/10">
                     <p className="text-sm text-muted-foreground">Reset code sent to</p>
                     <p className="font-medium text-foreground">{resetForm.email}</p>
                   </div>
@@ -581,7 +581,7 @@ export default function Login() {
                       placeholder="123456"
                       value={resetForm.otp}
                       onChange={(e) => setResetForm({ ...resetForm, otp: e.target.value.replace(/\D/g, '').slice(0, 6) })}
-                      className="bg-muted/30 border-border/50 rounded-xl h-14 text-center text-2xl tracking-[0.5em] font-mono focus:border-primary/50"
+                      className="bg-white/5 border-white/10 rounded-xl h-14 text-center text-2xl text-white tracking-[0.5em] font-mono placeholder:text-white/30 focus:border-primary/50 focus:ring-primary/20"
                       maxLength={6}
                       data-testid="reset-otp-input"
                     />
@@ -595,7 +595,7 @@ export default function Login() {
                       placeholder="Enter new password (min 6 chars)"
                       value={resetForm.new_password}
                       onChange={(e) => setResetForm({ ...resetForm, new_password: e.target.value })}
-                      className="bg-muted/30 border-border/50 rounded-xl h-12 focus:border-primary/50"
+                      className="bg-white/5 border-white/10 rounded-xl h-12 text-white placeholder:text-white/30 focus:border-primary/50 focus:ring-primary/20"
                       data-testid="reset-new-password-input"
                     />
                   </div>

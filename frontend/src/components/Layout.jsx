@@ -147,7 +147,7 @@ export default function Layout() {
           </div>
 
           <nav className="flex-1 px-3 py-4 overflow-y-auto scrollbar-thin">
-            {/* Super Admin: Platform section */}
+            {/* Super Admin: Platform section ONLY */}
             {isSuperAdmin && (
               <>
                 <div className="px-3 pt-1 pb-2">
@@ -155,15 +155,6 @@ export default function Layout() {
                 </div>
                 <div className="space-y-0.5 mb-4">
                   {superAdminNav.map(item => (
-                    <NavItem key={item.path} item={item} isActive={location.pathname === item.path} onClick={() => setSidebarOpen(false)} />
-                  ))}
-                </div>
-                <div className="border-t border-white/6 mb-4" />
-                <div className="px-3 pb-2">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-600">Operations</span>
-                </div>
-                <div className="space-y-0.5">
-                  {tenantOpsNav.map(item => (
                     <NavItem key={item.path} item={item} isActive={location.pathname === item.path} onClick={() => setSidebarOpen(false)} />
                   ))}
                 </div>

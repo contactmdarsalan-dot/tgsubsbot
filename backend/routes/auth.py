@@ -26,9 +26,19 @@ async def register(request: Request, user: UserCreate):
     doc = user_obj.model_dump()
     doc["password_hash"] = hash_password(user.password)
     doc["created_at"] = doc["created_at"].isoformat()
-    doc["is_admin"] = False  # Default not admin
+    doc["is_admin"] = False
     if doc.get("dashboard_subscription_end"):
         doc["dashboard_subscription_end"] = doc["dashboard_subscription_end"].isoformat()
+    
+    # Auto-activate trial if enabled
+    trial_cfg = await db.trial_config.find_one({"id": "default_trial"}, {"_id": 0})
+    if trial_cfg and trial_cfg.get("enabled") and trial_cfg.get("auto_activate_on_register"):
+        trial_days = trial_cfg.get("duration_days", 7)
+        trial_end = datetime.now(timezone.utc) + timedelta(days=trial_days)
+        doc["dashboard_subscription_status"] = "trial"
+        doc["dashboard_plan"] = "trial"
+        doc["dashboard_subscription_end"] = trial_end.isoformat()
+        doc["trial_started_at"] = datetime.now(timezone.utc).isoformat()
     
     await db.users.insert_one(doc)
     token = create_token(user_obj.id)
@@ -38,9 +48,9 @@ async def register(request: Request, user: UserCreate):
             "id": user_obj.id, 
             "email": user_obj.email, 
             "name": user_obj.name,
-            "dashboard_subscription_status": "inactive",
-            "dashboard_plan": "",
-            "dashboard_subscription_end": None,
+            "dashboard_subscription_status": doc.get("dashboard_subscription_status", "inactive"),
+            "dashboard_plan": doc.get("dashboard_plan", ""),
+            "dashboard_subscription_end": doc.get("dashboard_subscription_end"),
             "is_admin": False
         }
     }
@@ -65,8 +75,8 @@ async def login(request: Request, user: UserLogin):
         sub_status = "active"  # Always active for super admin
     elif user_role == "tenant_admin":
         sub_status = "active"  # Tenant admins always have access
-    elif sub_status == "active" and sub_end and datetime.now(timezone.utc) > sub_end:
-        # Check if subscription expired
+    elif sub_status in ("active", "trial") and sub_end and datetime.now(timezone.utc) > sub_end:
+        # Check if subscription/trial expired
         sub_status = "expired"
         await db.users.update_one({"id": existing["id"]}, {"$set": {"dashboard_subscription_status": "expired"}})
     

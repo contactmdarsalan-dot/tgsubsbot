@@ -268,18 +268,9 @@ async def upload_qr_code(file: UploadFile = File(...), user=Depends(get_current_
     if len(contents) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File size must be less than 5MB")
 
-    ext = file.filename.split(".")[-1] if "." in file.filename else "png"
-    filename = f"qr_code_{uuid.uuid4().hex[:8]}.{ext}"
-
-    uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
-    os.makedirs(uploads_path, exist_ok=True)
-    file_path = os.path.join(uploads_path, filename)
-
-    with open(file_path, "wb") as f:
-        f.write(contents)
-
-    file_url = f"/api/uploads/{filename}"
-    return {"url": file_url, "filename": filename}
+    from services.storage import upload_file as storage_upload
+    result = storage_upload(contents, file.filename or "qr_code.png", file.content_type, prefix="qr-codes")
+    return {"url": result["url"], "filename": result["original_filename"]}
 
 
 @router.post("/upload/image")
@@ -293,18 +284,9 @@ async def upload_image(file: UploadFile = File(...), user=Depends(get_current_us
     if len(contents) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File size must be less than 10MB")
 
-    ext = file.filename.split(".")[-1] if "." in file.filename else "png"
-    filename = f"img_{uuid.uuid4().hex[:8]}.{ext}"
-
-    uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
-    os.makedirs(uploads_path, exist_ok=True)
-    file_path = os.path.join(uploads_path, filename)
-
-    with open(file_path, "wb") as f:
-        f.write(contents)
-
-    file_url = f"/api/uploads/{filename}"
-    return {"url": file_url, "filename": filename}
+    from services.storage import upload_file as storage_upload
+    result = storage_upload(contents, file.filename or "image.png", file.content_type, prefix="images")
+    return {"url": result["url"], "filename": result["original_filename"]}
 
 
 # ============== ANALYTICS ROUTES ==============

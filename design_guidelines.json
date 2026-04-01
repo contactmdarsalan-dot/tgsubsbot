@@ -1,145 +1,127 @@
 {
-  "metadata": {
-    "domain": "Telegram Subscription Bot SaaS Platform",
-    "theme": "Dark",
-    "archetype": "5 (Jewel & Luxury)",
-    "vibe": "Midnight, deep space, expensive, cinematic, high-contrast control room",
-    "instructions_to_main_agent": "Follow this JSON strictly. Do not deviate from the colors or typography specified. The Super Admin dashboard must feel like a dense 'Control Room' (Mode B Grid) with high precision data. The Telegram Mini App must feel like an immersive, conversion-focused 'Glassmorphism' mobile experience. Use Lucide React for icons, Framer Motion for smooth transitions, and Recharts for data visualization. Ensure EVERY interactive element has a data-testid. ALL files must be in .js/.jsx, NOT TypeScript."
+  "theme": "dark",
+  "archetype": "5 (Jewel & Luxury)",
+  "vibe": "Premium, high-conversion 'Money Machine' for Indian Creators",
+  "color_palette": {
+    "background": "hsl(340, 50%, 4%)",
+    "background_alt": "hsl(340, 40%, 6%)",
+    "primary": "#E11D48",
+    "primary_glow": "rgba(225, 29, 72, 0.4)",
+    "text_primary": "#FFFFFF",
+    "text_secondary": "hsl(340, 20%, 70%)",
+    "success_money": "#10B981",
+    "border_subtle": "rgba(255, 255, 255, 0.1)",
+    "glass_bg": "rgba(255, 255, 255, 0.03)"
   },
   "typography": {
-    "fonts": {
-      "headings": "'Outfit', sans-serif",
-      "body": "'Manrope', sans-serif",
-      "mono": "'JetBrains Mono', monospace"
-    },
-    "scale": {
-      "h1_hero": "text-4xl sm:text-5xl font-black tracking-tight",
-      "h2_section": "text-2xl sm:text-3xl font-bold tracking-tight",
-      "h3_card": "text-xl font-semibold",
-      "body": "text-base font-medium",
-      "labels_overlines": "text-xs font-bold uppercase tracking-[0.2em]",
-      "metrics_data": "font-mono text-3xl sm:text-4xl font-semibold tracking-tighter"
-    },
-    "rules": {
-      "no_inter": true,
-      "weight_contrast": "Use bold/black for headings, medium for body to create high contrast.",
-      "text_colors": "Use pure white for primary headings, zinc-400 for secondary text to maintain APCA contrast."
-    }
+    "heading_font": "Unbounded, sans-serif",
+    "body_font": "Manrope, sans-serif",
+    "h1": "text-5xl md:text-6xl lg:text-7xl font-black tracking-tighter leading-tight",
+    "h2": "text-4xl md:text-5xl font-bold tracking-tight",
+    "h3": "text-2xl md:text-3xl font-bold",
+    "body": "text-base md:text-lg text-white/70 leading-relaxed",
+    "accent_label": "text-sm uppercase tracking-[0.2em] font-bold text-[#E11D48]"
   },
-  "color_palette": {
-    "backgrounds": {
-      "app": "hsl(340, 50%, 4%)",
-      "surface": "hsl(340, 40%, 7%)",
-      "surface_glass": "rgba(255, 255, 255, 0.03)",
-      "surface_hover": "rgba(255, 255, 255, 0.06)"
-    },
-    "brand": {
-      "primary": "#E11D48",
-      "primary_hover": "#BE123C",
-      "secondary": "#F43F5E",
-      "accent": "#FB7185"
-    },
-    "gradients": {
-      "cta": "bg-gradient-to-r from-rose-600 to-red-700",
-      "text": "bg-clip-text text-transparent bg-gradient-to-r from-rose-400 via-rose-500 to-red-400"
-    },
-    "text": {
-      "primary": "#FFFFFF",
-      "secondary": "#A1A1AA",
-      "muted": "#71717A",
-      "inverse": "#000000"
-    },
-    "borders": {
-      "subtle": "rgba(255, 255, 255, 0.08)",
-      "focus": "hsla(346, 80%, 50%, 0.5)"
-    },
-    "status": {
-      "success": "#10B981",
-      "warning": "#F59E0B",
-      "error": "#F43F5E",
-      "info": "#3B82F6"
+  "surface_strategies": {
+    "glassmorphism": "bg-white/5 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(225,29,72,0.1)]",
+    "cards": "bg-[#0A0305] border border-white/10 rounded-2xl overflow-hidden hover:border-[#E11D48]/50 transition-colors duration-300",
+    "buttons": {
+      "primary": "bg-[#E11D48] hover:bg-[#BE123C] text-white font-bold rounded-full px-8 py-4 shadow-[0_0_20px_rgba(225,29,72,0.4)] transition-all hover:scale-105 hover:shadow-[0_0_30px_rgba(225,29,72,0.6)]",
+      "secondary": "bg-white/10 hover:bg-white/20 text-white font-bold rounded-full px-8 py-4 backdrop-blur-md transition-all"
     }
   },
   "spacing_and_layout": {
-    "super_admin": {
-      "grid_mode": "Control Room Grid (Mode B)",
-      "container_padding": "p-6",
-      "gap": "gap-6",
-      "card_padding": "p-6"
-    },
-    "mini_app": {
-      "grid_mode": "Tetris Grid (Mode A, Mobile First)",
-      "container_padding": "p-4 sm:p-6",
-      "gap": "gap-4",
-      "card_padding": "p-5 sm:p-6"
-    },
-    "radii": {
-      "buttons": "rounded-2xl",
-      "cards": "rounded-2xl",
-      "inner_elements": "rounded-xl",
-      "badges": "rounded-full"
-    },
-    "rules": {
-      "generous_spacing": "Use 2x normal padding to create a luxurious feel.",
-      "mobile_first": "Always start with single column on mobile, max 80vh for images."
-    }
+    "section_padding": "py-24 md:py-32",
+    "container": "max-w-7xl mx-auto px-6 md:px-12",
+    "bento_grid": "grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8"
   },
-  "components_strategy": {
-    "cards": {
-      "style": "bg-white/5 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-2xl",
-      "hover": "hover:bg-white/10 hover:border-white/20 transition-all duration-300"
-    },
-    "buttons": {
-      "primary_cta": "bg-gradient-to-r from-rose-600 to-red-700 text-white font-bold rounded-2xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_4px_14px_hsla(346,80%,50%,0.35)] hover:brightness-110 active:scale-95 transition-all w-full py-4 text-lg",
-      "secondary": "bg-white/10 text-white border border-white/10 rounded-2xl hover:bg-white/20 transition-all"
-    },
-    "skeletons": {
-      "style": "animate-pulse bg-white/10 rounded-xl"
-    },
-    "charts": {
-      "style": "Use Recharts. Area charts should have an opacity gradient fill matching primary/secondary colors. Hide default grid lines, use thin white/10 grid lines if necessary. Text should be white/50."
-    },
-    "navigation": {
-      "breadcrumbs": "text-zinc-400 text-sm font-medium",
-      "top_bar": "sticky top-0 z-50 bg-black/60 backdrop-blur-xl border-b border-white/10",
-      "mini_app_bottom": "fixed bottom-0 w-full bg-black/80 backdrop-blur-2xl border-t border-white/10 pb-safe pt-2 px-4 flex justify-around items-center"
-    }
+  "motion_interactions": {
+    "hover_lift": "hover:-translate-y-2 transition-transform duration-300",
+    "marquee_speed": "slow and smooth, using react-fast-marquee or tailwind keyframes",
+    "reveal": "Use framer-motion for staggered fade-in up on scroll"
   },
-  "animations": {
-    "page_load": {
-      "initial": { "opacity": 0, "y": 10 },
-      "animate": { "opacity": 1, "y": 0 },
-      "transition": { "duration": 0.4, "ease": "easeOut" }
-    },
-    "stagger": {
-      "delayChildren": 0.1,
-      "staggerChildren": 0.05
-    },
-    "hover": "Slight lift (-translate-y-1) for cards, subtle brightness increase for buttons.",
-    "micro_interactions": "Framer motion scale: 0.98 on tap/click for all buttons and interactive cards."
-  },
-  "accessibility": {
-    "contrast": "Ensure all text against dark backgrounds passes WCAG AA at minimum (4.5:1 for body).",
-    "testing": "MANDATORY: Use data-testid attributes on all interactive elements (e.g., data-testid='cta-purchase-plan', data-testid='tenant-table-row').",
-    "focus": "focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 focus:ring-offset-black"
-  },
-  "media": {
-    "image_urls": {
-      "admin_background": {
-        "url": "https://static.prod-images.emergentagent.com/jobs/c99e9d55-8c06-4f0e-894e-c0bbec541b65/images/a57f2db5be7398891494889b716658f21b914fd7bc98ee1cdd45cdf2e791c6e7.png",
-        "description": "Abstract SaaS dashboard background texture, deep space obsidian with faint isometric grid lines.",
-        "usage": "Use as a fixed background for the Super Admin dashboard with a low opacity (e.g., opacity-20) to add texture."
+  "image_urls": {
+    "creators": [
+      {
+        "url": "https://images.unsplash.com/photo-1633110500823-42b60f6e7013?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHw0fHxpbmRpYW4lMjBjcmVhdG9yJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc1MDE5ODg1fDA&ixlib=rb-4.1.0&q=85",
+        "alt": "Indian creator 1",
+        "use_case": "Testimonial avatar or live stream mockups"
       },
-      "mini_app_background": {
-        "url": "https://static.prod-images.emergentagent.com/jobs/c99e9d55-8c06-4f0e-894e-c0bbec541b65/images/b55fdd623ac7d9165319f808b728e29e2226c1cb0f7057a5c0ad3e2de626b239.png",
-        "description": "Abstract dark mode background, 3D fluid glass textures.",
-        "usage": "Use as the primary background for the Telegram Mini App, covering the viewport behind the glassmorphism cards."
+      {
+        "url": "https://images.unsplash.com/photo-1749804946005-e0db1140461b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwyfHxpbmRpYW4lMjBjcmVhdG9yJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc1MDE5ODg1fDA&ixlib=rb-4.1.0&q=85",
+        "alt": "Indian creator 2",
+        "use_case": "Testimonial avatar"
       },
-      "creator_avatar": {
-        "url": "https://images.unsplash.com/photo-1761882717631-824133aedc0e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2OTV8MHwxfHNlYXJjaHwzfHxwb3J0cmFpdCUyMGZhc2hpb24lMjBtYWxlJTIwbmVvbiUyMGxpZ2h0fGVufDB8fHx8MTc3NDk4NDE4MHww&ixlib=rb-4.1.0&q=85",
-        "description": "Fashionable male portrait under neon lights.",
-        "usage": "Use as the Creator/Admin profile picture on the Mini App Home Screen."
+      {
+        "url": "https://images.unsplash.com/photo-1633110501015-16d24f028daa?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwzfHxpbmRpYW4lMjBjcmVhdG9yJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc1MDE5ODg1fDA&ixlib=rb-4.1.0&q=85",
+        "alt": "Indian creator 3",
+        "use_case": "Testimonial avatar"
       }
+    ],
+    "lifestyle_wealth": [
+      {
+        "url": "https://images.pexels.com/photos/5778780/pexels-photo-5778780.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "Luxury lifestyle",
+        "use_case": "Background or mood image for the Final CTA section, heavily darkened with overlay"
+      }
+    ],
+    "icons": [
+      {
+        "url": "https://images.unsplash.com/photo-1637592156979-95f44c286423?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTF8MHwxfHNlYXJjaHwxfHx0ZWxlZ3JhbSUyMGxvZ28lMjAzZHxlbnwwfHx8fDE3NzUwMTk4OTR8MA&ixlib=rb-4.1.0&q=85",
+        "alt": "Telegram 3D Logo",
+        "use_case": "Hero section floating element or How it Works step 1"
+      }
+    ]
+  },
+  "sections_and_components": [
+    {
+      "name": "1. Hero Section",
+      "strategy": "Split layout. Left: Massive Unbounded headline. Right: A CSS-built interactive mockup (NOT A STATIC IMAGE).",
+      "mockup_instructions": "Build a dark glassmorphism card using Tailwind. Inside it, show 'Total Revenue' with a huge number like '₹4,50,000'. Add a green '↑ +24% this week'. Use Recharts to render a glowing crimson line chart. Add floating UI elements like 'New Subscriber: +₹999'.",
+      "actions": "Dual buttons: 'Start Free' (Primary Crimson) and 'Watch Demo' (Secondary Glass)."
+    },
+    {
+      "name": "2. Social Proof",
+      "strategy": "Infinite horizontal marquee using react-fast-marquee or CSS keyframes.",
+      "content": "Mix of text '5000+ Creators Earning' and small glass cards showing real-time fake payouts (e.g., 'Rahul withdrew ₹1,20,000'). Use lucide-react icons for checkmarks and wallets."
+    },
+    {
+      "name": "3. Benefit Cards (Bento Grid)",
+      "strategy": "Mode A 'Tetris' Grid. Asymmetrical.",
+      "cards": [
+        "Card 1 (Col-span 2): 'Earn with Subscriptions'. Show a mini pricing tier UI.",
+        "Card 2 (Col-span 1): 'Automate Telegram Access'. Show a bot icon kicking out unpaid members.",
+        "Card 3 (Col-span 1): 'Track Revenue'. Mini bar chart.",
+        "Card 4 (Col-span 2): 'Run Paid Live Sessions'. Cinematic dark card with glowing red 'LIVE' badge."
+      ]
+    },
+    {
+      "name": "4. Live Streaming Showcase",
+      "strategy": "Immersive section. Center-aligned text 'Go Live & Earn Instantly'.",
+      "visuals": "Build a vertical 'phone' mockup using a div with rounded-[3rem] and border-8 border-gray-900. Set the background to one of the Creator images. Overlay a glass UI with '🔴 LIVE', '👁 1.2k', and floating chat messages paying money ('Ankit sent ₹500!')."
+    },
+    {
+      "name": "5. Pricing",
+      "strategy": "3 standard columns. The middle column MUST pop out (scale-105, border-[#E11D48], inner glow).",
+      "details": "Use Unbounded for price numbers. Emphasize that they make money, so the tool pays for itself."
+    },
+    {
+      "name": "6. How It Works",
+      "strategy": "Minimalist 3 steps. Connect Telegram -> Create Plans -> Start Earning.",
+      "visuals": "Use massive background numbers (1, 2, 3) in text-white/5 font-bold."
+    },
+    {
+      "name": "7. Final CTA",
+      "strategy": "Massive impact. Center aligned.",
+      "background": "Use the lifestyle_wealth image with a 80% dark crimson/black gradient overlay so it feels expensive but text is perfectly readable.",
+      "actions": "Massive primary button with pinging animation."
     }
-  }
+  ],
+  "instructions_to_main_agent": [
+    "CRITICAL: Do NOT use standard Shadcn cards for everything. Build custom glassmorphic divs using the surface_strategies defined above.",
+    "CRITICAL: The hero section MUST feature a UI mockup built entirely out of HTML/Tailwind/Recharts. Do not use an image tag for the dashboard mockup.",
+    "CRITICAL: Apply 'data-testid' to all interactive elements (buttons, links, form inputs) as per the design guidelines.",
+    "CRITICAL: Use the 'Unbounded' font for ALL headings (h1, h2, h3). Ensure it is loaded via Google Fonts in the HTML/CSS.",
+    "CRITICAL: Do not use generic blue/teal colors. The only allowed colors are Crimson/Rose (#E11D48), Dark Cherry background, White text, and Green/Gold strictly for 'money' accents."
+  ]
 }

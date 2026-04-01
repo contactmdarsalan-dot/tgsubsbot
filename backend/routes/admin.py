@@ -13,6 +13,214 @@ import bcrypt
 router = APIRouter()
 
 
+# ============== TRIAL MANAGEMENT SYSTEM ==============
+
+DEFAULT_TRIAL_CONFIG = {
+    "id": "default_trial",
+    "enabled": True,
+    "duration_days": 7,
+    "auto_activate_on_register": True,
+    "features": ["Subscription Management", "Payment Verification", "Broadcasts", "Analytics"],
+    "max_subscribers_trial": 50,
+    "max_broadcasts_trial": 5,
+    "trial_plan_name": "Free Trial",
+    "show_upgrade_banner": True,
+    "auto_expire_action": "deactivate",
+    "updated_at": datetime.now(timezone.utc).isoformat(),
+}
+
+async def get_trial_config():
+    """Get trial configuration from DB, init if missing"""
+    cfg = await db.trial_config.find_one({"id": "default_trial"}, {"_id": 0})
+    if not cfg:
+        await db.trial_config.insert_one(DEFAULT_TRIAL_CONFIG.copy())
+        cfg = DEFAULT_TRIAL_CONFIG.copy()
+    return cfg
+
+@router.get("/trial/config")
+async def get_trial_config_api(user: dict = Depends(get_current_user)):
+    """Get current trial settings"""
+    await verify_super_admin(user)
+    return await get_trial_config()
+
+@router.put("/trial/config")
+async def update_trial_config(data: dict, user: dict = Depends(get_current_user)):
+    """Update trial configuration"""
+    await verify_super_admin(user)
+    
+    allowed = ["enabled", "duration_days", "auto_activate_on_register", "features",
+               "max_subscribers_trial", "max_broadcasts_trial", "trial_plan_name",
+               "show_upgrade_banner", "auto_expire_action"]
+    update = {k: v for k, v in data.items() if k in allowed}
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    
+    await db.trial_config.update_one(
+        {"id": "default_trial"},
+        {"$set": update},
+        upsert=True
+    )
+    await log_action("platform", user["id"], user.get("email", ""), "update_trial_config", "trial", "default_trial", update)
+    return {"message": "Trial config updated", **update}
+
+@router.get("/trial/accounts")
+async def get_trial_accounts(user: dict = Depends(get_current_user)):
+    """Get all users currently on trial"""
+    await verify_super_admin(user)
+    trials = await db.users.find(
+        {"dashboard_subscription_status": "trial"},
+        {"_id": 0, "password_hash": 0, "password": 0}
+    ).to_list(500)
+    
+    now = datetime.now(timezone.utc)
+    for t in trials:
+        end = t.get("dashboard_subscription_end")
+        if end:
+            if isinstance(end, str):
+                end = datetime.fromisoformat(end)
+            t["days_remaining"] = max(0, (end - now).days)
+            t["is_expired"] = now > end
+        else:
+            t["days_remaining"] = 0
+            t["is_expired"] = True
+        # Enrich with tenant name
+        tid = t.get("tenant_id")
+        if tid:
+            tn = await db.tenants.find_one({"tenant_id": tid}, {"_id": 0, "name": 1})
+            t["tenant_name"] = tn.get("name", "") if tn else ""
+        else:
+            t["tenant_name"] = ""
+    return trials
+
+@router.post("/trial/activate")
+async def activate_trial(data: dict, user: dict = Depends(get_current_user)):
+    """Manually activate trial for a user"""
+    await verify_super_admin(user)
+    
+    user_id = data.get("user_id")
+    duration_days = data.get("duration_days")
+    
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id required")
+    
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get trial config for default duration if not specified
+    if not duration_days:
+        cfg = await get_trial_config()
+        duration_days = cfg.get("duration_days", 7)
+    
+    end_date = datetime.now(timezone.utc) + timedelta(days=duration_days)
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "dashboard_subscription_status": "trial",
+            "dashboard_plan": "trial",
+            "dashboard_subscription_end": end_date.isoformat(),
+            "trial_started_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+    
+    await log_action("platform", user["id"], user.get("email", ""), "activate_trial", "user", user_id, {"duration_days": duration_days})
+    return {"message": f"Trial activated for {duration_days} days", "expires": end_date.isoformat()}
+
+@router.post("/trial/extend")
+async def extend_trial(data: dict, user: dict = Depends(get_current_user)):
+    """Extend a user's trial period"""
+    await verify_super_admin(user)
+    
+    user_id = data.get("user_id")
+    extra_days = data.get("extra_days", 7)
+    
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id required")
+    
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    current_end = target.get("dashboard_subscription_end")
+    if current_end and isinstance(current_end, str):
+        current_end = datetime.fromisoformat(current_end)
+    
+    base = max(current_end or datetime.now(timezone.utc), datetime.now(timezone.utc))
+    new_end = base + timedelta(days=extra_days)
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "dashboard_subscription_status": "trial",
+            "dashboard_subscription_end": new_end.isoformat(),
+        }}
+    )
+    
+    await log_action("platform", user["id"], user.get("email", ""), "extend_trial", "user", user_id, {"extra_days": extra_days})
+    return {"message": f"Trial extended by {extra_days} days", "new_end": new_end.isoformat()}
+
+@router.post("/trial/cancel")
+async def cancel_trial(data: dict, user: dict = Depends(get_current_user)):
+    """Cancel a user's trial"""
+    await verify_super_admin(user)
+    
+    user_id = data.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id required")
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "dashboard_subscription_status": "inactive",
+            "dashboard_plan": "",
+        }}
+    )
+    
+    await log_action("platform", user["id"], user.get("email", ""), "cancel_trial", "user", user_id, {})
+    return {"message": "Trial cancelled"}
+
+@router.post("/trial/convert")
+async def convert_trial_to_paid(data: dict, user: dict = Depends(get_current_user)):
+    """Convert trial account to paid subscription"""
+    await verify_super_admin(user)
+    
+    user_id = data.get("user_id")
+    plan_id = data.get("plan_id")
+    duration_days = data.get("duration_days", 30)
+    
+    if not user_id or not plan_id:
+        raise HTTPException(status_code=400, detail="user_id and plan_id required")
+    
+    end_date = datetime.now(timezone.utc) + timedelta(days=duration_days)
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "dashboard_subscription_status": "active",
+            "dashboard_plan": plan_id,
+            "dashboard_subscription_end": end_date.isoformat(),
+            "trial_converted_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+    
+    sub_record = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "plan_id": plan_id,
+        "status": "approved",
+        "source": "trial_conversion",
+        "assigned_by": user["id"],
+        "duration_days": duration_days,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "approved_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.dashboard_subscriptions.insert_one(sub_record)
+    
+    await log_action("platform", user["id"], user.get("email", ""), "convert_trial", "user", user_id, {"plan_id": plan_id})
+    return {"message": "Trial converted to paid subscription"}
+
+
+
 async def verify_super_admin(user: dict):
     """Verify user is a REAL super admin. Strict check — role-based only."""
     ensure_super_admin(user)
@@ -412,22 +620,229 @@ async def delete_admin_user(user_id: str, user = Depends(get_current_user)):
 
 @router.get("/admin/stats")
 async def get_admin_stats(user = Depends(get_current_user)):
-    """Get dashboard stats for super admin"""
+    """Comprehensive platform-level stats for Super Admin Control Center"""
     await verify_super_admin(user)
-    
+
+    # Core counts
     total_users = await db.users.count_documents({})
-    active_subscribers = await db.users.count_documents({"dashboard_subscription_status": "active"})
+    total_tenants = await db.tenants.count_documents({})
+    active_tenants = await db.tenants.count_documents({"status": "active"})
+    total_tenant_admins = await db.users.count_documents({"role": "tenant_admin"})
+    active_dash_subs = await db.users.count_documents({"dashboard_subscription_status": "active"})
     pending_requests = await db.dashboard_subscriptions.count_documents({"status": "pending"})
-    
-    # Calculate revenue from approved subscriptions
-    approved_subs = await db.dashboard_subscriptions.find({"status": "approved"}, {"_id": 0}).to_list(10000)
-    total_revenue = sum(sub.get("amount", 0) for sub in approved_subs)
-    
+
+    # Bot-level stats across all tenants
+    total_bot_users = await db.bot_users.count_documents({})
+    total_subscribers = await db.subscribers.count_documents({})
+    active_bot_subs = await db.subscribers.count_documents({"status": "active"})
+    expired_bot_subs = await db.subscribers.count_documents({"status": "expired"})
+    total_payments = await db.payments.count_documents({})
+    pending_payments = await db.payments.count_documents({"status": "pending"})
+    verified_payments = await db.payments.count_documents({"status": {"$in": ["verified", "approved"]}})
+
+    # Trial stats
+    trial_cfg = await get_trial_config()
+    trial_users = await db.users.count_documents({"trial_end_date": {"$exists": True}})
+
+    # Revenue — platform (dashboard subs)
+    platform_rev_pipeline = [
+        {"$match": {"status": "approved"}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    platform_rev = await db.dashboard_subscriptions.aggregate(platform_rev_pipeline).to_list(1)
+    platform_revenue = platform_rev[0]["total"] if platform_rev else 0
+
+    # Revenue — all tenants (bot payments)
+    tenant_rev_pipeline = [
+        {"$match": {"status": {"$in": ["verified", "approved"]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    tenant_rev = await db.payments.aggregate(tenant_rev_pipeline).to_list(1)
+    total_tenant_revenue = tenant_rev[0]["total"] if tenant_rev else 0
+
+    # Monthly revenue (last 30 days)
+    thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    monthly_pipeline = [
+        {"$match": {"status": {"$in": ["verified", "approved"]}, "created_at": {"$gte": thirty_days_ago}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    monthly_rev = await db.payments.aggregate(monthly_pipeline).to_list(1)
+    monthly_revenue = monthly_rev[0]["total"] if monthly_rev else 0
+
+    # Top tenants by revenue
+    top_tenants_pipeline = [
+        {"$match": {"status": {"$in": ["verified", "approved"]}}},
+        {"$group": {"_id": "$tenant_id", "revenue": {"$sum": "$amount"}, "count": {"$sum": 1}}},
+        {"$sort": {"revenue": -1}},
+        {"$limit": 5}
+    ]
+    top_tenants_raw = await db.payments.aggregate(top_tenants_pipeline).to_list(5)
+    top_tenants = []
+    for tr in top_tenants_raw:
+        t = await db.tenants.find_one({"tenant_id": tr["_id"]}, {"_id": 0, "name": 1, "tenant_id": 1, "email": 1})
+        top_tenants.append({
+            "tenant_id": tr["_id"],
+            "name": t.get("name", tr["_id"]) if t else tr["_id"],
+            "email": t.get("email", "") if t else "",
+            "revenue": tr["revenue"],
+            "payment_count": tr["count"],
+        })
+
+    # Recent platform activity
+    recent_tenants = await db.tenants.find({}, {"_id": 0, "name": 1, "tenant_id": 1, "status": 1, "created_at": 1, "email": 1}).sort("created_at", -1).to_list(5)
+    recent_subs = await db.dashboard_subscriptions.find({}, {"_id": 0}).sort("created_at", -1).to_list(5)
+    for s in recent_subs:
+        u = await db.users.find_one({"id": s.get("user_id")}, {"_id": 0, "name": 1, "email": 1})
+        s["user_name"] = u.get("name", "") if u else ""
+        s["user_email"] = u.get("email", "") if u else ""
+
+    # Revenue by day (last 14 days chart)
+    fourteen_days_ago = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    daily_pipeline = [
+        {"$match": {"status": {"$in": ["verified", "approved"]}, "created_at": {"$gte": fourteen_days_ago}}},
+        {"$addFields": {"date_str": {"$substr": ["$created_at", 0, 10]}}},
+        {"$group": {"_id": "$date_str", "revenue": {"$sum": "$amount"}, "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}}
+    ]
+    daily_rev = await db.payments.aggregate(daily_pipeline).to_list(14)
+    daily_chart = [{"date": d["_id"], "revenue": d["revenue"], "payments": d["count"]} for d in daily_rev]
+
     return {
-        "total_users": total_users,
-        "active_subscribers": active_subscribers,
-        "pending_requests": pending_requests,
-        "total_revenue": total_revenue
+        "platform": {
+            "total_users": total_users,
+            "total_tenants": total_tenants,
+            "active_tenants": active_tenants,
+            "total_tenant_admins": total_tenant_admins,
+            "active_dash_subscriptions": active_dash_subs,
+            "pending_requests": pending_requests,
+            "platform_revenue": platform_revenue,
+        },
+        "bot_ecosystem": {
+            "total_bot_users": total_bot_users,
+            "total_subscribers": total_subscribers,
+            "active_subscribers": active_bot_subs,
+            "expired_subscribers": expired_bot_subs,
+            "total_payments": total_payments,
+            "pending_payments": pending_payments,
+            "verified_payments": verified_payments,
+        },
+        "revenue": {
+            "total_tenant_revenue": total_tenant_revenue,
+            "monthly_revenue": monthly_revenue,
+            "daily_chart": daily_chart,
+        },
+        "trials": {
+            "enabled": trial_cfg.get("enabled", False),
+            "duration_days": trial_cfg.get("duration_days", 7),
+            "total_trial_users": trial_users,
+        },
+        "top_tenants": top_tenants,
+        "recent_tenants": recent_tenants,
+        "recent_subscriptions": recent_subs,
+    }
+
+
+@router.get("/admin/tenant-profile/{tenant_id}")
+async def get_tenant_profile(tenant_id: str, user = Depends(get_current_user)):
+    """Get comprehensive profile data for a specific tenant"""
+    await verify_super_admin(user)
+
+    tenant = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0})
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    # Dashboard admin users for this tenant
+    dashboard_admins = await db.users.find(
+        {"tenant_id": tenant_id, "role": "tenant_admin"},
+        {"_id": 0, "password": 0, "password_hash": 0}
+    ).to_list(50)
+
+    # Telegram admins
+    tg_admins = await db.telegram_admins.find(
+        {"tenant_id": tenant_id}, {"_id": 0}
+    ).to_list(50)
+
+    # Plans
+    plans = await db.plans.find(
+        {"tenant_id": tenant_id}, {"_id": 0}
+    ).to_list(100)
+
+    # Subscribers
+    subscribers = await db.subscribers.find(
+        {"tenant_id": tenant_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    active_subs = sum(1 for s in subscribers if s.get("status") == "active")
+    expired_subs = sum(1 for s in subscribers if s.get("status") == "expired")
+
+    # Payments
+    payments = await db.payments.find(
+        {"tenant_id": tenant_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    total_payments = len(payments)
+    verified_payments = sum(1 for p in payments if p.get("status") in ("verified", "approved"))
+    pending_payments = sum(1 for p in payments if p.get("status") == "pending")
+
+    # Revenue
+    rev_pipeline = [
+        {"$match": {"tenant_id": tenant_id, "status": {"$in": ["verified", "approved"]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    rev = await db.payments.aggregate(rev_pipeline).to_list(1)
+    total_revenue = rev[0]["total"] if rev else 0
+
+    # Monthly revenue
+    thirty_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    monthly_pipeline = [
+        {"$match": {"tenant_id": tenant_id, "status": {"$in": ["verified", "approved"]}, "created_at": {"$gte": thirty_ago}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    monthly_rev = await db.payments.aggregate(monthly_pipeline).to_list(1)
+    monthly_revenue = monthly_rev[0]["total"] if monthly_rev else 0
+
+    # Bot users
+    bot_users_count = await db.bot_users.count_documents({"tenant_id": tenant_id})
+
+    # Broadcasts
+    broadcasts = await db.broadcasts.count_documents({"tenant_id": tenant_id})
+
+    # Revenue chart (last 30 days)
+    daily_pipeline = [
+        {"$match": {"tenant_id": tenant_id, "status": {"$in": ["verified", "approved"]}, "created_at": {"$gte": thirty_ago}}},
+        {"$addFields": {"date_str": {"$substr": ["$created_at", 0, 10]}}},
+        {"$group": {"_id": "$date_str", "revenue": {"$sum": "$amount"}, "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}}
+    ]
+    daily_rev = await db.payments.aggregate(daily_pipeline).to_list(30)
+    revenue_chart = [{"date": d["_id"], "revenue": d["revenue"], "payments": d["count"]} for d in daily_rev]
+
+    # Plan distribution
+    plan_dist = []
+    for p in plans:
+        count = sum(1 for s in subscribers if s.get("plan_id") == p.get("id"))
+        plan_dist.append({"name": p.get("name", ""), "count": count, "price": p.get("price", 0)})
+
+    return {
+        "tenant": tenant,
+        "stats": {
+            "total_revenue": total_revenue,
+            "monthly_revenue": monthly_revenue,
+            "bot_users": bot_users_count,
+            "total_subscribers": len(subscribers),
+            "active_subscribers": active_subs,
+            "expired_subscribers": expired_subs,
+            "total_payments": total_payments,
+            "verified_payments": verified_payments,
+            "pending_payments": pending_payments,
+            "total_plans": len(plans),
+            "total_broadcasts": broadcasts,
+        },
+        "dashboard_admins": dashboard_admins,
+        "telegram_admins": tg_admins,
+        "plans": plans,
+        "subscribers": subscribers[:50],
+        "recent_payments": payments[:20],
+        "revenue_chart": revenue_chart,
+        "plan_distribution": plan_dist,
     }
 
 @router.get("/admin/subscription-requests")
@@ -602,6 +1017,157 @@ async def approve_subscription(request_id: str, user = Depends(get_current_user)
     )
     
     return {"message": "Subscription approved"}
+
+
+# ============== SUBSCRIPTION MANAGEMENT (SUPER ADMIN) ==============
+
+@router.get("/saas/subscriptions")
+async def get_all_subscriptions(user: dict = Depends(get_current_user)):
+    """Get all dashboard subscriptions with user info"""
+    await verify_super_admin(user)
+    subs = await db.dashboard_subscriptions.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    # Enrich with user info
+    for s in subs:
+        u = await db.users.find_one({"id": s.get("user_id")}, {"_id": 0, "name": 1, "email": 1, "role": 1, "tenant_id": 1, "dashboard_plan": 1, "dashboard_subscription_status": 1, "dashboard_subscription_end": 1})
+        if u:
+            s["user_name"] = u.get("name", "")
+            s["user_email"] = u.get("email", "")
+            s["user_role"] = u.get("role", "")
+            s["tenant_id"] = u.get("tenant_id", "")
+            s["current_plan"] = u.get("dashboard_plan", "")
+            s["current_status"] = u.get("dashboard_subscription_status", "")
+            s["subscription_end"] = u.get("dashboard_subscription_end", "")
+    return subs
+
+@router.post("/saas/assign-subscription")
+async def assign_subscription_to_user(data: dict, user: dict = Depends(get_current_user)):
+    """Directly assign a dashboard subscription to a user (Super Admin only)"""
+    await verify_super_admin(user)
+    
+    user_id = data.get("user_id")
+    plan_id = data.get("plan_id")
+    duration_days = data.get("duration_days", 30)
+    
+    if not user_id or not plan_id:
+        raise HTTPException(status_code=400, detail="user_id and plan_id required")
+    
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    end_date = datetime.now(timezone.utc) + timedelta(days=duration_days)
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "dashboard_plan": plan_id,
+            "dashboard_subscription_status": "active",
+            "dashboard_subscription_end": end_date.isoformat()
+        }}
+    )
+    
+    # Create subscription record
+    sub_record = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "plan_id": plan_id,
+        "status": "approved",
+        "assigned_by": user["id"],
+        "duration_days": duration_days,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "approved_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.dashboard_subscriptions.insert_one(sub_record)
+    
+    await log_action("platform", user["id"], user.get("email", ""), "assign_subscription", "user", user_id, {"plan_id": plan_id, "duration_days": duration_days})
+    
+    return {"message": f"Subscription assigned to {target.get('email', user_id)}"}
+
+@router.delete("/saas/subscriptions/{sub_id}")
+async def delete_subscription(sub_id: str, user: dict = Depends(get_current_user)):
+    """Delete a subscription record"""
+    await verify_super_admin(user)
+    result = await db.dashboard_subscriptions.delete_one({"id": sub_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    return {"message": "Subscription deleted"}
+
+@router.get("/saas/tenant-admins")
+async def get_all_tenant_admins(user: dict = Depends(get_current_user)):
+    """Get ALL tenant admins across all tenants with subscription info"""
+    await verify_super_admin(user)
+    admins = await db.users.find(
+        {"role": "tenant_admin"},
+        {"_id": 0, "password": 0}
+    ).to_list(500)
+    # Enrich with tenant name
+    for a in admins:
+        t = await db.tenants.find_one({"tenant_id": a.get("tenant_id")}, {"_id": 0, "name": 1})
+        a["tenant_name"] = t.get("name", "") if t else ""
+    return admins
+
+@router.put("/saas/tenant-admins/{admin_id}")
+async def update_tenant_admin(admin_id: str, data: dict, user: dict = Depends(get_current_user)):
+    """Update a tenant admin's details"""
+    await verify_super_admin(user)
+    
+    update = {}
+    for field in ["name", "email", "tenant_id"]:
+        if field in data:
+            update[field] = data[field]
+    
+    if not update:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    result = await db.users.update_one({"id": admin_id, "role": "tenant_admin"}, {"$set": update})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Tenant admin not found")
+    return {"message": "Tenant admin updated"}
+
+@router.delete("/saas/tenant-admins/{admin_id}")
+async def delete_tenant_admin_direct(admin_id: str, user: dict = Depends(get_current_user)):
+    """Delete a tenant admin user"""
+    await verify_super_admin(user)
+    result = await db.users.delete_one({"id": admin_id, "role": "tenant_admin"})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Tenant admin not found")
+    return {"message": "Tenant admin deleted"}
+
+@router.post("/saas/tenant-admins")
+async def create_tenant_admin_direct(data: dict, user: dict = Depends(get_current_user)):
+    """Create a new tenant admin directly with tenant assignment"""
+    await verify_super_admin(user)
+    
+    email = data.get("email", "").strip()
+    password = data.get("password", "").strip()
+    name = data.get("name", "").strip()
+    tenant_id = data.get("tenant_id", "").strip()
+    
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password required")
+    
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already exists")
+    
+    import bcrypt
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    
+    new_user = {
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "name": name,
+        "password": hashed,
+        "role": "tenant_admin",
+        "tenant_id": tenant_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "dashboard_subscription_status": "inactive",
+    }
+    await db.users.insert_one(new_user)
+    
+    return {"message": f"Tenant admin created: {email}", "user_id": new_user["id"]}
+
+
 
 # ============== PLANS ROUTES ==============
 
