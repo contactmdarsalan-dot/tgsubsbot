@@ -1,176 +1,106 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Button } from "../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
-import { Check, Crown, Zap, Star, MessageCircle, Loader2, LogOut, Bot } from "lucide-react";
+import { Check, Crown, Zap, Star, Loader2, LogOut, Send, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const getAuth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
 
-const getAuthHeaders = () => ({
-  headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-});
-
-const plans = [
-  {
-    id: "1month",
-    name: "1 Month",
-    price: 4999,
-    duration: "30 days",
-    features: [
-      "Full Dashboard Access",
-      "Unlimited Subscribers",
-      "Telegram Bot Integration",
-      "Payment Management",
-      "Auto Reminders",
-      "Email Support"
-    ],
-    icon: Zap
-  },
-  {
-    id: "6month",
-    name: "6 Months",
-    price: 24999,
-    duration: "180 days",
-    popular: true,
-    save: "17%",
-    features: [
-      "Everything in 1 Month",
-      "Priority Support",
-      "Advanced Analytics",
-      "Multiple Bots",
-      "Custom Branding",
-      "API Access"
-    ],
-    icon: Star
-  },
-  {
-    id: "12month",
-    name: "12 Months",
-    price: 44999,
-    duration: "365 days",
-    save: "25%",
-    features: [
-      "Everything in 6 Months",
-      "Dedicated Support",
-      "White Label Option",
-      "Custom Integrations",
-      "Training Session",
-      "SLA Guarantee"
-    ],
-    icon: Crown
-  }
-];
+const ICONS = [Zap, Star, Crown, Send];
 
 export default function Pricing({ onSubscribed }) {
   const [loading, setLoading] = useState(null);
   const [razorpayLoaded, setRazorpayLoaded] = useState(false);
+  const [plans, setPlans] = useState([]);
+  const [plansLoading, setPlansLoading] = useState(true);
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-  // Load Razorpay script
   useEffect(() => {
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
     script.async = true;
     script.onload = () => setRazorpayLoaded(true);
     document.body.appendChild(script);
-    
-    return () => {
-      document.body.removeChild(script);
-    };
+    return () => { try { document.body.removeChild(script); } catch {} };
   }, []);
 
-  const handleSelectPlan = async (planId) => {
-    if (!razorpayLoaded) {
-      toast.error("Payment gateway loading... Please try again.");
+  useEffect(() => {
+    axios.get(`${API}/public/subscription-plans`)
+      .then(res => setPlans(res.data || []))
+      .catch(() => setPlans([]))
+      .finally(() => setPlansLoading(false));
+  }, []);
+
+  const handleSelectPlan = async (plan) => {
+    const isFree = !plan.price || plan.price === 0;
+    setLoading(plan.id);
+
+    if (isFree) {
+      try {
+        const res = await axios.post(`${API}/dashboard-subscription/activate-free`, {}, getAuth());
+        toast.success(res.data.message || "Free trial activated!");
+        const updatedUser = { ...user, dashboard_subscription_status: "active", dashboard_plan: plan.name, is_trial: true };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+        if (onSubscribed) onSubscribed();
+        navigate("/");
+        window.location.reload();
+      } catch (e) {
+        toast.error(e.response?.data?.detail || "Failed to activate free trial");
+      } finally {
+        setLoading(null);
+      }
       return;
     }
-    
-    setLoading(planId);
-    
+
+    // Paid plan — Razorpay
+    if (!razorpayLoaded) {
+      toast.error("Payment gateway loading... Please try again.");
+      setLoading(null);
+      return;
+    }
+
     try {
-      // Create Razorpay order
-      const response = await axios.post(
-        `${API}/dashboard-subscription/create-order`,
-        { plan_id: planId },
-        getAuthHeaders()
-      );
-      
+      const response = await axios.post(`${API}/dashboard-subscription/create-order`, { plan_id: plan.id }, getAuth());
       const { order_id, amount, key_id } = response.data;
-      const plan = plans.find(p => p.id === planId);
-      
-      // Open Razorpay checkout
+
       const options = {
         key: key_id,
         amount: amount * 100,
         currency: "INR",
         name: "SubsBot Pro",
         description: `${plan.name} Subscription`,
-        order_id: order_id,
-        handler: async function (response) {
-          // Verify payment
+        order_id,
+        handler: async function (resp) {
           try {
-            const verifyResponse = await axios.post(
-              `${API}/dashboard-subscription/verify-payment`,
-              {
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature
-              },
-              getAuthHeaders()
-            );
-            
+            await axios.post(`${API}/dashboard-subscription/verify-payment`, {
+              razorpay_order_id: resp.razorpay_order_id,
+              razorpay_payment_id: resp.razorpay_payment_id,
+              razorpay_signature: resp.razorpay_signature,
+            }, getAuth());
             toast.success("Payment successful! Subscription activated.");
-            
-            // Update local user data
-            const updatedUser = {
-              ...user,
-              dashboard_subscription_status: "active",
-              dashboard_plan: planId
-            };
+            const updatedUser = { ...user, dashboard_subscription_status: "active", dashboard_plan: plan.id };
             localStorage.setItem("user", JSON.stringify(updatedUser));
-            
-            // Redirect to dashboard
-            if (onSubscribed) {
-              onSubscribed();
-            }
+            if (onSubscribed) onSubscribed();
             navigate("/");
             window.location.reload();
-          } catch (error) {
-            toast.error("Payment verification failed. Please contact support.");
+          } catch {
+            toast.error("Payment verification failed. Contact support.");
           }
         },
-        prefill: {
-          name: user.name || "",
-          email: user.email || "",
-          contact: user.phone || ""
-        },
-        theme: {
-          color: "#3b82f6"
-        },
-        modal: {
-          ondismiss: function() {
-            setLoading(null);
-          }
-        }
+        prefill: { name: user.name || "", email: user.email || "" },
+        theme: { color: "#E11D48" },
+        modal: { ondismiss: () => setLoading(null) },
       };
-      
-      const razorpay = new window.Razorpay(options);
-      razorpay.open();
-      
-    } catch (error) {
-      console.error("Payment error:", error);
-      toast.error(error.response?.data?.detail || "Failed to initiate payment");
+      new window.Razorpay(options).open();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to initiate payment");
     } finally {
       setLoading(null);
     }
-  };
-
-  const handleContactUs = () => {
-    window.location.href = "mailto:nikhil@onlyforyou.club?subject=Lifetime%20Access%20Inquiry&body=Hi,%20I%20am%20interested%20in%20the%20Lifetime%20Access%20plan.";
   };
 
   const handleLogout = () => {
@@ -181,143 +111,155 @@ export default function Pricing({ onSubscribed }) {
     toast.success("Logged out successfully");
   };
 
+  const durationLabel = (days) => {
+    if (!days) return "";
+    if (days >= 365) return `${Math.floor(days / 365)} yr`;
+    if (days >= 30) return `${Math.floor(days / 30)} mo`;
+    return `${days} days`;
+  };
+
+  // Find highest priced plan for "savings" calculation
+  const maxMonthlyRate = Math.max(...plans.filter(p => p.price > 0).map(p => (p.price / (p.duration_days || 30)) * 30), 1);
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
-      {/* Navbar */}
-      <nav className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Bot className="w-8 h-8 text-primary" />
+    <div className="min-h-screen text-white" style={{ background: "hsl(340,50%,4%)", fontFamily: "Manrope, sans-serif" }}>
+      {/* Nav */}
+      <nav className="sticky top-0 z-50 border-b border-white/6" style={{ background: "hsla(340,50%,4%,0.95)", backdropFilter: "blur(20px)" }}>
+        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#E11D48] flex items-center justify-center shadow-[0_0_20px_rgba(225,29,72,0.4)]">
+              <Send className="w-5 h-5 text-white" />
+            </div>
             <div>
-              <h1 className="font-bold text-lg leading-tight">Tgsubsbot</h1>
-              <p className="text-xs text-muted-foreground">Telegram Subscription Manager</p>
+              <span style={{ fontFamily: "Unbounded" }} className="text-lg font-bold">TGSubsBot</span>
+              <p className="text-[10px] text-zinc-500">Telegram Subscription Manager</p>
             </div>
           </div>
-          
           <div className="flex items-center gap-4">
-            {user.email && (
-              <span className="text-sm text-muted-foreground hidden sm:block">
-                {user.email}
-              </span>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleLogout}
-              className="gap-2"
-            >
-              <LogOut className="w-4 h-4" />
-              Logout
-            </Button>
+            {user.email && <span className="text-sm text-zinc-500 hidden sm:block">{user.email}</span>}
+            <button onClick={handleLogout} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg border border-white/6 transition-all" data-testid="logout-btn">
+              <LogOut className="w-3.5 h-3.5" /> Logout
+            </button>
           </div>
         </div>
       </nav>
 
-      <div className="py-12 px-4">
+      <div className="py-16 px-6">
         <div className="max-w-6xl mx-auto">
           {/* Header */}
-          <div className="text-center mb-12">
-            <Badge className="mb-4 bg-primary/10 text-primary border-primary/20">
-              SubsBot Pro
-            </Badge>
-            <h1 className="font-heading text-4xl md:text-5xl font-bold tracking-tight mb-4">
-              Choose Your Plan
+          <motion.div initial={{ opacity: 0, y: -15 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-14">
+            <Badge className="mb-4 bg-[#E11D48]/10 text-[#E11D48] border-[#E11D48]/20 px-3 py-1 text-xs font-bold" data-testid="pricing-badge">SubsBot Pro</Badge>
+            <h1 style={{ fontFamily: "Unbounded" }} className="text-4xl md:text-5xl font-black tracking-tight mb-4">
+              Choose Your <span className="bg-gradient-to-r from-[#E11D48] to-[#FB7185] bg-clip-text text-transparent">Plan</span>
             </h1>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-base text-zinc-500 max-w-lg mx-auto">
               Get full access to SubsBot Dashboard and start managing your Telegram subscriptions like a pro
             </p>
-          </div>
+          </motion.div>
 
-        {/* Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          {plans.map((plan) => {
-            const Icon = plan.icon;
-            const isLoading = loading === plan.id;
-            return (
-              <Card 
-                key={plan.id} 
-                className={`relative border-2 transition-all duration-300 hover:border-primary/50 ${
-                  plan.popular ? "border-primary shadow-lg scale-105" : "border-border"
-                }`}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-primary text-primary-foreground">
-                      Most Popular
-                    </Badge>
-                  </div>
-                )}
-                {plan.save && (
-                  <div className="absolute -top-3 right-4">
-                    <Badge className="bg-green-500 text-white">
-                      Save {plan.save}
-                    </Badge>
-                  </div>
-                )}
-                <CardHeader className="text-center pb-4">
-                  <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Icon className="w-6 h-6 text-primary" />
-                  </div>
-                  <CardTitle className="font-heading text-2xl font-bold">
-                    {plan.name}
-                  </CardTitle>
-                  <p className="text-sm text-muted-foreground">{plan.duration}</p>
-                </CardHeader>
-                <CardContent className="text-center">
-                  <div className="mb-6">
-                    <span className="font-heading text-5xl font-bold">₹{plan.price.toLocaleString()}</span>
-                  </div>
-                  
-                  <ul className="space-y-3 mb-6 text-left">
-                    {plan.features.map((feature, i) => (
-                      <li key={i} className="flex items-center gap-2 text-sm">
-                        <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-                  
-                  <Button 
-                    className={`w-full ${plan.popular ? "btn-hover" : ""}`}
-                    variant={plan.popular ? "default" : "outline"}
-                    onClick={() => handleSelectPlan(plan.id)}
-                    disabled={isLoading || loading !== null}
-                    data-testid={`plan-${plan.id}-btn`}
+          {/* Plans */}
+          {plansLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-8 h-8 text-[#E11D48] animate-spin" />
+            </div>
+          ) : plans.length === 0 ? (
+            <div className="text-center py-20 text-zinc-500">No plans available. Contact admin.</div>
+          ) : (
+            <div className={`grid gap-6 items-end ${plans.length === 1 ? "max-w-md mx-auto" : plans.length === 2 ? "md:grid-cols-2 max-w-3xl mx-auto" : plans.length >= 3 ? "md:grid-cols-3 max-w-5xl mx-auto" : ""}`}>
+              {plans.map((plan, i) => {
+                const Icon = ICONS[i % ICONS.length];
+                const isFree = !plan.price || plan.price === 0;
+                const isPopular = plan.is_popular || false;
+                const isLoading = loading === plan.id;
+                const monthlyRate = plan.price > 0 ? (plan.price / (plan.duration_days || 30)) * 30 : 0;
+                const savePct = !isFree && plan.duration_days > 30 && monthlyRate < maxMonthlyRate ? Math.round((1 - monthlyRate / maxMonthlyRate) * 100) : 0;
+
+                return (
+                  <motion.div
+                    key={plan.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.1 }}
+                    className={`relative rounded-2xl border transition-all duration-300 ${isPopular ? "border-[#E11D48] shadow-[0_0_40px_rgba(225,29,72,0.15)] scale-[1.03]" : "border-white/10 hover:border-white/20"}`}
+                    style={{ background: "hsl(340,40%,6%)" }}
+                    data-testid={`plan-card-${plan.id}`}
                   >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      "Get Started"
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                    {/* Badges */}
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex gap-2">
+                      {isPopular && <span className="bg-[#E11D48] text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg">Most Popular</span>}
+                      {savePct > 0 && <span className="bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg">Save {savePct}%</span>}
+                      {isFree && <span className="bg-violet-500 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg">Free Trial</span>}
+                    </div>
 
-        {/* Lifetime Plan */}
-        <Card className="max-w-2xl mx-auto border-2 border-dashed border-primary/30 bg-primary/5">
-          <CardContent className="p-8 text-center">
-            <Crown className="w-12 h-12 text-primary mx-auto mb-4" />
-            <h3 className="font-heading text-2xl font-bold mb-2">Lifetime Access</h3>
-            <p className="text-muted-foreground mb-6">
-              One-time payment for forever access. Contact us for custom pricing.
-            </p>
-            <Button onClick={handleContactUs} variant="outline" className="gap-2" data-testid="contact-us-btn">
-              <MessageCircle className="w-4 h-4" />
-              Contact Us
-            </Button>
-          </CardContent>
-        </Card>
+                    <div className="p-8 text-center">
+                      {/* Icon */}
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5 ${isPopular ? "bg-[#E11D48]/15 border border-[#E11D48]/30" : "bg-white/5 border border-white/10"}`}>
+                        <Icon className={`w-6 h-6 ${isPopular ? "text-[#E11D48]" : "text-zinc-400"}`} />
+                      </div>
 
-        {/* Support Link */}
-        <p className="text-center text-sm text-muted-foreground mt-8">
-          Having trouble? <button className="text-primary underline" onClick={handleContactUs}>Contact Support</button>
-        </p>
+                      {/* Name + Duration */}
+                      <h3 style={{ fontFamily: "Unbounded" }} className="text-xl font-bold mb-1">{plan.name}</h3>
+                      <p className="text-xs text-zinc-600 mb-5">{plan.duration_days} days</p>
+
+                      {/* Price */}
+                      <div className="mb-6">
+                        <span style={{ fontFamily: "Unbounded" }} className="text-4xl font-black">
+                          {isFree ? "Free" : `Rs.${plan.price.toLocaleString()}`}
+                        </span>
+                      </div>
+
+                      {/* Features */}
+                      {plan.features?.length > 0 && (
+                        <ul className="space-y-2.5 mb-8 text-left">
+                          {plan.features.map((f, j) => (
+                            <li key={j} className="flex items-center gap-2 text-sm text-zinc-400">
+                              <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" /> {f}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {/* Limits */}
+                      {(plan.max_subscribers || plan.max_broadcasts) && (
+                        <div className="flex justify-center gap-4 mb-6 text-[10px] text-zinc-600">
+                          {plan.max_subscribers && <span>Max {plan.max_subscribers.toLocaleString()} subs</span>}
+                          {plan.max_broadcasts && <span>Max {plan.max_broadcasts}/day broadcasts</span>}
+                        </div>
+                      )}
+
+                      {/* Feature badges */}
+                      {(plan.ai_verify_enabled || plan.live_stream_enabled || plan.paid_posts_enabled) && (
+                        <div className="flex flex-wrap justify-center gap-1.5 mb-6">
+                          {plan.ai_verify_enabled && <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-white/5 text-zinc-500 border border-white/8">AI Verify</span>}
+                          {plan.live_stream_enabled && <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-white/5 text-zinc-500 border border-white/8">Live</span>}
+                          {plan.paid_posts_enabled && <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-white/5 text-zinc-500 border border-white/8">Paid Posts</span>}
+                        </div>
+                      )}
+
+                      {/* CTA */}
+                      <button
+                        onClick={() => handleSelectPlan(plan)}
+                        disabled={isLoading || loading !== null}
+                        className={`w-full py-3 rounded-full font-bold text-sm transition-all flex items-center justify-center gap-2 ${isPopular ? "bg-[#E11D48] hover:bg-[#BE123C] text-white shadow-[0_0_20px_rgba(225,29,72,0.4)] hover:scale-105" : isFree ? "bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 border border-violet-500/30" : "bg-white/8 hover:bg-white/15 text-white border border-white/10"}`}
+                        data-testid={`plan-${plan.id}-btn`}
+                      >
+                        {isLoading ? (
+                          <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</>
+                        ) : (
+                          <>{isFree ? "Start Free Trial" : "Get Started"} <ArrowRight className="w-4 h-4" /></>
+                        )}
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Support */}
+          <p className="text-center text-xs text-zinc-600 mt-10">
+            Having trouble? <a href="mailto:support@tgsubsbot.com" className="text-[#E11D48] hover:underline">Contact Support</a>
+          </p>
         </div>
       </div>
     </div>

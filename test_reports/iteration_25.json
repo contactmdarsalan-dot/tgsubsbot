@@ -1,0 +1,135 @@
+{
+  "summary": "Iteration 25 testing completed successfully. All 14 backend tests passed (100%). Dynamic pricing page and free trial self-activation features fully functional. Pricing page fetches plans from GET /api/public/subscription-plans (public, no auth). Free trial activation via POST /api/dashboard-subscription/activate-free works correctly with duplicate prevention. Full user flow tested: Register → Pricing page → Click 'Start Free Trial' → Redirected to landing page with Dashboard button visible.",
+
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+
+  "test_report_links": [
+    "/app/backend/tests/test_iteration25_pricing_free_trial.py",
+    "/app/test_reports/pytest/iteration25_pricing_results.xml"
+  ],
+
+  "action_items": [],
+
+  "critical_code_review_comments": [
+    "GET /api/public/subscription-plans (admin.py line 1196) correctly returns active plans without auth, sorted by price",
+    "POST /api/dashboard-subscription/activate-free (admin.py line 1205) correctly activates free trial with duplicate prevention",
+    "Pricing.jsx correctly fetches plans from /api/public/subscription-plans and renders dynamic cards",
+    "Free plan card shows 'Free Trial' badge, 'Start Free Trial' button, and correct features",
+    "Lifetime plan card shows 'Most Popular' badge, Rs.75,000 price, and correct features",
+    "LandingPage.jsx correctly shows 'Dashboard' button for logged-in users instead of Login/Start Free",
+    "Registration flow correctly redirects to /pricing page for new users"
+  ],
+
+  "updated_files": [
+    "/app/backend/tests/test_iteration25_pricing_free_trial.py"
+  ],
+
+  "success_rate": {
+    "backend": "100% (14/14 passed)",
+    "frontend": "100% (all UI tests passed)"
+  },
+
+  "test_credentials": {
+    "super_admin_email": "gamerxboys8958@gmail.com",
+    "super_admin_password": "Sumit@8958",
+    "tenant_admin_email": "anamika@test.com",
+    "tenant_admin_password": "Admin123"
+  },
+
+  "seed_data_creation": "No new seed data created. Used existing bot_subscription_plans collection with Free (17 days, Rs.0) and Lifetime (365 days, Rs.75,000) plans.",
+
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+
+  "context_for_next_testing_agent": "Iteration 25 verified dynamic pricing page and free trial self-activation. Key endpoints: GET /api/public/subscription-plans (public, returns active plans sorted by price), POST /api/dashboard-subscription/activate-free (auth required, activates free trial, sets dashboard_subscription_status=active, is_trial=true, trial_end_date). Pricing page at /pricing fetches plans dynamically. Free plan has 'Free Trial' badge and 'Start Free Trial' CTA. Lifetime plan has 'Most Popular' badge and Rs.75,000 price. After free trial activation, user is redirected to landing page (/) which shows 'Dashboard' button for logged-in users. Registration flow: /login → fill form → submit → redirects to /pricing. MOCKED: Razorpay payment flow (not configured in preview), Resend Email OTP (domain verification pending).",
+
+  "features_tested": {
+    "public_subscription_plans_api": {
+      "status": "PASS",
+      "details": [
+        "GET /api/public/subscription-plans returns 200 without auth",
+        "Returns list of active plans sorted by price ascending",
+        "Free plan (price=0) has 17 days duration, features list",
+        "Lifetime plan (price=75000) has 365 days, is_popular=true",
+        "All plans have required fields: id, name, price, duration_days, is_active"
+      ]
+    },
+    "free_trial_activation_api": {
+      "status": "PASS",
+      "details": [
+        "POST /api/dashboard-subscription/activate-free requires authentication (401/403 without token)",
+        "New user can activate free trial successfully",
+        "Response includes message, plan_name, trial_end, duration_days",
+        "After activation, user has dashboard_subscription_status=active, dashboard_plan=Free",
+        "Second activation attempt returns 400 'You already have an active subscription'"
+      ]
+    },
+    "pricing_page_frontend": {
+      "status": "PASS",
+      "details": [
+        "Pricing page loads at /pricing",
+        "Plans fetched dynamically from /api/public/subscription-plans",
+        "Free plan card shows 'Free Trial' badge",
+        "Free plan shows 'Free' price and '17 days' duration",
+        "Free plan shows features: Subscription Management, Payment Verification",
+        "Free plan has 'Start Free Trial' button",
+        "Lifetime plan card shows 'Most Popular' badge",
+        "Lifetime plan shows 'Rs.75,000' price and '365 days' duration",
+        "Lifetime plan shows 8 features including Broadcasts, Analytics, Live Streaming",
+        "Lifetime plan has 'Get Started' button"
+      ]
+    },
+    "free_trial_activation_flow": {
+      "status": "PASS",
+      "details": [
+        "Click 'Start Free Trial' button triggers POST /api/dashboard-subscription/activate-free",
+        "Success toast shown after activation",
+        "User redirected to landing page (/) after activation",
+        "localStorage user object updated with active subscription status"
+      ]
+    },
+    "landing_page_logged_in_state": {
+      "status": "PASS",
+      "details": [
+        "Landing page shows 'Dashboard' button for logged-in users",
+        "Login/Start Free buttons hidden for logged-in users",
+        "Dashboard button has data-testid='nav-dashboard'"
+      ]
+    },
+    "registration_to_pricing_flow": {
+      "status": "PASS",
+      "details": [
+        "New user registration at /login",
+        "After successful registration, redirected to /pricing",
+        "User can immediately see and select plans"
+      ]
+    }
+  },
+
+  "backend_tests_summary": {
+    "total": 14,
+    "passed": 14,
+    "failed": 0,
+    "skipped": 0,
+    "test_classes": [
+      "TestPublicSubscriptionPlans (6 tests) - PASSED",
+      "TestFreeTrialActivation (4 tests) - PASSED",
+      "TestExistingUserWithActiveSubscription (1 test) - PASSED",
+      "TestPlanDataIntegrity (3 tests) - PASSED"
+    ]
+  },
+
+  "mocked_apis": {
+    "has_mocked_apis": true,
+    "mocked_apis_list": ["Resend Email OTP - domain verification pending by user", "Razorpay payment flow - not configured in preview env"]
+  }
+}

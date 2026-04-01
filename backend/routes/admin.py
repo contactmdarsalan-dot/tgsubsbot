@@ -1202,6 +1202,63 @@ async def get_public_subscription_plans():
     return plans
 
 
+@router.post("/dashboard-subscription/activate-free")
+async def activate_free_trial_self(user=Depends(get_current_user)):
+    """User self-activates free trial plan. Auto-sets trial_end_date and dashboard access."""
+    # Check if user already has an active subscription
+    if user.get("dashboard_subscription_status") == "active":
+        raise HTTPException(status_code=400, detail="You already have an active subscription")
+
+    # Get trial config
+    trial_cfg = await get_trial_config()
+    duration_days = trial_cfg.get("duration_days", 14)
+
+    # Find the free plan from bot_subscription_plans
+    free_plan = await db.bot_subscription_plans.find_one(
+        {"is_active": True, "price": {"$in": [0, 0.0, None]}}, {"_id": 0}
+    )
+    plan_name = free_plan["name"] if free_plan else "Free Trial"
+    plan_duration = free_plan.get("duration_days", duration_days) if free_plan else duration_days
+
+    trial_end = datetime.now(timezone.utc) + timedelta(days=plan_duration)
+
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {
+            "dashboard_subscription_status": "active",
+            "dashboard_plan": plan_name,
+            "dashboard_subscription_end": trial_end.isoformat(),
+            "trial_end_date": trial_end.isoformat(),
+            "is_trial": True,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+
+    # Create a record in dashboard_subscriptions for audit
+    sub_record = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "user_email": user.get("email", ""),
+        "user_name": user.get("name", ""),
+        "plan_id": free_plan["id"] if free_plan else "free_trial",
+        "plan_name": plan_name,
+        "amount": 0,
+        "status": "approved",
+        "source": "self_free_trial",
+        "duration_days": plan_duration,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "approved_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.dashboard_subscriptions.insert_one(sub_record)
+
+    return {
+        "message": f"Free trial activated! You have {plan_duration} days of access.",
+        "plan_name": plan_name,
+        "trial_end": trial_end.isoformat(),
+        "duration_days": plan_duration,
+    }
+
+
 @router.get("/saas/bot-plans")
 async def get_bot_plans(user: dict = Depends(get_current_user)):
     """Get all bot subscription plans with features"""
