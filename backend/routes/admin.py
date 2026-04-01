@@ -603,6 +603,157 @@ async def approve_subscription(request_id: str, user = Depends(get_current_user)
     
     return {"message": "Subscription approved"}
 
+
+# ============== SUBSCRIPTION MANAGEMENT (SUPER ADMIN) ==============
+
+@router.get("/saas/subscriptions")
+async def get_all_subscriptions(user: dict = Depends(get_current_user)):
+    """Get all dashboard subscriptions with user info"""
+    await verify_super_admin(user)
+    subs = await db.dashboard_subscriptions.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    # Enrich with user info
+    for s in subs:
+        u = await db.users.find_one({"id": s.get("user_id")}, {"_id": 0, "name": 1, "email": 1, "role": 1, "tenant_id": 1, "dashboard_plan": 1, "dashboard_subscription_status": 1, "dashboard_subscription_end": 1})
+        if u:
+            s["user_name"] = u.get("name", "")
+            s["user_email"] = u.get("email", "")
+            s["user_role"] = u.get("role", "")
+            s["tenant_id"] = u.get("tenant_id", "")
+            s["current_plan"] = u.get("dashboard_plan", "")
+            s["current_status"] = u.get("dashboard_subscription_status", "")
+            s["subscription_end"] = u.get("dashboard_subscription_end", "")
+    return subs
+
+@router.post("/saas/assign-subscription")
+async def assign_subscription_to_user(data: dict, user: dict = Depends(get_current_user)):
+    """Directly assign a dashboard subscription to a user (Super Admin only)"""
+    await verify_super_admin(user)
+    
+    user_id = data.get("user_id")
+    plan_id = data.get("plan_id")
+    duration_days = data.get("duration_days", 30)
+    
+    if not user_id or not plan_id:
+        raise HTTPException(status_code=400, detail="user_id and plan_id required")
+    
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    end_date = datetime.now(timezone.utc) + timedelta(days=duration_days)
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "dashboard_plan": plan_id,
+            "dashboard_subscription_status": "active",
+            "dashboard_subscription_end": end_date.isoformat()
+        }}
+    )
+    
+    # Create subscription record
+    sub_record = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "plan_id": plan_id,
+        "status": "approved",
+        "assigned_by": user["id"],
+        "duration_days": duration_days,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "approved_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.dashboard_subscriptions.insert_one(sub_record)
+    
+    await log_action("platform", user["id"], user.get("email", ""), "assign_subscription", "user", user_id, {"plan_id": plan_id, "duration_days": duration_days})
+    
+    return {"message": f"Subscription assigned to {target.get('email', user_id)}"}
+
+@router.delete("/saas/subscriptions/{sub_id}")
+async def delete_subscription(sub_id: str, user: dict = Depends(get_current_user)):
+    """Delete a subscription record"""
+    await verify_super_admin(user)
+    result = await db.dashboard_subscriptions.delete_one({"id": sub_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    return {"message": "Subscription deleted"}
+
+@router.get("/saas/tenant-admins")
+async def get_all_tenant_admins(user: dict = Depends(get_current_user)):
+    """Get ALL tenant admins across all tenants with subscription info"""
+    await verify_super_admin(user)
+    admins = await db.users.find(
+        {"role": "tenant_admin"},
+        {"_id": 0, "password": 0}
+    ).to_list(500)
+    # Enrich with tenant name
+    for a in admins:
+        t = await db.tenants.find_one({"tenant_id": a.get("tenant_id")}, {"_id": 0, "name": 1})
+        a["tenant_name"] = t.get("name", "") if t else ""
+    return admins
+
+@router.put("/saas/tenant-admins/{admin_id}")
+async def update_tenant_admin(admin_id: str, data: dict, user: dict = Depends(get_current_user)):
+    """Update a tenant admin's details"""
+    await verify_super_admin(user)
+    
+    update = {}
+    for field in ["name", "email", "tenant_id"]:
+        if field in data:
+            update[field] = data[field]
+    
+    if not update:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    result = await db.users.update_one({"id": admin_id, "role": "tenant_admin"}, {"$set": update})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Tenant admin not found")
+    return {"message": "Tenant admin updated"}
+
+@router.delete("/saas/tenant-admins/{admin_id}")
+async def delete_tenant_admin_direct(admin_id: str, user: dict = Depends(get_current_user)):
+    """Delete a tenant admin user"""
+    await verify_super_admin(user)
+    result = await db.users.delete_one({"id": admin_id, "role": "tenant_admin"})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Tenant admin not found")
+    return {"message": "Tenant admin deleted"}
+
+@router.post("/saas/tenant-admins")
+async def create_tenant_admin_direct(data: dict, user: dict = Depends(get_current_user)):
+    """Create a new tenant admin directly with tenant assignment"""
+    await verify_super_admin(user)
+    
+    email = data.get("email", "").strip()
+    password = data.get("password", "").strip()
+    name = data.get("name", "").strip()
+    tenant_id = data.get("tenant_id", "").strip()
+    
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password required")
+    
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already exists")
+    
+    import bcrypt
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    
+    new_user = {
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "name": name,
+        "password": hashed,
+        "role": "tenant_admin",
+        "tenant_id": tenant_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "dashboard_subscription_status": "inactive",
+    }
+    await db.users.insert_one(new_user)
+    
+    return {"message": f"Tenant admin created: {email}", "user_id": new_user["id"]}
+
+
+
 # ============== PLANS ROUTES ==============
 
 
