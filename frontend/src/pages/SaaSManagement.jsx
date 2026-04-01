@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Switch } from "../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Users, Package, Shield, Crown, Plus, Edit, Trash2, CheckCircle, XCircle, UserPlus, ArrowRightLeft, Loader2, CreditCard, Check, X } from "lucide-react";
+import { Users, Package, Shield, Crown, Plus, Edit, Trash2, CheckCircle, XCircle, UserPlus, ArrowRightLeft, Loader2, CreditCard, Check, X, Clock, RefreshCw, Zap, Settings } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const getAuth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
@@ -27,6 +27,14 @@ export default function SaaSManagement() {
   const [tenantAdmins, setTenantAdmins] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
   const [dashPlans, setDashPlans] = useState([]);
+
+  // Trial
+  const [trialConfig, setTrialConfig] = useState(null);
+  const [trialAccounts, setTrialAccounts] = useState([]);
+  const [trialConfigDialog, setTrialConfigDialog] = useState(false);
+  const [trialForm, setTrialForm] = useState({});
+  const [convertDialog, setConvertDialog] = useState(false);
+  const [convertForm, setConvertForm] = useState({ user_id: "", plan_id: "", duration_days: 30 });
 
   // Plan dialog
   const [planDialog, setPlanDialog] = useState(false);
@@ -66,10 +74,12 @@ export default function SaaSManagement() {
   const fetchTenantAdmins = useCallback(async () => { try { const { data } = await axios.get(`${API}/saas/tenant-admins`, getAuth()); setTenantAdmins(data); } catch (e) { console.error(e); } }, []);
   const fetchSubscriptions = useCallback(async () => { try { const { data } = await axios.get(`${API}/saas/subscriptions`, getAuth()); setSubscriptions(data); } catch (e) { console.error(e); } }, []);
   const fetchDashPlans = useCallback(async () => { try { const { data } = await axios.get(`${API}/admin/dashboard-plans`, getAuth()); setDashPlans(data); } catch (e) { console.error(e); } }, []);
+  const fetchTrialConfig = useCallback(async () => { try { const { data } = await axios.get(`${API}/trial/config`, getAuth()); setTrialConfig(data); setTrialForm(data); } catch (e) { console.error(e); } }, []);
+  const fetchTrialAccounts = useCallback(async () => { try { const { data } = await axios.get(`${API}/trial/accounts`, getAuth()); setTrialAccounts(data); } catch (e) { console.error(e); } }, []);
 
   useEffect(() => {
-    Promise.all([fetchTenants(), fetchPlans(), fetchTenantAdmins(), fetchSubscriptions(), fetchDashPlans()]).finally(() => setLoading(false));
-  }, [fetchTenants, fetchPlans, fetchTenantAdmins, fetchSubscriptions, fetchDashPlans]);
+    Promise.all([fetchTenants(), fetchPlans(), fetchTenantAdmins(), fetchSubscriptions(), fetchDashPlans(), fetchTrialConfig(), fetchTrialAccounts()]).finally(() => setLoading(false));
+  }, [fetchTenants, fetchPlans, fetchTenantAdmins, fetchSubscriptions, fetchDashPlans, fetchTrialConfig, fetchTrialAccounts]);
 
   // ===== PLAN CRUD =====
   const openPlanDialog = (plan = null) => {
@@ -141,6 +151,52 @@ export default function SaaSManagement() {
   };
   const removeBotAdmin = async (id) => { if (!window.confirm("Remove?")) return; try { await axios.delete(`${API}/saas/tenants/${selectedTenant.tenant_id}/admins/${id}`, getAuth()); toast.success("Removed"); const { data } = await axios.get(`${API}/saas/tenants/${selectedTenant.tenant_id}/admins`, getAuth()); setBotAdmins(data); fetchTenants(); } catch (e) { toast.error("Failed"); } };
 
+  // ===== TRIAL HANDLERS =====
+  const saveTrialConfig = async () => {
+    try {
+      await axios.put(`${API}/trial/config`, trialForm, getAuth());
+      toast.success("Trial settings saved!");
+      fetchTrialConfig();
+      setTrialConfigDialog(false);
+    } catch (e) { toast.error("Failed to save trial config"); }
+  };
+  const activateTrial = async (userId, days) => {
+    try {
+      await axios.post(`${API}/trial/activate`, { user_id: userId, duration_days: days }, getAuth());
+      toast.success("Trial activated!");
+      fetchTrialAccounts(); fetchTenantAdmins();
+    } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
+  };
+  const extendTrial = async (userId) => {
+    const days = prompt("Extend by how many days?", "7");
+    if (!days) return;
+    try {
+      await axios.post(`${API}/trial/extend`, { user_id: userId, extra_days: parseInt(days) }, getAuth());
+      toast.success(`Trial extended by ${days} days`);
+      fetchTrialAccounts();
+    } catch (e) { toast.error("Failed"); }
+  };
+  const cancelTrial = async (userId) => {
+    if (!window.confirm("Cancel this trial?")) return;
+    try {
+      await axios.post(`${API}/trial/cancel`, { user_id: userId }, getAuth());
+      toast.success("Trial cancelled");
+      fetchTrialAccounts(); fetchTenantAdmins();
+    } catch (e) { toast.error("Failed"); }
+  };
+  const openConvertDialog = (user) => {
+    setConvertForm({ user_id: user.id, plan_id: "", duration_days: 30 });
+    setConvertDialog(true);
+  };
+  const convertTrial = async () => {
+    try {
+      await axios.post(`${API}/trial/convert`, convertForm, getAuth());
+      toast.success("Converted to paid!");
+      fetchTrialAccounts(); fetchTenantAdmins(); fetchSubscriptions();
+      setConvertDialog(false);
+    } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
+  };
+
   if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
 
   return (
@@ -151,10 +207,11 @@ export default function SaaSManagement() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList data-testid="saas-tabs" className="grid grid-cols-4 w-full max-w-2xl">
+        <TabsList data-testid="saas-tabs" className="grid grid-cols-5 w-full max-w-3xl">
           <TabsTrigger value="tenants" data-testid="saas-tab-tenants"><Users className="w-4 h-4 mr-1" /> Tenants</TabsTrigger>
           <TabsTrigger value="admins" data-testid="saas-tab-admins"><Shield className="w-4 h-4 mr-1" /> Admins</TabsTrigger>
-          <TabsTrigger value="subscriptions" data-testid="saas-tab-subs"><CreditCard className="w-4 h-4 mr-1" /> Subscriptions</TabsTrigger>
+          <TabsTrigger value="subscriptions" data-testid="saas-tab-subs"><CreditCard className="w-4 h-4 mr-1" /> Subs</TabsTrigger>
+          <TabsTrigger value="trials" data-testid="saas-tab-trials"><Clock className="w-4 h-4 mr-1" /> Trials</TabsTrigger>
           <TabsTrigger value="plans" data-testid="saas-tab-plans"><Package className="w-4 h-4 mr-1" /> Plans</TabsTrigger>
         </TabsList>
 
@@ -308,6 +365,115 @@ export default function SaaSManagement() {
             </Table>
           </Card>
         </TabsContent>
+
+
+        {/* ===== TRIALS TAB ===== */}
+        <TabsContent value="trials" className="space-y-4">
+          {/* Trial Config Card */}
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg font-semibold text-foreground">Trial Management</h2>
+            <Button onClick={() => { setTrialForm(trialConfig || {}); setTrialConfigDialog(true); }} variant="outline" data-testid="trial-settings-btn"><Settings className="w-4 h-4 mr-1" /> Trial Settings</Button>
+          </div>
+
+          {/* Trial Stats */}
+          <div className="grid grid-cols-4 gap-4">
+            <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-foreground">{trialAccounts.length}</p><p className="text-xs text-muted-foreground">Total Trials</p></CardContent></Card>
+            <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-emerald-500">{trialAccounts.filter(a => !a.is_expired).length}</p><p className="text-xs text-muted-foreground">Active Trials</p></CardContent></Card>
+            <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-amber-500">{trialAccounts.filter(a => a.is_expired).length}</p><p className="text-xs text-muted-foreground">Expired</p></CardContent></Card>
+            <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-foreground">{trialConfig?.duration_days || 7}</p><p className="text-xs text-muted-foreground">Trial Days</p></CardContent></Card>
+          </div>
+
+          {/* Current Trial Config Summary */}
+          <Card>
+            <CardContent className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className={`w-3 h-3 rounded-full ${trialConfig?.enabled ? "bg-emerald-500" : "bg-red-500"}`} />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Auto Trial on Registration: <Badge variant={trialConfig?.auto_activate_on_register ? "default" : "secondary"}>{trialConfig?.auto_activate_on_register ? "ON" : "OFF"}</Badge></p>
+                  <p className="text-xs text-muted-foreground">Duration: {trialConfig?.duration_days || 7} days | Max Subs: {trialConfig?.max_subscribers_trial || 50} | Max Broadcasts: {trialConfig?.max_broadcasts_trial || 5}</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => { setAssignForm({ user_id: "", plan_id: "", duration_days: trialConfig?.duration_days || 7 }); setAssignSubDialog(true); }} data-testid="manual-trial-btn"><Plus className="w-3 h-3 mr-1" /> Give Trial</Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Trial Accounts Table */}
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Tenant</TableHead>
+                  <TableHead>Days Left</TableHead>
+                  <TableHead>Started</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {trialAccounts.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No trial accounts yet. Enable auto-trial in settings or assign manually.</TableCell></TableRow>
+                ) : trialAccounts.map((a, i) => (
+                  <TableRow key={a.id || i} data-testid={`trial-row-${i}`}>
+                    <TableCell>
+                      <p className="font-medium text-foreground">{a.name || a.email}</p>
+                      <p className="text-xs text-muted-foreground">{a.email}</p>
+                    </TableCell>
+                    <TableCell><Badge variant="outline">{a.tenant_name || a.tenant_id || "None"}</Badge></TableCell>
+                    <TableCell>
+                      {a.is_expired ? (
+                        <span className="text-red-500 font-bold">Expired</span>
+                      ) : (
+                        <span className={`font-bold ${a.days_remaining <= 2 ? "text-red-500" : a.days_remaining <= 5 ? "text-amber-500" : "text-emerald-500"}`}>
+                          {a.days_remaining} days
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{a.trial_started_at ? new Date(a.trial_started_at).toLocaleDateString() : "-"}</TableCell>
+                    <TableCell><Badge variant={a.is_expired ? "destructive" : "default"}>{a.is_expired ? "Expired" : "Active"}</Badge></TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => extendTrial(a.id)} title="Extend Trial" data-testid={`extend-trial-${i}`}><RefreshCw className="w-4 h-4 text-blue-400" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => openConvertDialog(a)} title="Convert to Paid" data-testid={`convert-trial-${i}`}><Zap className="w-4 h-4 text-emerald-500" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => cancelTrial(a.id)} title="Cancel Trial" data-testid={`cancel-trial-${i}`}><XCircle className="w-4 h-4 text-destructive" /></Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+
+          {/* Give Trial to Existing User */}
+          <Card>
+            <CardHeader><CardTitle className="text-sm">Activate Trial for Existing User</CardTitle></CardHeader>
+            <CardContent>
+              <div className="flex gap-3 items-end">
+                <div className="flex-1">
+                  <Label className="text-xs">Select User</Label>
+                  <Select onValueChange={v => setAssignForm(p => ({ ...p, user_id: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Choose user..." /></SelectTrigger>
+                    <SelectContent>
+                      {tenantAdmins.filter(a => a.dashboard_subscription_status !== "trial").map(a => (
+                        <SelectItem key={a.id} value={a.id}>{a.name || a.email} ({a.dashboard_subscription_status || "inactive"})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-28">
+                  <Label className="text-xs">Days</Label>
+                  <Input type="number" value={assignForm.duration_days || trialConfig?.duration_days || 7} onChange={e => setAssignForm(p => ({ ...p, duration_days: parseInt(e.target.value) || 7 }))} />
+                </div>
+                <Button onClick={() => { if (assignForm.user_id) activateTrial(assignForm.user_id, assignForm.duration_days || 7); else toast.error("Select a user"); }} disabled={!assignForm.user_id} data-testid="activate-trial-btn">
+                  <Clock className="w-4 h-4 mr-1" /> Activate Trial
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
 
         {/* ===== BOT PLANS TAB ===== */}
         <TabsContent value="plans" className="space-y-4">
@@ -481,6 +647,74 @@ export default function SaaSManagement() {
                 <Button onClick={assignBotAdmin} disabled={!newBotAdmin.telegram_user_id.trim()} className="w-full"><UserPlus className="w-4 h-4 mr-1" /> Assign Bot Admin</Button>
               </div>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== TRIAL CONFIG DIALOG ===== */}
+      <Dialog open={trialConfigDialog} onOpenChange={setTrialConfigDialog}>
+        <DialogContent className="max-w-md" data-testid="trial-config-dialog">
+          <DialogHeader><DialogTitle>Trial Settings</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label>Enable Trial System</Label>
+              <Switch checked={trialForm.enabled || false} onCheckedChange={v => setTrialForm(p => ({ ...p, enabled: v }))} />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label>Auto-activate on Registration</Label>
+              <Switch checked={trialForm.auto_activate_on_register || false} onCheckedChange={v => setTrialForm(p => ({ ...p, auto_activate_on_register: v }))} />
+            </div>
+            <div><Label>Trial Duration (days)</Label><Input type="number" value={trialForm.duration_days || 7} onChange={e => setTrialForm(p => ({ ...p, duration_days: parseInt(e.target.value) || 7 }))} /></div>
+            <div><Label>Max Subscribers (Trial)</Label><Input type="number" value={trialForm.max_subscribers_trial || 50} onChange={e => setTrialForm(p => ({ ...p, max_subscribers_trial: parseInt(e.target.value) || 50 }))} /></div>
+            <div><Label>Max Broadcasts/day (Trial)</Label><Input type="number" value={trialForm.max_broadcasts_trial || 5} onChange={e => setTrialForm(p => ({ ...p, max_broadcasts_trial: parseInt(e.target.value) || 5 }))} /></div>
+            <div><Label>Trial Plan Name</Label><Input value={trialForm.trial_plan_name || ""} onChange={e => setTrialForm(p => ({ ...p, trial_plan_name: e.target.value }))} placeholder="Free Trial" /></div>
+            <div className="flex items-center justify-between">
+              <Label>Show Upgrade Banner</Label>
+              <Switch checked={trialForm.show_upgrade_banner || false} onCheckedChange={v => setTrialForm(p => ({ ...p, show_upgrade_banner: v }))} />
+            </div>
+            <div>
+              <Label>On Trial Expiry</Label>
+              <Select value={trialForm.auto_expire_action || "deactivate"} onValueChange={v => setTrialForm(p => ({ ...p, auto_expire_action: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="deactivate">Deactivate Account</SelectItem>
+                  <SelectItem value="downgrade">Downgrade to Free</SelectItem>
+                  <SelectItem value="notify_only">Notify Only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Trial Features</Label>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {FEATURE_OPTIONS.map(f => (
+                  <Badge key={f} variant={(trialForm.features || []).includes(f) ? "default" : "outline"} className="cursor-pointer text-xs"
+                    onClick={() => setTrialForm(p => ({ ...p, features: (p.features || []).includes(f) ? p.features.filter(x => x !== f) : [...(p.features || []), f] }))}>{f}</Badge>
+                ))}
+              </div>
+            </div>
+            <Button className="w-full" onClick={saveTrialConfig}>Save Trial Settings</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== CONVERT TRIAL DIALOG ===== */}
+      <Dialog open={convertDialog} onOpenChange={setConvertDialog}>
+        <DialogContent className="max-w-md" data-testid="convert-dialog">
+          <DialogHeader><DialogTitle>Convert Trial to Paid</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Select Plan</Label>
+              <Select value={convertForm.plan_id} onValueChange={v => setConvertForm(p => ({ ...p, plan_id: v }))}>
+                <SelectTrigger><SelectValue placeholder="Choose paid plan..." /></SelectTrigger>
+                <SelectContent>
+                  {dashPlans.map(p => <SelectItem key={p.id} value={p.id}>{p.name} - {`\u20B9${p.price}`}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label>Duration (days)</Label><Input type="number" value={convertForm.duration_days} onChange={e => setConvertForm(p => ({ ...p, duration_days: parseInt(e.target.value) || 30 }))} /></div>
+            <Button className="w-full" onClick={convertTrial} disabled={!convertForm.plan_id}>
+              <Zap className="w-4 h-4 mr-1" /> Convert to Paid
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

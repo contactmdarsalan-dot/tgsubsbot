@@ -12,7 +12,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://admin-dashboard-mvp.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://trial-management-hub-1.preview.emergentagent.com')
 
 # Test credentials from test_credentials.md
 SUPER_ADMIN_EMAIL = "gamerxboys8958@gmail.com"
@@ -337,7 +337,7 @@ class TestCORSConfiguration:
         response = requests.options(
             f"{BASE_URL}/api/auth/login",
             headers={
-                "Origin": "https://admin-dashboard-mvp.preview.emergentagent.com",
+                "Origin": "https://trial-management-hub-1.preview.emergentagent.com",
                 "Access-Control-Request-Method": "POST"
             }
         )

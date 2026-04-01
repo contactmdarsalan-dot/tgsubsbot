@@ -13,6 +13,214 @@ import bcrypt
 router = APIRouter()
 
 
+# ============== TRIAL MANAGEMENT SYSTEM ==============
+
+DEFAULT_TRIAL_CONFIG = {
+    "id": "default_trial",
+    "enabled": True,
+    "duration_days": 7,
+    "auto_activate_on_register": True,
+    "features": ["Subscription Management", "Payment Verification", "Broadcasts", "Analytics"],
+    "max_subscribers_trial": 50,
+    "max_broadcasts_trial": 5,
+    "trial_plan_name": "Free Trial",
+    "show_upgrade_banner": True,
+    "auto_expire_action": "deactivate",
+    "updated_at": datetime.now(timezone.utc).isoformat(),
+}
+
+async def get_trial_config():
+    """Get trial configuration from DB, init if missing"""
+    cfg = await db.trial_config.find_one({"id": "default_trial"}, {"_id": 0})
+    if not cfg:
+        await db.trial_config.insert_one(DEFAULT_TRIAL_CONFIG.copy())
+        cfg = DEFAULT_TRIAL_CONFIG.copy()
+    return cfg
+
+@router.get("/trial/config")
+async def get_trial_config_api(user: dict = Depends(get_current_user)):
+    """Get current trial settings"""
+    await verify_super_admin(user)
+    return await get_trial_config()
+
+@router.put("/trial/config")
+async def update_trial_config(data: dict, user: dict = Depends(get_current_user)):
+    """Update trial configuration"""
+    await verify_super_admin(user)
+    
+    allowed = ["enabled", "duration_days", "auto_activate_on_register", "features",
+               "max_subscribers_trial", "max_broadcasts_trial", "trial_plan_name",
+               "show_upgrade_banner", "auto_expire_action"]
+    update = {k: v for k, v in data.items() if k in allowed}
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    
+    await db.trial_config.update_one(
+        {"id": "default_trial"},
+        {"$set": update},
+        upsert=True
+    )
+    await log_action("platform", user["id"], user.get("email", ""), "update_trial_config", "trial", "default_trial", update)
+    return {"message": "Trial config updated", **update}
+
+@router.get("/trial/accounts")
+async def get_trial_accounts(user: dict = Depends(get_current_user)):
+    """Get all users currently on trial"""
+    await verify_super_admin(user)
+    trials = await db.users.find(
+        {"dashboard_subscription_status": "trial"},
+        {"_id": 0, "password_hash": 0, "password": 0}
+    ).to_list(500)
+    
+    now = datetime.now(timezone.utc)
+    for t in trials:
+        end = t.get("dashboard_subscription_end")
+        if end:
+            if isinstance(end, str):
+                end = datetime.fromisoformat(end)
+            t["days_remaining"] = max(0, (end - now).days)
+            t["is_expired"] = now > end
+        else:
+            t["days_remaining"] = 0
+            t["is_expired"] = True
+        # Enrich with tenant name
+        tid = t.get("tenant_id")
+        if tid:
+            tn = await db.tenants.find_one({"tenant_id": tid}, {"_id": 0, "name": 1})
+            t["tenant_name"] = tn.get("name", "") if tn else ""
+        else:
+            t["tenant_name"] = ""
+    return trials
+
+@router.post("/trial/activate")
+async def activate_trial(data: dict, user: dict = Depends(get_current_user)):
+    """Manually activate trial for a user"""
+    await verify_super_admin(user)
+    
+    user_id = data.get("user_id")
+    duration_days = data.get("duration_days")
+    
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id required")
+    
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get trial config for default duration if not specified
+    if not duration_days:
+        cfg = await get_trial_config()
+        duration_days = cfg.get("duration_days", 7)
+    
+    end_date = datetime.now(timezone.utc) + timedelta(days=duration_days)
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "dashboard_subscription_status": "trial",
+            "dashboard_plan": "trial",
+            "dashboard_subscription_end": end_date.isoformat(),
+            "trial_started_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+    
+    await log_action("platform", user["id"], user.get("email", ""), "activate_trial", "user", user_id, {"duration_days": duration_days})
+    return {"message": f"Trial activated for {duration_days} days", "expires": end_date.isoformat()}
+
+@router.post("/trial/extend")
+async def extend_trial(data: dict, user: dict = Depends(get_current_user)):
+    """Extend a user's trial period"""
+    await verify_super_admin(user)
+    
+    user_id = data.get("user_id")
+    extra_days = data.get("extra_days", 7)
+    
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id required")
+    
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    current_end = target.get("dashboard_subscription_end")
+    if current_end and isinstance(current_end, str):
+        current_end = datetime.fromisoformat(current_end)
+    
+    base = max(current_end or datetime.now(timezone.utc), datetime.now(timezone.utc))
+    new_end = base + timedelta(days=extra_days)
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "dashboard_subscription_status": "trial",
+            "dashboard_subscription_end": new_end.isoformat(),
+        }}
+    )
+    
+    await log_action("platform", user["id"], user.get("email", ""), "extend_trial", "user", user_id, {"extra_days": extra_days})
+    return {"message": f"Trial extended by {extra_days} days", "new_end": new_end.isoformat()}
+
+@router.post("/trial/cancel")
+async def cancel_trial(data: dict, user: dict = Depends(get_current_user)):
+    """Cancel a user's trial"""
+    await verify_super_admin(user)
+    
+    user_id = data.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id required")
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "dashboard_subscription_status": "inactive",
+            "dashboard_plan": "",
+        }}
+    )
+    
+    await log_action("platform", user["id"], user.get("email", ""), "cancel_trial", "user", user_id, {})
+    return {"message": "Trial cancelled"}
+
+@router.post("/trial/convert")
+async def convert_trial_to_paid(data: dict, user: dict = Depends(get_current_user)):
+    """Convert trial account to paid subscription"""
+    await verify_super_admin(user)
+    
+    user_id = data.get("user_id")
+    plan_id = data.get("plan_id")
+    duration_days = data.get("duration_days", 30)
+    
+    if not user_id or not plan_id:
+        raise HTTPException(status_code=400, detail="user_id and plan_id required")
+    
+    end_date = datetime.now(timezone.utc) + timedelta(days=duration_days)
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "dashboard_subscription_status": "active",
+            "dashboard_plan": plan_id,
+            "dashboard_subscription_end": end_date.isoformat(),
+            "trial_converted_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+    
+    sub_record = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "plan_id": plan_id,
+        "status": "approved",
+        "source": "trial_conversion",
+        "assigned_by": user["id"],
+        "duration_days": duration_days,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "approved_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.dashboard_subscriptions.insert_one(sub_record)
+    
+    await log_action("platform", user["id"], user.get("email", ""), "convert_trial", "user", user_id, {"plan_id": plan_id})
+    return {"message": "Trial converted to paid subscription"}
+
+
+
 async def verify_super_admin(user: dict):
     """Verify user is a REAL super admin. Strict check — role-based only."""
     ensure_super_admin(user)
