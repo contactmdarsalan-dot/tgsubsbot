@@ -46,10 +46,11 @@ const FEATURE_OPTIONS = [
 ];
 
 export default function SaaSManagement() {
-  const [tab, setTab] = useState("plans");
+  const [tab, setTab] = useState("tenants");
   const [plans, setPlans] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [allDashAdmins, setAllDashAdmins] = useState([]);
 
   // Plan dialog
   const [planDialog, setPlanDialog] = useState(false);
@@ -93,9 +94,23 @@ export default function SaaSManagement() {
     } catch (e) { console.error(e); }
   }, []);
 
+  const fetchAllDashAdmins = useCallback(async () => {
+    try {
+      const { data: tList } = await axios.get(`${API}/saas/tenants`, getAuth());
+      const adminsArr = [];
+      for (const t of tList) {
+        try {
+          const { data: adms } = await axios.get(`${API}/saas/tenants/${t.tenant_id}/dashboard-admins`, getAuth());
+          adms.forEach(a => adminsArr.push({ ...a, tenant_name: t.name, tenant_id: t.tenant_id }));
+        } catch (e) { /* skip */ }
+      }
+      setAllDashAdmins(adminsArr);
+    } catch (e) { console.error(e); }
+  }, []);
+
   useEffect(() => {
-    Promise.all([fetchPlans(), fetchTenants()]).finally(() => setLoading(false));
-  }, [fetchPlans, fetchTenants]);
+    Promise.all([fetchPlans(), fetchTenants(), fetchAllDashAdmins()]).finally(() => setLoading(false));
+  }, [fetchPlans, fetchTenants, fetchAllDashAdmins]);
 
   // ======= PLAN CRUD =======
   const openPlanDialog = (plan = null) => {
@@ -290,8 +305,9 @@ export default function SaaSManagement() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList data-testid="saas-tabs">
-          <TabsTrigger value="plans" data-testid="saas-tab-plans"><Package className="w-4 h-4 mr-1" /> Bot Plans</TabsTrigger>
           <TabsTrigger value="tenants" data-testid="saas-tab-tenants"><Users className="w-4 h-4 mr-1" /> Tenants</TabsTrigger>
+          <TabsTrigger value="plans" data-testid="saas-tab-plans"><Package className="w-4 h-4 mr-1" /> Bot Plans</TabsTrigger>
+          <TabsTrigger value="admins" data-testid="saas-tab-admins"><Shield className="w-4 h-4 mr-1" /> Tenant Admins</TabsTrigger>
         </TabsList>
 
         {/* ===== BOT PLANS TAB ===== */}
@@ -443,6 +459,51 @@ export default function SaaSManagement() {
                           <Button variant="ghost" size="icon" onClick={() => deactivateTenant(t.tenant_id)} data-testid={`deactivate-${t.tenant_id}`} title="Deactivate"><XCircle className="w-4 h-4 text-destructive" /></Button>
                         )}
                       </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        </TabsContent>
+
+        {/* ===== TENANT ADMINS TAB ===== */}
+        <TabsContent value="admins" className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg font-semibold text-foreground">All Tenant Admins</h2>
+            <p className="text-sm text-muted-foreground">{allDashAdmins.length} admin(s) across {tenants.length} tenant(s)</p>
+          </div>
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Tenant</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {allDashAdmins.length === 0 ? (
+                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No tenant admins found. Add admins from the Tenants tab.</TableCell></TableRow>
+                ) : allDashAdmins.map((admin, i) => (
+                  <TableRow key={admin.user_id || i} data-testid={`dash-admin-row-${i}`}>
+                    <TableCell className="font-medium text-foreground">{admin.name || "-"}</TableCell>
+                    <TableCell className="text-foreground">{admin.email}</TableCell>
+                    <TableCell><Badge variant="outline">{admin.tenant_name || admin.tenant_id}</Badge></TableCell>
+                    <TableCell><Badge>{admin.role || "tenant_admin"}</Badge></TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" onClick={async () => {
+                        if (!window.confirm(`Remove ${admin.email} from ${admin.tenant_name}?`)) return;
+                        try {
+                          await axios.delete(`${API}/saas/tenants/${admin.tenant_id}/dashboard-admins/${admin.user_id}`, getAuth());
+                          toast.success("Admin removed");
+                          fetchAllDashAdmins();
+                        } catch (e) { toast.error("Failed to remove admin"); }
+                      }} data-testid={`remove-dash-admin-${i}`} title="Remove Admin">
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

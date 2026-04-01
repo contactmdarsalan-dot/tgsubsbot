@@ -120,6 +120,26 @@ code {
 .status-error { color: #F43F5E; }
 .status-info { color: #3B82F6; }
 
+/* Romance gradient button (Login page) */
+.btn-romance {
+    background: linear-gradient(135deg, #E11D48, #BE123C) !important;
+    color: white !important;
+    border: none !important;
+    box-shadow: 0 4px 14px hsla(346, 80%, 50%, 0.35);
+}
+
+.btn-romance:hover {
+    filter: brightness(1.1);
+}
+
+/* Romance text gradient */
+.text-gradient-romance {
+    background: linear-gradient(135deg, #FB7185, #F43F5E, #E11D48);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
 /* Scrollbar */
 .scrollbar-thin::-webkit-scrollbar {
     width: 4px;

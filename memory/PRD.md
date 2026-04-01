@@ -32,6 +32,13 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 - **P1 Security**: Telegram `initData` HMAC-SHA256 verification (`services/telegram_verify.py`), Audit logging (`services/audit.py`), Pydantic Enums, Query limits
 - All tested: Iteration 20 (P0, 29/29), Iteration 21 (P1, 39/39)
 
+### Phase 6: Super Admin Sidebar Separation + UI Fixes (Complete - 2026-04-01)
+- **Super Admin Sidebar**: Removed all Tenant Admin operations (Plans, Subscribers, Payments etc.) from Super Admin sidebar. Super Admin now sees ONLY Platform pages: Overview, Tenants, Revenue, Analytics, Subscriptions, Support, Users, Platform Settings
+- **Tenant Admin Management**: Added "Tenant Admins" tab to SaaS Management page showing all dashboard admins across tenants with remove capability
+- **Login Page Fix**: Added `btn-romance` and `text-gradient-romance` CSS classes for rose gradient buttons and text
+- **Button/Input Fix**: Fixed white text on outline/ghost buttons and input fields by adding explicit `text-foreground` class
+- **Build Fixes**: `CI=false` in build script, lodash pinned to 4.17.21, yarn.lock tracked in git, `.env` properly in `.gitignore`
+
 ### Phase 5: Frontend Refactoring & Design System (Complete - 2026-03-31)
 - Split `MiniApp.jsx` (1540L) into 6 subcomponents: `PlansScreen.jsx`, `StatusScreen.jsx`, `SupportScreen.jsx`, `ReferralScreen.jsx`, `AdminPanel.jsx`, `context.js` in `/pages/miniapp/`
 - Rewrote `Layout.jsx` with RBAC-aware sidebar (Platform + Operations sections for Super Admin)
