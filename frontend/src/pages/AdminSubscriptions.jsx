@@ -77,7 +77,8 @@ export default function AdminSubscriptions() {
   const fetchTenantUsers = async () => {
     try {
       const response = await axios.get(`${API}/tenant-users`, getAuthHeaders());
-      setTenantUsers(response.data.users || response.data);
+      const users = response.data.users || response.data || [];
+      setTenantUsers(Array.isArray(users) ? users : []);
       setPlatformStats(response.data.platform_stats || {});
     } catch (error) {
       console.error("Failed to fetch tenant users:", error);
@@ -87,7 +88,7 @@ export default function AdminSubscriptions() {
   const fetchPlatformUsers = async () => {
     try {
       const response = await axios.get(`${API}/platform-users`, getAuthHeaders());
-      setPlatformUsers(response.data);
+      setPlatformUsers(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error("Failed to fetch platform users:", error);
     }

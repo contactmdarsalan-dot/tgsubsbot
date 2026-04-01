@@ -1193,6 +1193,15 @@ async def get_miniapp_users_stats(user: dict = Depends(get_current_user)):
 
 # ============== SAAS MANAGEMENT - BOT SUBSCRIPTION PLANS ==============
 
+@router.get("/public/subscription-plans")
+async def get_public_subscription_plans():
+    """Public endpoint - returns active subscription plans for landing page (no auth)"""
+    plans = await db.bot_subscription_plans.find(
+        {"is_active": True}, {"_id": 0}
+    ).sort("price", 1).to_list(20)
+    return plans
+
+
 @router.get("/saas/bot-plans")
 async def get_bot_plans(user: dict = Depends(get_current_user)):
     """Get all bot subscription plans with features"""

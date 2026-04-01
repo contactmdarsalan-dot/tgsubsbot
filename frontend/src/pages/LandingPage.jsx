@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, Play, Zap, Users, TrendingUp, Radio, Gift, Shield, ChevronRight, Star, Check, Wallet, Send, Crown } from "lucide-react";
+import { ArrowRight, Play, Zap, Users, TrendingUp, Radio, Gift, Shield, ChevronRight, Star, Check, Wallet, Send, Crown, Loader2 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
+import axios from "axios";
 
 const chartData = [
   { v: 2000 }, { v: 3200 }, { v: 2800 }, { v: 5100 }, { v: 4200 },
@@ -35,10 +36,11 @@ const steps = [
   { num: "03", title: "Start Earning", desc: "Share your link. Get paid. Grow your empire." },
 ];
 
-const plans = [
-  { name: "Starter", price: "Free", period: "", features: ["Up to 100 subscribers", "1 subscription plan", "Basic analytics", "Auto access control", "Email support"], cta: "Start Free" },
-  { name: "Pro", price: "Rs.1,999", period: "/mo", features: ["Unlimited subscribers", "Unlimited plans", "AI payment verification", "Paid live streams", "Paid posts & blur", "Broadcast messages", "Referral system", "Priority support"], cta: "Go Pro", popular: true },
-  { name: "Enterprise", price: "Rs.4,999", period: "/mo", features: ["Everything in Pro", "Multi-admin access", "Custom branding", "Razorpay integration", "Webhook notifications", "Export data (CSV)", "Dedicated support", "White-label option"], cta: "Contact Sales" },
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+const fallbackPlans = [
+  { name: "Starter", price: 0, duration_days: 17, features: ["Up to 100 subscribers", "1 subscription plan", "Basic analytics", "Auto access control"], is_popular: false },
+  { name: "Pro", price: 1999, duration_days: 30, features: ["Unlimited subscribers", "Unlimited plans", "AI payment verification", "Paid live streams", "Broadcast messages", "Referral system"], is_popular: true },
 ];
 
 const fadeUp = { hidden: { opacity: 0, y: 30 }, visible: { opacity: 1, y: 0, transition: { duration: 0.6 } } };
@@ -48,10 +50,21 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const [marqueeIdx, setMarqueeIdx] = useState(0);
   const isLoggedIn = !!localStorage.getItem("token");
+  const [plans, setPlans] = useState([]);
+  const [plansLoading, setPlansLoading] = useState(true);
 
   useEffect(() => {
     const t = setInterval(() => setMarqueeIdx(i => (i + 1) % payouts.length), 2500);
     return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    axios.get(`${API}/public/subscription-plans`)
+      .then(res => {
+        setPlans(res.data?.length > 0 ? res.data : fallbackPlans);
+      })
+      .catch(() => setPlans(fallbackPlans))
+      .finally(() => setPlansLoading(false));
   }, []);
 
   return (
@@ -368,36 +381,82 @@ export default function LandingPage() {
             </motion.h2>
             <motion.p variants={fadeUp} className="text-white/50 mt-3">The tool pays for itself. One subscriber covers your monthly cost.</motion.p>
           </motion.div>
-          <div className="grid md:grid-cols-3 gap-6 items-stretch">
-            {plans.map((p, i) => (
-              <motion.div key={i} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}
-                className={`relative rounded-2xl p-8 border transition-all ${p.popular ? "bg-[#0A0305] border-[#E11D48] scale-105 shadow-[0_0_40px_rgba(225,29,72,0.2)]" : "bg-[#0A0305] border-white/10 hover:border-white/20"}`}
-                data-testid={`pricing-${p.name.toLowerCase()}`}
-              >
-                {p.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#E11D48] text-white text-xs font-bold px-4 py-1 rounded-full">Most Popular</div>
-                )}
-                <p className="text-sm text-white/40 uppercase tracking-wider mb-2">{p.name}</p>
-                <div className="mb-6">
-                  <span style={{ fontFamily: "Unbounded" }} className="text-4xl font-black">{p.price}</span>
-                  <span className="text-white/40">{p.period}</span>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  {p.features.map((f, j) => (
-                    <li key={j} className="flex items-center gap-2 text-sm text-white/70">
-                      <Check className="w-4 h-4 text-[#E11D48] flex-shrink-0" /> {f}
-                    </li>
-                  ))}
-                </ul>
-                <button onClick={() => navigate("/login")}
-                  className={`w-full py-3 rounded-full font-bold text-sm transition-all ${p.popular ? "bg-[#E11D48] hover:bg-[#BE123C] text-white shadow-[0_0_20px_rgba(225,29,72,0.4)] hover:scale-105" : "bg-white/10 hover:bg-white/20 text-white"}`}
-                  data-testid={`pricing-cta-${p.name.toLowerCase()}`}
-                >
-                  {p.cta} <ArrowRight className="inline w-4 h-4 ml-1" />
-                </button>
-              </motion.div>
-            ))}
-          </div>
+
+          {plansLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-8 h-8 text-[#E11D48] animate-spin" />
+            </div>
+          ) : (
+            <div className={`grid gap-6 items-stretch ${plans.length === 1 ? "max-w-md mx-auto" : plans.length === 2 ? "md:grid-cols-2 max-w-3xl mx-auto" : "md:grid-cols-3"}`}>
+              {plans.map((p, i) => {
+                const isFree = !p.price || p.price === 0;
+                const isPopular = p.is_popular || false;
+                const durationLabel = p.duration_days >= 365 ? `${Math.floor(p.duration_days / 365)} yr` : p.duration_days >= 30 ? `${Math.floor(p.duration_days / 30)} mo` : `${p.duration_days}d`;
+
+                // Build feature badges
+                const badges = [];
+                if (p.ai_verify_enabled) badges.push("AI Verify");
+                if (p.live_stream_enabled) badges.push("Live");
+                if (p.paid_posts_enabled) badges.push("Paid Posts");
+
+                return (
+                  <motion.div key={p.id || i} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}
+                    className={`relative rounded-2xl p-8 border transition-all ${isPopular ? "bg-[#0A0305] border-[#E11D48] scale-105 shadow-[0_0_40px_rgba(225,29,72,0.2)]" : "bg-[#0A0305] border-white/10 hover:border-white/20"}`}
+                    data-testid={`pricing-${p.name.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    {isPopular && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#E11D48] text-white text-xs font-bold px-4 py-1 rounded-full">Most Popular</div>
+                    )}
+                    <div className="flex items-center gap-2 mb-2">
+                      <Crown className="w-4 h-4 text-[#E11D48]" />
+                      <p className="text-sm text-white/40 uppercase tracking-wider font-bold">{p.name}</p>
+                    </div>
+                    <div className="mb-4">
+                      <span style={{ fontFamily: "Unbounded" }} className="text-4xl font-black">{isFree ? "Free" : `Rs.${p.price.toLocaleString()}`}</span>
+                      <span className="text-white/40 ml-1">/ {durationLabel}</span>
+                    </div>
+
+                    {/* Limits */}
+                    <div className="flex gap-4 mb-4 text-xs text-white/50">
+                      {p.max_subscribers && <span>Max Subscribers: {p.max_subscribers.toLocaleString()}</span>}
+                      {p.max_broadcasts && <span>Max Broadcasts: {p.max_broadcasts}/day</span>}
+                    </div>
+
+                    {/* Feature badges */}
+                    {badges.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-5">
+                        {badges.map((b, bi) => (
+                          <span key={bi} className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-white/8 text-white/60 border border-white/10">{b}</span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Features list */}
+                    {p.features?.length > 0 && (
+                      <>
+                        <div className="border-t border-white/6 my-4" />
+                        <p className="text-xs font-bold text-white/50 uppercase tracking-wider mb-3">Features</p>
+                        <ul className="space-y-2.5 mb-8">
+                          {p.features.map((f, j) => (
+                            <li key={j} className="flex items-center gap-2 text-sm text-white/70">
+                              <Check className="w-4 h-4 text-[#E11D48] flex-shrink-0" /> {f}
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+
+                    <button onClick={() => navigate("/login")}
+                      className={`w-full py-3 rounded-full font-bold text-sm transition-all mt-auto ${isPopular ? "bg-[#E11D48] hover:bg-[#BE123C] text-white shadow-[0_0_20px_rgba(225,29,72,0.4)] hover:scale-105" : "bg-white/10 hover:bg-white/20 text-white"}`}
+                      data-testid={`pricing-cta-${p.name.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      {isFree ? "Start Free" : "Get Started"} <ArrowRight className="inline w-4 h-4 ml-1" />
+                    </button>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 
