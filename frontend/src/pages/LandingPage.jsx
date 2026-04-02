@@ -249,7 +249,7 @@ export default function LandingPage() {
 
           <motion.div initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="flex justify-center">
             {/* Phone Mockup */}
-            <div className="relative w-72 rounded-[2.5rem] border-[6px] border-zinc-800 overflow-hidden shadow-[0_0_60px_rgba(191,255,0,0.2)]" className="bg-black">
+            <div className="relative w-72 rounded-[2.5rem] border-[6px] border-zinc-800 overflow-hidden shadow-[0_0_60px_rgba(191,255,0,0.15)] bg-black">
               <div className="h-[520px] relative">
                 {/* Live Header */}
                 <div className="absolute top-0 left-0 right-0 p-4 z-10" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.8), transparent)" }}>
@@ -266,10 +266,10 @@ export default function LandingPage() {
                   </div>
                 </div>
                 {/* Live Content Area */}
-                <div className="h-full bg-gradient-to-br from-zinc-950 via-black to-zinc-950 flex items-center justify-center">
+                <div className="h-full bg-gradient-to-br from-zinc-950 via-black to-zinc-950 flex items-center justify-center pb-48">
                   <div className="text-center">
-                    <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#BFFF00] to-[#BEF264] flex items-center justify-center mx-auto mb-3 shadow-[0_0_40px_rgba(191,255,0,0.5)]">
-                      <Radio className="w-8 h-8 text-black" />
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-r from-[#BFFF00] to-[#BEF264] flex items-center justify-center mx-auto mb-3 shadow-[0_0_30px_rgba(191,255,0,0.4)]">
+                      <Radio className="w-7 h-7 text-black" />
                     </div>
                     <p className="text-white/40 text-sm">Premium Session</p>
                   </div>
@@ -292,7 +292,7 @@ export default function LandingPage() {
                   <div className="flex items-center gap-2">
                     <div className="flex-1 bg-white/10 rounded-full px-3 py-2 text-xs text-white/30">Send a message...</div>
                     <div className="w-8 h-8 rounded-full bg-[#BFFF00] flex items-center justify-center">
-                      <Gift className="w-4 h-4 text-white" />
+                      <Gift className="w-4 h-4 text-black" />
                     </div>
                   </div>
                 </div>
