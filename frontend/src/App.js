@@ -39,6 +39,7 @@ import CreatorOnboard from "./pages/CreatorOnboard";
 import CreatorDashboard from "./pages/CreatorDashboard";
 import SaaSManagement from "./pages/SaaSManagement";
 import TenantProfile from "./pages/TenantProfile";
+import TeamManagement from "./pages/TeamManagement";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -172,6 +173,7 @@ function AppRouter() {
         <Route path="profile" element={<Profile />} />
         <Route path="saas-management" element={<SaaSManagement />} />
         <Route path="tenant/:tenantId" element={<TenantProfile />} />
+        <Route path="team" element={<TeamManagement />} />
       </Route>
     </Routes>
   );

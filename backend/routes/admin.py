@@ -1040,48 +1040,87 @@ async def get_all_subscriptions(user: dict = Depends(get_current_user)):
     return subs
 
 @router.post("/saas/assign-subscription")
-async def assign_subscription_to_user(data: dict, user: dict = Depends(get_current_user)):
-    """Directly assign a dashboard subscription to a user (Super Admin only)"""
+async def assign_subscription_to_tenant(data: dict, user: dict = Depends(get_current_user)):
+    """Assign a dashboard subscription to a tenant (all admins of that tenant). Super Admin only."""
     await verify_super_admin(user)
     
-    user_id = data.get("user_id")
+    tenant_id = data.get("tenant_id")
     plan_id = data.get("plan_id")
     duration_days = data.get("duration_days", 30)
+    user_id = data.get("user_id")  # backward compat
     
-    if not user_id or not plan_id:
-        raise HTTPException(status_code=400, detail="user_id and plan_id required")
-    
-    target = await db.users.find_one({"id": user_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="User not found")
+    if not plan_id:
+        raise HTTPException(status_code=400, detail="plan_id required")
     
     end_date = datetime.now(timezone.utc) + timedelta(days=duration_days)
     
-    await db.users.update_one(
-        {"id": user_id},
-        {"$set": {
-            "dashboard_plan": plan_id,
-            "dashboard_subscription_status": "active",
-            "dashboard_subscription_end": end_date.isoformat()
-        }}
-    )
+    if tenant_id:
+        # Assign to ALL admins of this tenant
+        result = await db.users.update_many(
+            {"tenant_id": tenant_id, "role": "tenant_admin"},
+            {"$set": {
+                "dashboard_plan": plan_id,
+                "dashboard_subscription_status": "active",
+                "dashboard_subscription_end": end_date.isoformat()
+            }}
+        )
+        # Also update the tenant record
+        await db.tenants.update_one(
+            {"tenant_id": tenant_id},
+            {"$set": {
+                "subscription_plan": plan_id,
+                "subscription_status": "active",
+                "subscription_end": end_date.isoformat(),
+            }}
+        )
+        
+        sub_record = {
+            "id": str(uuid.uuid4()),
+            "tenant_id": tenant_id,
+            "user_id": user_id or tenant_id,
+            "plan_id": plan_id,
+            "status": "approved",
+            "assigned_by": user["id"],
+            "duration_days": duration_days,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "approved_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.dashboard_subscriptions.insert_one(sub_record)
+        
+        tenant = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0, "name": 1})
+        await log_action("platform", user["id"], user.get("email", ""), "assign_subscription", "tenant", tenant_id, {"plan_id": plan_id, "duration_days": duration_days})
+        return {"message": f"Subscription assigned to tenant {tenant.get('name', tenant_id)} ({result.modified_count} admins updated)"}
     
-    # Create subscription record
-    sub_record = {
-        "id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "plan_id": plan_id,
-        "status": "approved",
-        "assigned_by": user["id"],
-        "duration_days": duration_days,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "approved_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await db.dashboard_subscriptions.insert_one(sub_record)
+    elif user_id:
+        # Legacy: assign to individual user
+        target = await db.users.find_one({"id": user_id}, {"_id": 0})
+        if not target:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        await db.users.update_one(
+            {"id": user_id},
+            {"$set": {
+                "dashboard_plan": plan_id,
+                "dashboard_subscription_status": "active",
+                "dashboard_subscription_end": end_date.isoformat()
+            }}
+        )
+        sub_record = {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "plan_id": plan_id,
+            "status": "approved",
+            "assigned_by": user["id"],
+            "duration_days": duration_days,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "approved_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.dashboard_subscriptions.insert_one(sub_record)
+        await log_action("platform", user["id"], user.get("email", ""), "assign_subscription", "user", user_id, {"plan_id": plan_id, "duration_days": duration_days})
+        return {"message": f"Subscription assigned to {target.get('email', user_id)}"}
     
-    await log_action("platform", user["id"], user.get("email", ""), "assign_subscription", "user", user_id, {"plan_id": plan_id, "duration_days": duration_days})
-    
-    return {"message": f"Subscription assigned to {target.get('email', user_id)}"}
+    else:
+        raise HTTPException(status_code=400, detail="tenant_id or user_id required")
 
 @router.delete("/saas/subscriptions/{sub_id}")
 async def delete_subscription(sub_id: str, user: dict = Depends(get_current_user)):

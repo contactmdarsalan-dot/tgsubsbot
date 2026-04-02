@@ -335,3 +335,114 @@ async def lookup_tenant_by_bot(bot_username: str):
     if not tenant:
         return {"found": False}
     return {"found": True, "tenant_id": tenant["tenant_id"], "name": tenant.get("name", "")}
+
+
+# ===== TENANT OWNER: TEAM MANAGEMENT =====
+
+@router.get("/team")
+async def get_tenant_team(user=Depends(get_current_user)):
+    """Tenant owner lists all admins in their own tenant"""
+    if user.get("role") not in ("tenant_admin", "admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    tenant_id = user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant assigned")
+    
+    admins = await db.users.find(
+        {"tenant_id": tenant_id, "role": "tenant_admin"},
+        {"_id": 0, "password": 0, "password_hash": 0}
+    ).to_list(100)
+    return admins
+
+
+@router.post("/team")
+async def create_tenant_team_member(data: dict, user=Depends(get_current_user)):
+    """Tenant owner creates a new admin for their own tenant"""
+    if user.get("role") not in ("tenant_admin", "admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    tenant_id = user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant assigned")
+    
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "").strip()
+    name = data.get("name", "").strip()
+    
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password required")
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already exists")
+    
+    from services.auth import hash_password
+    hashed = hash_password(password)
+    
+    new_admin = {
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "name": name or email.split("@")[0],
+        "password_hash": hashed,
+        "role": "tenant_admin",
+        "tenant_id": tenant_id,
+        "dashboard_subscription_status": "active",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": user["id"],
+    }
+    await db.users.insert_one(new_admin)
+    del new_admin["password_hash"]
+    new_admin.pop("_id", None)
+    
+    return {"message": f"Team member created: {email}", "admin": new_admin}
+
+
+@router.delete("/team/{admin_id}")
+async def remove_tenant_team_member(admin_id: str, user=Depends(get_current_user)):
+    """Tenant owner removes a team member from their tenant"""
+    if user.get("role") not in ("tenant_admin", "admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    tenant_id = user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant assigned")
+    
+    # Can't delete yourself
+    if admin_id == user["id"]:
+        raise HTTPException(status_code=400, detail="Cannot remove yourself")
+    
+    result = await db.users.delete_one({"id": admin_id, "tenant_id": tenant_id, "role": "tenant_admin"})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Team member not found")
+    
+    return {"message": "Team member removed"}
+
+
+@router.put("/team/{admin_id}/reset-password")
+async def reset_team_member_password(admin_id: str, data: dict, user=Depends(get_current_user)):
+    """Tenant owner resets a team member's password"""
+    if user.get("role") not in ("tenant_admin", "admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    tenant_id = user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant assigned")
+    
+    new_password = data.get("password", "").strip()
+    if not new_password or len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    
+    from services.auth import hash_password
+    hashed = hash_password(new_password)
+    
+    result = await db.users.update_one(
+        {"id": admin_id, "tenant_id": tenant_id, "role": "tenant_admin"},
+        {"$set": {"password_hash": hashed, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Team member not found")
+    
+    return {"message": "Password reset successfully"}

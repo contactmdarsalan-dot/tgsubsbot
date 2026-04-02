@@ -76,23 +76,17 @@ def _generate_upi_qr(upi_id: str, upi_name: str = "") -> str:
     qr.add_data(upi_url)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
-    # Save to buffer and upload to object storage
-    import io
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    img_bytes = buf.getvalue()
-    from services.storage import upload_file as storage_upload
-    result = storage_upload(img_bytes, f"qr_auto_{upi_id.replace('@','_')}.png", "image/png", prefix="qr-codes")
-    return result["url"]
+    uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+    os.makedirs(uploads_path, exist_ok=True)
+    filename = f"qr_auto_{upi_id.replace('@','_')}.png"
+    filepath = os.path.join(uploads_path, filename)
+    img.save(filepath)
+    return f"/api/uploads/{filename}"
 
 
 def _is_valid_qr_file(qr_url: str) -> bool:
-    if not qr_url:
-        return False
-    # Object storage URLs (/api/files/...) or external URLs are considered valid
-    if qr_url.startswith("http") or qr_url.startswith("/api/files/"):
-        return True
-    # Local file check for backward compat
+    if not qr_url or qr_url.startswith("http"):
+        return bool(qr_url and qr_url.startswith("http"))
     filename = qr_url.split("/")[-1]
     uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
     filepath = os.path.join(uploads_path, filename)
@@ -348,9 +342,14 @@ async def miniapp_upload_screenshot(
     if len(image_bytes) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 10MB)")
 
-    from services.storage import upload_file as storage_upload
-    result = storage_upload(image_bytes, file.filename or "screenshot.jpg", file.content_type, prefix="screenshots")
-    screenshot_url = result["url"]
+    uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+    os.makedirs(uploads_path, exist_ok=True)
+    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"ss_{uuid.uuid4().hex[:10]}.{ext}"
+    with open(os.path.join(uploads_path, filename), "wb") as f:
+        f.write(image_bytes)
+
+    screenshot_url = f"/api/uploads/{filename}"
 
     settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
     expected_upi = settings.get("payment_upi_id") or settings.get("upi_id", "")
@@ -678,9 +677,14 @@ async def miniapp_live_ticket_upload_screenshot(
     if len(image_bytes) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 10MB)")
 
-    from services.storage import upload_file as storage_upload
-    result = storage_upload(image_bytes, file.filename or "live_screenshot.jpg", file.content_type, prefix="live-screenshots")
-    screenshot_url = result["url"]
+    uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+    os.makedirs(uploads_path, exist_ok=True)
+    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"live_ss_{uuid.uuid4().hex[:10]}.{ext}"
+    with open(os.path.join(uploads_path, filename), "wb") as f:
+        f.write(image_bytes)
+
+    screenshot_url = f"/api/uploads/{filename}"
 
     settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
     expected_upi = settings.get("payment_upi_id") or settings.get("upi_id", "")

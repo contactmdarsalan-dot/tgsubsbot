@@ -46,6 +46,7 @@ const tenantOpsNav = [
 const tenantOnlyNav = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   ...tenantOpsNav,
+  { path: "/dashboard/team", label: "Team", icon: UserCog },
   { path: "/dashboard/support", label: "Support", icon: MessageSquare },
 ];
 

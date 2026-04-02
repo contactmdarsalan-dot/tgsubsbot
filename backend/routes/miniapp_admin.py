@@ -337,10 +337,14 @@ async def miniapp_admin_create_paid_post_with_media(
     if len(file_bytes) > 50 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 50MB)")
 
-    from services.storage import upload_file as storage_upload
-    result = storage_upload(file_bytes, file.filename or "post_media.jpg", file.content_type, prefix="paid-posts")
-    media_url = result["url"]
-    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
+    uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+    os.makedirs(uploads_path, exist_ok=True)
+    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"post_{uuid.uuid4().hex[:10]}.{ext}"
+    with open(os.path.join(uploads_path, filename), "wb") as f:
+        f.write(file_bytes)
+
+    media_url = f"/api/uploads/{filename}"
 
     if content_type == "auto":
         if ext.lower() in ("mp4", "mov", "avi", "mkv", "webm"):
@@ -354,7 +358,7 @@ async def miniapp_admin_create_paid_post_with_media(
     post = {
         "id": post_id, "channel_id": channel_id, "caption": caption, "price": price,
         "blur_level": blur_level, "content_type": content_type, "original_file_id": "",
-        "media_url": media_url, "media_filename": file.filename or "post_media.jpg", "original_message_id": 0,
+        "media_url": media_url, "media_filename": filename, "original_message_id": 0,
         "blurred_message_id": 0, "is_active": True, "unlock_count": 0,
         "created_by": admin.get("name", "Admin"), "tenant_id": admin.get("tenant_id", DEFAULT_TENANT_ID),
         "created_at": datetime.now(timezone.utc).isoformat(),

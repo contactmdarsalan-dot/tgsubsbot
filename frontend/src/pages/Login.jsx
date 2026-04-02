@@ -15,7 +15,7 @@ const handleGoogleLogin = () => {
 };
 
 export default function Login() {
-  const [isLogin, setIsLogin] = useState(false);
+  const [isLogin, setIsLogin] = useState(true);
   const [loginMethod, setLoginMethod] = useState("email");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);

@@ -150,8 +150,8 @@ export default function SaaSManagement() {
   };
 
   // ===== SUBSCRIPTION MANAGEMENT =====
-  const openAssignSubDialog = (admin = null) => {
-    setAssignForm({ user_id: admin?.id || "", plan_id: "", duration_days: 30 });
+  const openAssignSubDialog = (target = null) => {
+    setAssignForm({ user_id: target?.id || "", tenant_id: target?.tenant_id || "", plan_id: "", duration_days: 30 });
     setAssignSubDialog(true);
   };
   const assignSub = async () => {
@@ -681,14 +681,18 @@ export default function SaaSManagement() {
       {/* ===== ASSIGN SUBSCRIPTION DIALOG ===== */}
       <Dialog open={assignSubDialog} onOpenChange={setAssignSubDialog}>
         <DialogContent className="max-w-md" data-testid="assign-sub-dialog">
-          <DialogHeader><DialogTitle>Assign Subscription</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Assign Subscription to Tenant</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label>Select Admin</Label>
-              <Select value={assignForm.user_id} onValueChange={v => setAssignForm(p => ({ ...p, user_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select tenant admin" /></SelectTrigger>
+              <Label>Select Tenant</Label>
+              <Select value={assignForm.tenant_id || ""} onValueChange={v => {
+                const selectedTenant = tenants.find(t => t.tenant_id === v);
+                const adminOfTenant = tenantAdmins.find(a => a.tenant_id === v);
+                setAssignForm(p => ({ ...p, tenant_id: v, user_id: adminOfTenant?.id || "" }));
+              }}>
+                <SelectTrigger><SelectValue placeholder="Select tenant" /></SelectTrigger>
                 <SelectContent>
-                  {tenantAdmins.map(a => <SelectItem key={a.id} value={a.id}>{a.name || a.email} ({a.tenant_name || "No tenant"})</SelectItem>)}
+                  {tenants.map(t => <SelectItem key={t.tenant_id} value={t.tenant_id}>{t.name} ({t.tenant_id})</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -702,8 +706,9 @@ export default function SaaSManagement() {
               </Select>
             </div>
             <div><Label>Duration (days)</Label><Input type="number" value={assignForm.duration_days} onChange={e => setAssignForm(p => ({ ...p, duration_days: parseInt(e.target.value) || 30 }))} /></div>
-            <Button className="w-full" onClick={assignSub} disabled={!assignForm.user_id || !assignForm.plan_id}>
-              <CreditCard className="w-4 h-4 mr-1" /> Assign Subscription
+            <p className="text-xs text-muted-foreground">All admins of this tenant will get dashboard access.</p>
+            <Button className="w-full" onClick={assignSub} disabled={!assignForm.tenant_id || !assignForm.plan_id}>
+              <CreditCard className="w-4 h-4 mr-1" /> Assign to Tenant
             </Button>
           </div>
         </DialogContent>
