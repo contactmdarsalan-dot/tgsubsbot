@@ -55,7 +55,27 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 - **`miniapp_user.py` fixes**: upload-screenshot uses bot_user's tenant_id instead of hardcoded DEFAULT
 - Tested: Iteration 31 (ALL 24 TESTS PASSED - cross-tenant access fully blocked)
 
-### Phase 14: Mini App Tenant Resolution Fix (Complete - 2026-04-02)
+### Phase 15: Mini App Video Call, Live Stream, Chat & Dashboard Hub (Complete - 2026-04-02)
+- **Video Call Booking System**:
+  - User books video call after purchasing plan → `POST /api/miniapp/book-video-call`
+  - Bookings show in Mini App "Calls" tab and Dashboard "Video Calls" tab
+  - Status flow: pending → scheduled → in_call → completed
+  - Admin schedule/start/complete/reject from Dashboard
+  - WebRTC 1:1 video call via WebSocket signaling (`/api/ws/call/{room_id}`)
+- **Creator Live Stream**:
+  - Dashboard "Go Live" → creates live session with WebRTC
+  - Mini App users watch live stream in "Live" tab
+  - Live chat alongside stream via WebSocket (`/api/ws/live/{session_id}`)
+- **In-App Private Messaging**:
+  - Mini App "Chat" tab → user sends message to creator
+  - Dashboard "Messages" tab → creator sees conversations with unread counts, replies
+  - Real-time WebSocket chat (`/api/ws/chat/{type}/{id}`)
+- **Dashboard Sidebar Restructured**:
+  - TELEGRAM BOT section (17 items)
+  - MINI APP section (Mini App Hub)
+  - ACCOUNT section (Team, Support)
+- Uses existing collections: `live_sessions` (with `session_type` + `source` fields), `chat_messages` (with `chat_type` + `source`)
+- Tested: Iteration 33 (ALL 28 TESTS PASSED - backend 100%, frontend 100%)
 - **Root cause**: Mini App frontend was NOT passing tenant_id to ANY backend API calls → all queries defaulted to "default" tenant which had 0 plans
 - **New endpoints**: 
   - `/api/miniapp/resolve-tenant/{userId}` - fallback: bot_users → settings
