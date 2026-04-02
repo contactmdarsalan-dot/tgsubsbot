@@ -127,7 +127,7 @@ export default function MiniAppPayments() {
                     <Button size="sm" onClick={() => handleAction(p.id, "approve")} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs" data-testid={`approve-${p.id}`}>
                       <CheckCircle className="w-3 h-3 mr-1" /> Approve
                     </Button>
-                    <Button size="sm" onClick={() => handleAction(p.id, "reject")} variant="outline" className="border-lime-500/20 text-lime-400 hover:bg-lime-500/10 text-xs" data-testid={`reject-${p.id}`}>
+                    <Button size="sm" onClick={() => handleAction(p.id, "reject")} variant="outline" className="border-red-500/20 text-red-400 hover:bg-red-500/10 text-xs" data-testid={`reject-${p.id}`}>
                       <XCircle className="w-3 h-3 mr-1" /> Reject
                     </Button>
                   </>

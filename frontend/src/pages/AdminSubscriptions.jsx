@@ -296,7 +296,7 @@ export default function AdminSubscriptions() {
                       <TableRow key={u.id}>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-lime-500/20 to-red-600/20 flex items-center justify-center border border-primary/20">
+                            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-lime-500/20 to-emerald-600/20 flex items-center justify-center border border-primary/20">
                               <span className="text-xs font-semibold text-primary">
                                 {u.name?.charAt(0)?.toUpperCase() || "U"}
                               </span>

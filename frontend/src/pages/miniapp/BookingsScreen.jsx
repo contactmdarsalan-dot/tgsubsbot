@@ -28,7 +28,7 @@ export default function BookingsScreen() {
     scheduled: { bg: "bg-blue-500/15", text: "text-blue-400", label: "Scheduled" },
     in_call: { bg: "bg-emerald-500/15", text: "text-emerald-400", label: "In Call" },
     completed: { bg: "bg-zinc-500/15", text: "text-zinc-400", label: "Completed" },
-    rejected: { bg: "bg-lime-500/15", text: "text-lime-400", label: "Rejected" },
+    rejected: { bg: "bg-red-500/15", text: "text-red-400", label: "Rejected" },
   };
 
   const joinCall = (booking) => {

@@ -57,7 +57,7 @@ export default function MiniApp() {
   const userId = tgUser?.id?.toString() || "";
 
   useEffect(() => {
-    if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor("#140608"); tg.setBackgroundColor("#140608"); }
+    if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor("#050505"); tg.setBackgroundColor("#050505"); }
     initApp();
   }, []);
 

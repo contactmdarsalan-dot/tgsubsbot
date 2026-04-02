@@ -200,7 +200,7 @@ export default function Login() {
             backgroundImage: "url('https://images.pexels.com/photos/4722583/pexels-photo-4722583.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940')"
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-lime-950/95 via-lime-900/90 to-red-950/95" />
+        <div className="absolute inset-0 bg-gradient-to-br from-zinc-950/95 via-black to-zinc-950/95" />
         
         {/* Content */}
         <div className="relative z-10 flex flex-col justify-between p-12 w-full">
@@ -253,7 +253,7 @@ export default function Login() {
         <div className="w-full max-w-md space-y-8">
           {/* Mobile Logo */}
           <div className="lg:hidden flex items-center gap-3 justify-center mb-8">
-            <div className="w-12 h-12 bg-gradient-to-br from-lime-600 to-red-700 rounded-2xl flex items-center justify-center shadow-lg glow-rose">
+            <div className="w-12 h-12 bg-gradient-to-br from-lime-600 to-emerald-700 rounded-2xl flex items-center justify-center shadow-lg glow-rose">
               <Heart className="w-6 h-6 text-white" fill="currentColor" />
             </div>
             <span className="font-serif text-2xl font-semibold">TGSubsBot</span>

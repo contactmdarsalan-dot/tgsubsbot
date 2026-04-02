@@ -108,7 +108,7 @@ export default function Profile() {
       <Card>
         <CardHeader className="pb-4">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-lime-500/20 to-red-600/20 flex items-center justify-center border border-primary/20">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-lime-500/20 to-emerald-600/20 flex items-center justify-center border border-primary/20">
               <span className="text-2xl font-serif font-semibold text-primary">
                 {user?.name?.charAt(0)?.toUpperCase() || "U"}
               </span>

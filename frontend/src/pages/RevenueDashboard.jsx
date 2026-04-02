@@ -69,7 +69,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 function MetricCard({ title, value, prefix = "", suffix = "", icon: Icon, trend, trendLabel, color = "primary", delay = 0 }) {
   const isPositive = trend >= 0;
   const colorMap = {
-    primary: "from-lime-500 to-red-600",
+    primary: "from-lime-500 to-emerald-600",
     emerald: "from-emerald-500 to-green-600",
     amber: "from-amber-500 to-yellow-600",
     violet: "from-violet-500 to-purple-600",

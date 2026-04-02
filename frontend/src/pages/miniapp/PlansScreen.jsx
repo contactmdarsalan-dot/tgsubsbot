@@ -116,7 +116,7 @@ export default function PlansScreen() {
             </button>
           </div>
           {couponResult && (
-            <p className={`text-xs mt-2 ${couponResult.valid ? "text-emerald-400" : "text-lime-400"}`}>
+            <p className={`text-xs mt-2 ${couponResult.valid ? "text-emerald-400" : "text-red-400"}`}>
               {couponResult.valid ? `Discount applied! Save Rs.${couponResult.discount}` : couponResult.error}
             </p>
           )}
@@ -247,7 +247,7 @@ export default function PlansScreen() {
               data-testid={`plan-card-${plan.id}`}
             >
               {isPopular && (
-                <div className="absolute -top-2.5 left-4 px-3 py-0.5 bg-gradient-to-r from-lime-500 to-red-600 rounded-full text-[10px] font-bold text-white uppercase tracking-wider">
+                <div className="absolute -top-2.5 left-4 px-3 py-0.5 bg-gradient-to-r from-lime-500 to-emerald-600 rounded-full text-[10px] font-bold text-black uppercase tracking-wider">
                   Most Popular
                 </div>
               )}

@@ -126,7 +126,7 @@ export default function AdminPanel() {
                     <button onClick={() => handleAction(p.id, "approve")} className="flex-1 py-2.5 bg-emerald-500/20 text-emerald-400 font-semibold rounded-xl text-sm flex items-center justify-center gap-1 hover:bg-emerald-500/30 transition-all active:scale-95" data-testid={`approve-${p.id}`}>
                       <Check className="w-4 h-4" /> Approve
                     </button>
-                    <button onClick={() => handleAction(p.id, "reject")} className="flex-1 py-2.5 bg-lime-500/20 text-lime-400 font-semibold rounded-xl text-sm flex items-center justify-center gap-1 hover:bg-lime-500/30 transition-all active:scale-95" data-testid={`reject-${p.id}`}>
+                    <button onClick={() => handleAction(p.id, "reject")} className="flex-1 py-2.5 bg-red-500/20 text-red-400 font-semibold rounded-xl text-sm flex items-center justify-center gap-1 hover:bg-red-500/30 transition-all active:scale-95" data-testid={`reject-${p.id}`}>
                       <X className="w-4 h-4" /> Reject
                     </button>
                   </div>
