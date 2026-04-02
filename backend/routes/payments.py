@@ -16,19 +16,61 @@ router = APIRouter()
 
 
 @router.get("/payments")
-async def get_payments(status=None, user=Depends(get_current_user)):
+async def get_payments(status=None, page: int = 1, limit: int = 50, search: str = None, user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
-    query = tq({}, tenant_id)
+    base_query = tq({}, tenant_id)
+    
+    # Build filter query for listing
+    list_query = dict(base_query)
     if status:
-        query["status"] = status
-    payments = await db.payments.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
-
+        list_query["status"] = status
+    if search:
+        search = search.strip()
+        list_query["$or"] = [
+            {"telegram_user_id": {"$regex": search, "$options": "i"}},
+            {"telegram_username": {"$regex": search, "$options": "i"}},
+        ]
+    
+    # Pagination
+    skip = (max(1, page) - 1) * limit
+    limit = min(limit, 200)  # Max 200 per page
+    
+    # Fetch paginated payments
+    payments = await db.payments.find(list_query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    
     for p in payments:
         if isinstance(p.get('created_at'), str):
             p['created_at'] = datetime.fromisoformat(p['created_at'])
         p['has_screenshot'] = bool(p.get('screenshot_file_id'))
-
-    return payments
+    
+    # Server-side counts (from ALL data, not just current page)
+    total_count = await db.payments.count_documents(list_query)
+    
+    # Stats from ALL payments (no status/search filter, just tenant)
+    all_query = dict(base_query)
+    total_all = await db.payments.count_documents(all_query)
+    pending_count = await db.payments.count_documents({**base_query, "status": "pending"})
+    
+    # Revenue from verified payments
+    revenue_pipeline = [
+        {"$match": {**base_query, "status": {"$in": ["verified", "approved"]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    rev_result = await db.payments.aggregate(revenue_pipeline).to_list(1)
+    total_collected = rev_result[0]["total"] if rev_result else 0
+    
+    return {
+        "payments": payments,
+        "total": total_count,
+        "page": page,
+        "limit": limit,
+        "total_pages": (total_count + limit - 1) // limit if limit > 0 else 1,
+        "stats": {
+            "total_collected": total_collected,
+            "pending_count": pending_count,
+            "total_transactions": total_all
+        }
+    }
 
 
 @router.get("/payments/{payment_id}/screenshot")

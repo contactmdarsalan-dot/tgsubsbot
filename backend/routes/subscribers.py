@@ -18,12 +18,25 @@ router = APIRouter()
 
 
 @router.get("/subscribers")
-async def get_subscribers(status: Optional[str] = None, user=Depends(get_current_user)):
+async def get_subscribers(status: Optional[str] = None, page: int = 1, limit: int = 50, search: str = None, user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
-    query = tq({}, tenant_id)
+    base_query = tq({}, tenant_id)
+    
+    list_query = dict(base_query)
     if status:
-        query["status"] = status
-    subscribers = await db.subscribers.find(query, {"_id": 0}).to_list(1000)
+        list_query["status"] = status
+    if search:
+        search = search.strip()
+        list_query["$or"] = [
+            {"telegram_user_id": {"$regex": search, "$options": "i"}},
+            {"telegram_username": {"$regex": search, "$options": "i"}},
+        ]
+    
+    # Pagination
+    skip = (max(1, page) - 1) * limit
+    limit = min(limit, 200)
+    
+    subscribers = await db.subscribers.find(list_query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
 
     plans = await db.plans.find({}, {"_id": 0}).to_list(100)
     plans_map = {p["id"]: p for p in plans}
@@ -52,7 +65,25 @@ async def get_subscribers(status: Optional[str] = None, user=Depends(get_current
             sub["group_name"] = ""
             sub["group_id"] = ""
 
-    return subscribers
+    # Server-side counts
+    total_count = await db.subscribers.count_documents(list_query)
+    all_query = dict(base_query)
+    total_all = await db.subscribers.count_documents(all_query)
+    active_count = await db.subscribers.count_documents({**base_query, "status": "active"})
+    expired_count = await db.subscribers.count_documents({**base_query, "status": "expired"})
+
+    return {
+        "subscribers": subscribers,
+        "total": total_count,
+        "page": page,
+        "limit": limit,
+        "total_pages": (total_count + limit - 1) // limit if limit > 0 else 1,
+        "stats": {
+            "total_subscribers": total_all,
+            "active_count": active_count,
+            "expired_count": expired_count
+        }
+    }
 
 
 @router.post("/subscribers", response_model=Subscriber)

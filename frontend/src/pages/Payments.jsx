@@ -46,6 +46,8 @@ import {
   CheckCheck,
   XOctagon,
   RefreshCw,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -66,6 +68,10 @@ export default function Payments() {
   const [search, setSearch] = useState("");
   const [selectedPayments, setSelectedPayments] = useState([]);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [serverStats, setServerStats] = useState({ total_collected: 0, pending_count: 0, total_transactions: 0 });
   const [form, setForm] = useState({
     telegram_user_id: "",
     plan_id: "",
@@ -94,16 +100,26 @@ export default function Payments() {
     // Auto-refresh every 30 seconds (silent - no loading flash)
     const interval = setInterval(() => fetchData(false), 30000);
     return () => clearInterval(interval);
-  }, [filter]);
+  }, [filter, page]);
 
   const fetchData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
+      const params = new URLSearchParams();
+      if (filter !== "all") params.append("status", filter);
+      params.append("page", page);
+      params.append("limit", 50);
+      if (search.trim()) params.append("search", search.trim());
+      
       const [paymentsResponse, plansResponse] = await Promise.all([
-        axios.get(`${API}/payments${filter !== "all" ? `?status=${filter}` : ""}`, getAuthHeaders()),
+        axios.get(`${API}/payments?${params.toString()}`, getAuthHeaders()),
         axios.get(`${API}/plans`, getAuthHeaders()),
       ]);
-      setPayments(paymentsResponse.data);
+      const data = paymentsResponse.data;
+      setPayments(data.payments || data);
+      setTotalPages(data.total_pages || 1);
+      setTotalCount(data.total || 0);
+      if (data.stats) setServerStats(data.stats);
       setPlans(plansResponse.data);
       setSelectedPayments([]); // Clear selection on refresh
     } catch (error) {
@@ -273,10 +289,8 @@ export default function Payments() {
     });
   };
 
-  const filteredPayments = payments.filter((p) =>
-    p.telegram_user_id.includes(search) || 
-    (p.telegram_username && p.telegram_username.toLowerCase().includes(search.toLowerCase()))
-  );
+  // Since search is now server-side, filteredPayments = payments (already filtered by backend)
+  const filteredPayments = payments;
 
   // Check if any selected payment is pending (for bulk verify/reject)
   const selectedPendingPayments = selectedPayments.filter(id => {
@@ -325,11 +339,10 @@ export default function Payments() {
     });
   };
 
-  // Calculate totals
-  const totalVerified = payments
-    .filter((p) => p.status === "verified")
-    .reduce((sum, p) => sum + p.amount, 0);
-  const pendingCount = payments.filter((p) => p.status === "pending").length;
+  // Use server-side stats (accurate across ALL payments, not just current page)
+  const totalVerified = serverStats.total_collected;
+  const pendingCount = serverStats.pending_count;
+  const totalTransactions = serverStats.total_transactions;
 
   if (loading) {
     return (
@@ -472,7 +485,7 @@ export default function Payments() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Transactions</p>
-                <p className="font-heading text-3xl font-bold mt-1">{payments.length}</p>
+                <p className="font-heading text-3xl font-bold mt-1">{totalTransactions}</p>
               </div>
               <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
                 <CreditCard className="w-6 h-6 text-primary" />
@@ -493,11 +506,12 @@ export default function Payments() {
                   placeholder="Search by Telegram User ID or Username..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { setPage(1); fetchData(true); } }}
                   data-testid="payment-search-input"
                   className="pl-10 bg-muted/50 border-transparent focus:border-primary"
                 />
               </div>
-              <Select value={filter} onValueChange={setFilter}>
+              <Select value={filter} onValueChange={(val) => { setFilter(val); setPage(1); }}>
                 <SelectTrigger className="w-[160px] bg-muted/50 border-transparent" data-testid="payment-filter">
                   <Filter className="w-4 h-4 mr-2" />
                   <SelectValue />
@@ -748,6 +762,58 @@ export default function Payments() {
           )}
         </CardContent>
       </Card>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-2" data-testid="pagination-controls">
+          <p className="text-sm text-muted-foreground">
+            Showing {((page - 1) * 50) + 1}-{Math.min(page * 50, totalCount)} of {totalCount} payments
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(1)}
+              disabled={page <= 1}
+              data-testid="pagination-first"
+            >
+              First
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              data-testid="pagination-prev"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Prev
+            </Button>
+            <span className="text-sm font-medium px-3">
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              data-testid="pagination-next"
+            >
+              Next
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(totalPages)}
+              disabled={page >= totalPages}
+              data-testid="pagination-last"
+            >
+              Last
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Screenshot Modal */}
       <Dialog open={screenshotModal.open} onOpenChange={(open) => setScreenshotModal({ ...screenshotModal, open })}>

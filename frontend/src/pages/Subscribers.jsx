@@ -36,6 +36,8 @@ import {
   RefreshCw,
   Filter,
   UserX,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -53,6 +55,10 @@ export default function Subscribers() {
   const [selectedSubscriber, setSelectedSubscriber] = useState(null);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [serverStats, setServerStats] = useState({ total_subscribers: 0, active_count: 0, expired_count: 0 });
   const [form, setForm] = useState({
     telegram_user_id: "",
     telegram_username: "",
@@ -63,16 +69,26 @@ export default function Subscribers() {
 
   useEffect(() => {
     fetchData();
-  }, [filter]);
+  }, [filter, page]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
+      const params = new URLSearchParams();
+      if (filter !== "all") params.append("status", filter);
+      params.append("page", page);
+      params.append("limit", 50);
+      if (search.trim()) params.append("search", search.trim());
+      
       const [subsResponse, plansResponse] = await Promise.all([
-        axios.get(`${API}/subscribers${filter !== "all" ? `?status=${filter}` : ""}`, getAuthHeaders()),
+        axios.get(`${API}/subscribers?${params.toString()}`, getAuthHeaders()),
         axios.get(`${API}/plans`, getAuthHeaders()),
       ]);
-      setSubscribers(subsResponse.data);
+      const data = subsResponse.data;
+      setSubscribers(data.subscribers || data);
+      setTotalPages(data.total_pages || 1);
+      setTotalCount(data.total || 0);
+      if (data.stats) setServerStats(data.stats);
       setPlans(plansResponse.data);
     } catch (error) {
       toast.error("Failed to fetch data");
@@ -131,11 +147,8 @@ export default function Subscribers() {
     });
   };
 
-  const filteredSubscribers = subscribers.filter(
-    (sub) =>
-      sub.telegram_user_id.includes(search) ||
-      (sub.telegram_username && sub.telegram_username.toLowerCase().includes(search.toLowerCase()))
-  );
+  // Server-side filtering - subscribers are already filtered
+  const filteredSubscribers = subscribers;
 
   const getStatusBadge = (status) => {
     const styles = {
@@ -295,12 +308,13 @@ export default function Subscribers() {
                 placeholder="Search by user ID or username..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { setPage(1); fetchData(); } }}
                 data-testid="subscriber-search-input"
                 className="pl-10 bg-muted/50 border-transparent focus:border-primary"
               />
             </div>
             <div className="flex gap-2">
-              <Select value={filter} onValueChange={setFilter}>
+              <Select value={filter} onValueChange={(val) => { setFilter(val); setPage(1); }}>
                 <SelectTrigger className="w-[140px] bg-muted/50 border-transparent" data-testid="subscriber-filter">
                   <Filter className="w-4 h-4 mr-2" />
                   <SelectValue />
@@ -414,6 +428,26 @@ export default function Subscribers() {
           )}
         </CardContent>
       </Card>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-2" data-testid="subscribers-pagination">
+          <p className="text-sm text-muted-foreground">
+            Showing {((page - 1) * 50) + 1}-{Math.min(page * 50, totalCount)} of {totalCount} subscribers
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page <= 1}>First</Button>
+            <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>
+              <ChevronLeft className="w-4 h-4" /> Prev
+            </Button>
+            <span className="text-sm font-medium px-3">Page {page} of {totalPages}</span>
+            <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+              Next <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page >= totalPages}>Last</Button>
+          </div>
+        </div>
+      )}
 
       {/* Renew Dialog */}
       <Dialog open={renewDialogOpen} onOpenChange={setRenewDialogOpen}>

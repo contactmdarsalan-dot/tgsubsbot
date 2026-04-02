@@ -311,13 +311,21 @@ async def get_analytics(user=Depends(get_current_user)):
     expired_subscribers = await db.subscribers.count_documents(tq({"status": "expired"}, tenant_id))
     grace_subscribers = await db.subscribers.count_documents(tq({"status": "grace"}, tenant_id))
 
-    verified_payments = await db.payments.find(tq({"status": "verified"}, tenant_id), {"_id": 0}).to_list(10000)
-    total_revenue = sum(p.get("amount", 0) for p in verified_payments)
+    # Revenue via aggregation (efficient for large datasets)
+    rev_pipeline = [
+        {"$match": tq({"status": {"$in": ["verified", "approved"]}}, tenant_id)},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    rev_result = await db.payments.aggregate(rev_pipeline).to_list(1)
+    total_revenue = rev_result[0]["total"] if rev_result else 0
 
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    monthly_payments = [p for p in verified_payments
-                       if datetime.fromisoformat(p["created_at"]) >= month_start]
-    monthly_revenue = sum(p.get("amount", 0) for p in monthly_payments)
+    monthly_pipeline = [
+        {"$match": {**tq({"status": {"$in": ["verified", "approved"]}}, tenant_id), "created_at": {"$gte": month_start.isoformat()}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    monthly_result = await db.payments.aggregate(monthly_pipeline).to_list(1)
+    monthly_revenue = monthly_result[0]["total"] if monthly_result else 0
 
     recent_subscribers = await db.subscribers.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
     recent_payments = await db.payments.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
