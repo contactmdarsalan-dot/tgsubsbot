@@ -1124,6 +1124,26 @@ async def update_tenant_admin(admin_id: str, data: dict, user: dict = Depends(ge
         raise HTTPException(status_code=404, detail="Tenant admin not found")
     return {"message": "Tenant admin updated"}
 
+
+@router.put("/saas/tenant-admins/{admin_id}/reset-password")
+async def reset_tenant_admin_password(admin_id: str, data: dict, user: dict = Depends(get_current_user)):
+    """Super Admin resets a tenant admin's password"""
+    await verify_super_admin(user)
+
+    new_password = data.get("password", "").strip()
+    if not new_password or len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    hashed = hash_password(new_password)
+    result = await db.users.update_one(
+        {"id": admin_id, "role": "tenant_admin"},
+        {"$set": {"password_hash": hashed, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Tenant admin not found")
+    return {"message": "Password reset successfully"}
+
+
 @router.delete("/saas/tenant-admins/{admin_id}")
 async def delete_tenant_admin_direct(admin_id: str, user: dict = Depends(get_current_user)):
     """Delete a tenant admin user"""

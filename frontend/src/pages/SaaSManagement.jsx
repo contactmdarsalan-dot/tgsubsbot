@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Switch } from "../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Users, Package, Shield, Crown, Plus, Edit, Trash2, CheckCircle, XCircle, UserPlus, ArrowRightLeft, Loader2, CreditCard, Check, X, Clock, RefreshCw, Zap, Settings } from "lucide-react";
+import { Users, Package, Shield, Crown, Plus, Edit, Trash2, CheckCircle, XCircle, UserPlus, ArrowRightLeft, Loader2, CreditCard, Check, X, Clock, RefreshCw, Zap, Settings, Eye, EyeOff, KeyRound } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const getAuth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
@@ -55,6 +55,14 @@ export default function SaaSManagement() {
   const [adminDialog, setAdminDialog] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState(null);
   const [adminForm, setAdminForm] = useState({ email: "", password: "", name: "", tenant_id: "" });
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+
+  // Reset password dialog
+  const [resetPwdDialog, setResetPwdDialog] = useState(false);
+  const [resetPwdAdmin, setResetPwdAdmin] = useState(null);
+  const [resetPwdForm, setResetPwdForm] = useState("");
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   // Assign subscription dialog
   const [assignSubDialog, setAssignSubDialog] = useState(false);
@@ -105,6 +113,7 @@ export default function SaaSManagement() {
   const openAdminDialog = (admin = null) => {
     if (admin) { setEditingAdmin(admin); setAdminForm({ email: admin.email || "", password: "", name: admin.name || "", tenant_id: admin.tenant_id || "" }); }
     else { setEditingAdmin(null); setAdminForm({ email: "", password: "", name: "", tenant_id: "" }); }
+    setShowAdminPassword(false);
     setAdminDialog(true);
   };
   const saveAdmin = async () => {
@@ -122,6 +131,23 @@ export default function SaaSManagement() {
     } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
   };
   const deleteAdmin = async (id) => { if (!window.confirm("Delete this admin?")) return; try { await axios.delete(`${API}/saas/tenant-admins/${id}`, getAuth()); toast.success("Admin deleted"); fetchTenantAdmins(); } catch (e) { toast.error("Failed"); } };
+
+  const openResetPwdDialog = (admin) => {
+    setResetPwdAdmin(admin);
+    setResetPwdForm("");
+    setShowResetPassword(false);
+    setResetPwdDialog(true);
+  };
+  const resetAdminPassword = async () => {
+    if (!resetPwdForm.trim() || resetPwdForm.length < 6) { toast.error("Password must be at least 6 characters"); return; }
+    setResetLoading(true);
+    try {
+      await axios.put(`${API}/saas/tenant-admins/${resetPwdAdmin.id}/reset-password`, { password: resetPwdForm }, getAuth());
+      toast.success(`Password reset for ${resetPwdAdmin.name || resetPwdAdmin.email}`);
+      setResetPwdDialog(false);
+    } catch (e) { toast.error(e.response?.data?.detail || "Failed to reset password"); }
+    finally { setResetLoading(false); }
+  };
 
   // ===== SUBSCRIPTION MANAGEMENT =====
   const openAssignSubDialog = (admin = null) => {
@@ -299,6 +325,7 @@ export default function SaaSManagement() {
                     <TableCell>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openAssignSubDialog(a)} title="Assign Subscription" data-testid={`assign-sub-${i}`}><CreditCard className="w-4 h-4 text-emerald-500" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => openResetPwdDialog(a)} title="Reset Password" data-testid={`reset-pwd-${i}`}><KeyRound className="w-4 h-4 text-amber-500" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => openAdminDialog(a)} title="Edit" data-testid={`edit-admin-${i}`}><Edit className="w-4 h-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => deleteAdmin(a.id)} title="Delete" data-testid={`delete-admin-${i}`}><Trash2 className="w-4 h-4 text-destructive" /></Button>
                       </div>
@@ -562,20 +589,91 @@ export default function SaaSManagement() {
       <Dialog open={adminDialog} onOpenChange={setAdminDialog}>
         <DialogContent className="max-w-md" data-testid="admin-dialog">
           <DialogHeader><DialogTitle>{editingAdmin ? "Edit Tenant Admin" : "Create Tenant Admin"}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label>Name</Label><Input value={adminForm.name} onChange={e => setAdminForm(p => ({ ...p, name: e.target.value }))} placeholder="Admin name" /></div>
-            <div><Label>Email</Label><Input type="email" value={adminForm.email} onChange={e => setAdminForm(p => ({ ...p, email: e.target.value }))} placeholder="admin@email.com" /></div>
-            {!editingAdmin && <div><Label>Password</Label><Input type="password" value={adminForm.password} onChange={e => setAdminForm(p => ({ ...p, password: e.target.value }))} placeholder="Password" /></div>}
+          <div className="space-y-4">
+            <div>
+              <Label>Name</Label>
+              <Input value={adminForm.name} onChange={e => setAdminForm(p => ({ ...p, name: e.target.value }))} placeholder="Admin name" data-testid="admin-name-input" />
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input type="email" value={adminForm.email} onChange={e => setAdminForm(p => ({ ...p, email: e.target.value }))} placeholder="admin@email.com" data-testid="admin-email-input" />
+            </div>
+            {!editingAdmin && (
+              <div>
+                <Label>Password</Label>
+                <div className="relative">
+                  <Input
+                    type={showAdminPassword ? "text" : "password"}
+                    value={adminForm.password}
+                    onChange={e => setAdminForm(p => ({ ...p, password: e.target.value }))}
+                    placeholder="Min 6 characters"
+                    className="pr-10"
+                    data-testid="admin-password-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    data-testid="toggle-password-visibility"
+                  >
+                    {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            )}
             <div>
               <Label>Assign to Tenant</Label>
               <Select value={adminForm.tenant_id} onValueChange={v => setAdminForm(p => ({ ...p, tenant_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select tenant" /></SelectTrigger>
+                <SelectTrigger data-testid="admin-tenant-select"><SelectValue placeholder="Select tenant" /></SelectTrigger>
                 <SelectContent>
                   {tenants.map(t => <SelectItem key={t.tenant_id} value={t.tenant_id}>{t.name} ({t.tenant_id})</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <Button className="w-full" onClick={saveAdmin} disabled={!adminForm.email.trim() || (!editingAdmin && !adminForm.password.trim())}>{editingAdmin ? "Update Admin" : "Create Admin"}</Button>
+            <Button className="w-full" onClick={saveAdmin} disabled={!adminForm.email.trim() || (!editingAdmin && !adminForm.password.trim())} data-testid="save-admin-btn">
+              {editingAdmin ? "Update Admin" : "Create Admin"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== RESET PASSWORD DIALOG ===== */}
+      <Dialog open={resetPwdDialog} onOpenChange={setResetPwdDialog}>
+        <DialogContent className="max-w-sm" data-testid="reset-pwd-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-amber-500" /> Reset Password
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-3 rounded-lg bg-muted/50 border">
+              <p className="text-sm font-medium text-foreground">{resetPwdAdmin?.name || "Admin"}</p>
+              <p className="text-xs text-muted-foreground">{resetPwdAdmin?.email}</p>
+            </div>
+            <div>
+              <Label>New Password</Label>
+              <div className="relative">
+                <Input
+                  type={showResetPassword ? "text" : "password"}
+                  value={resetPwdForm}
+                  onChange={e => setResetPwdForm(e.target.value)}
+                  placeholder="Min 6 characters"
+                  className="pr-10"
+                  data-testid="reset-pwd-input"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowResetPassword(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  data-testid="toggle-reset-pwd-visibility"
+                >
+                  {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            <Button className="w-full" onClick={resetAdminPassword} disabled={resetLoading || resetPwdForm.length < 6} data-testid="confirm-reset-pwd-btn">
+              {resetLoading ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Resetting...</> : <><KeyRound className="w-4 h-4 mr-1" /> Reset Password</>}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
