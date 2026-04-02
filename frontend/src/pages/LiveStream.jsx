@@ -221,7 +221,7 @@ export default function LiveStream() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="text-2xl font-bold flex items-center gap-2 text-white">
             <Radio className="w-7 h-7 text-red-500" />
             Live Streams
           </h1>
@@ -536,7 +536,7 @@ export default function LiveStream() {
                         {getStatusBadge(ticket.status)}
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        Session: <span className="text-foreground">{ticket.session_title}</span>
+                        Session: <span className="text-white">{ticket.session_title}</span>
                       </p>
                       <p className="text-sm text-green-500">Amount: Rs.{ticket.amount}</p>
                       {ticket.screenshot_file_id && (

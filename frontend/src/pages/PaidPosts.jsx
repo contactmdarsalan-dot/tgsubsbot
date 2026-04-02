@@ -132,7 +132,7 @@ export default function PaidPosts() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading text-4xl font-bold tracking-tight">Paid Posts</h1>
+          <h1 className="font-heading text-4xl font-bold tracking-tight text-white">Paid Posts</h1>
           <p className="text-muted-foreground mt-1">
             Manage paid content and unlock requests
           </p>
@@ -224,7 +224,7 @@ export default function PaidPosts() {
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
             activeTab === "posts"
               ? "border-primary text-primary"
-              : "border-transparent text-muted-foreground hover:text-foreground"
+              : "border-transparent text-muted-foreground hover:text-white"
           }`}
         >
           Paid Posts ({paidPosts.length})
@@ -235,7 +235,7 @@ export default function PaidPosts() {
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
             activeTab === "requests"
               ? "border-primary text-primary"
-              : "border-transparent text-muted-foreground hover:text-foreground"
+              : "border-transparent text-muted-foreground hover:text-white"
           }`}
         >
           Unlock Requests 
@@ -249,7 +249,7 @@ export default function PaidPosts() {
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
             activeTab === "unlocked"
               ? "border-emerald-500 text-emerald-500"
-              : "border-transparent text-muted-foreground hover:text-foreground"
+              : "border-transparent text-muted-foreground hover:text-white"
           }`}
         >
           Unlocked Success

@@ -206,7 +206,7 @@ export default function Plans() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading text-4xl font-bold tracking-tight">
+          <h1 className="font-heading text-4xl font-bold tracking-tight text-white">
             Subscription Plans
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -433,8 +433,8 @@ export default function Plans() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-baseline gap-1">
-                  <IndianRupee className="w-6 h-6 text-foreground" />
-                  <span className="font-heading text-4xl font-bold tracking-tight">
+                  <IndianRupee className="w-6 h-6 text-white" />
+                  <span className="font-heading text-4xl font-bold tracking-tight text-white">
                     {plan.price.toLocaleString("en-IN")}
                   </span>
                   {plan.discount_percentage > 0 && (

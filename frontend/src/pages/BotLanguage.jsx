@@ -101,7 +101,7 @@ export default function BotLanguage() {
     <div className="space-y-6" data-testid="bot-language-page">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-serif font-bold text-foreground">Bot Language</h1>
+          <h1 className="text-3xl font-serif font-bold text-white">Bot Language</h1>
           <p className="text-muted-foreground mt-1">Customize bot messages in multiple languages</p>
         </div>
         <Button onClick={handleSave} disabled={saving} data-testid="language-save-btn">
@@ -144,7 +144,7 @@ export default function BotLanguage() {
             className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
               activeLang === lang
                 ? "bg-card text-primary border-b-2 border-primary"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-white"
             }`}
           >
             {languageLabels[lang] || lang}
@@ -161,7 +161,7 @@ export default function BotLanguage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {Object.entries(messageLabels).map(([key, label]) => (
             <div key={key}>
-              <label className="text-sm font-medium text-foreground">{label}</label>
+              <label className="text-sm font-medium text-white">{label}</label>
               <Input
                 value={settings.messages?.[activeLang]?.[key] || ""}
                 onChange={(e) => updateMessage(activeLang, key, e.target.value)}

@@ -177,7 +177,7 @@ export default function TelegramAdmins() {
         className="flex flex-col md:flex-row md:items-center justify-between gap-4"
       >
         <div>
-          <h1 className="font-serif text-4xl font-semibold tracking-tight">Telegram Admins</h1>
+          <h1 className="font-serif text-4xl font-semibold tracking-tight text-white">Telegram Admins</h1>
           <p className="text-muted-foreground mt-1">
             Manage who can control your bot directly from Telegram
           </p>

@@ -100,7 +100,7 @@ export default function Profile() {
     <div className="space-y-8 max-w-2xl" data-testid="profile-page">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Profile</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-white">Profile</h1>
         <p className="text-muted-foreground mt-1">Manage your account settings</p>
       </div>
 
@@ -217,7 +217,7 @@ export default function Profile() {
                 <button
                   type="button"
                   onClick={() => setShowCurrentPw(!showCurrentPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white"
                 >
                   {showCurrentPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -239,7 +239,7 @@ export default function Profile() {
                 <button
                   type="button"
                   onClick={() => setShowNewPw(!showNewPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white"
                 >
                   {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>

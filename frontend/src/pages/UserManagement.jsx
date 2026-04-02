@@ -146,7 +146,7 @@ export default function UserManagement() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading text-4xl font-bold tracking-tight">
+          <h1 className="font-heading text-4xl font-bold tracking-tight text-white">
             User Management
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -271,7 +271,7 @@ export default function UserManagement() {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white"
                     >
                       {showPassword ? (
                         <EyeOff className="w-4 h-4" />

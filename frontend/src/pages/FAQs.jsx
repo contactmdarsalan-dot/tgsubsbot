@@ -113,7 +113,7 @@ export default function FAQs() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">FAQs & Auto-Reply</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-white">FAQs & Auto-Reply</h1>
           <p className="text-muted-foreground mt-1">
             Set up automatic responses for common questions in your bot
           </p>

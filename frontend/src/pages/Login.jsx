@@ -349,7 +349,7 @@ export default function Login() {
                   <Button
                     type="button"
                     variant="ghost"
-                    className="gap-2 text-muted-foreground hover:text-foreground"
+                    className="gap-2 text-muted-foreground hover:text-white"
                     onClick={() => setOtpSent(false)}
                   >
                     <ArrowLeft className="w-4 h-4" />
@@ -358,7 +358,7 @@ export default function Login() {
 
                   <div className="p-4 bg-white/5 rounded-2xl text-center border border-white/10">
                     <p className="text-sm text-muted-foreground">OTP sent to</p>
-                    <p className="font-medium text-foreground">+91 {form.phone}</p>
+                    <p className="font-medium text-white">+91 {form.phone}</p>
                   </div>
 
                   <div className="space-y-2">
@@ -570,7 +570,7 @@ export default function Login() {
                 <form onSubmit={handleResetPassword} className="space-y-5">
                   <div className="p-4 bg-white/5 rounded-2xl text-center border border-white/10">
                     <p className="text-sm text-muted-foreground">Reset code sent to</p>
-                    <p className="font-medium text-foreground">{resetForm.email}</p>
+                    <p className="font-medium text-white">{resetForm.email}</p>
                   </div>
 
                   <div className="space-y-2">

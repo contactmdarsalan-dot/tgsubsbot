@@ -118,7 +118,7 @@ export default function Broadcast() {
     <div className="space-y-8" data-testid="broadcast-page">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Broadcast Messages</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-white">Broadcast Messages</h1>
         <p className="text-muted-foreground mt-1">
           Send messages to all your subscribers and users
         </p>

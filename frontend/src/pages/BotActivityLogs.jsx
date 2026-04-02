@@ -117,7 +117,7 @@ export default function BotActivityLogs() {
       >
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="font-serif text-4xl font-semibold tracking-tight">Bot Activity</h1>
+            <h1 className="font-serif text-4xl font-semibold tracking-tight text-white">Bot Activity</h1>
             {autoRefresh && <PulseDot color="emerald" />}
           </div>
           <p className="text-muted-foreground mt-1">Real-time bot interactions & webhook logs</p>

@@ -197,7 +197,7 @@ export default function TeamManagement() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="p-3 rounded-lg bg-muted/50 border">
-              <p className="text-sm font-medium text-foreground">{resetMember?.name || "Member"}</p>
+              <p className="text-sm font-medium text-white">{resetMember?.name || "Member"}</p>
               <p className="text-xs text-muted-foreground">{resetMember?.email}</p>
             </div>
             <div>

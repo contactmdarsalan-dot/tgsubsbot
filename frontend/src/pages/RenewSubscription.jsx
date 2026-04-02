@@ -74,7 +74,7 @@ export default function RenewSubscription() {
             )}
           </div>
           
-          <h1 className="font-heading text-3xl md:text-4xl font-bold tracking-tight mb-2">
+          <h1 className="font-heading text-3xl md:text-4xl font-bold tracking-tight mb-2 text-white">
             {isExpired ? "Subscription Expired" : "Subscription Expiring Soon"}
           </h1>
           

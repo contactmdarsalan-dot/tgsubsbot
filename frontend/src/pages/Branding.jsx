@@ -73,7 +73,7 @@ export default function Branding() {
     <div className="space-y-6" data-testid="branding-page">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-serif font-bold text-foreground">White-Label Branding</h1>
+          <h1 className="text-3xl font-serif font-bold text-white">White-Label Branding</h1>
           <p className="text-muted-foreground mt-1">Customize your dashboard look and feel</p>
         </div>
         <div className="flex gap-2">
@@ -94,7 +94,7 @@ export default function Branding() {
           </h2>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-foreground">Brand Name</label>
+              <label className="text-sm font-medium text-white">Brand Name</label>
               <Input
                 value={branding.brand_name}
                 onChange={(e) => setBranding({ ...branding, brand_name: e.target.value })}
@@ -103,7 +103,7 @@ export default function Branding() {
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-foreground">Tagline</label>
+              <label className="text-sm font-medium text-white">Tagline</label>
               <Input
                 value={branding.tagline}
                 onChange={(e) => setBranding({ ...branding, tagline: e.target.value })}
@@ -112,7 +112,7 @@ export default function Branding() {
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-foreground">Footer Text</label>
+              <label className="text-sm font-medium text-white">Footer Text</label>
               <Input
                 value={branding.footer_text}
                 onChange={(e) => setBranding({ ...branding, footer_text: e.target.value })}
@@ -130,7 +130,7 @@ export default function Branding() {
           </h2>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-foreground">Primary Color</label>
+              <label className="text-sm font-medium text-white">Primary Color</label>
               <div className="flex items-center gap-3 mt-1">
                 <input
                   type="color"
@@ -147,7 +147,7 @@ export default function Branding() {
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium text-foreground">Secondary Color</label>
+              <label className="text-sm font-medium text-white">Secondary Color</label>
               <div className="flex items-center gap-3 mt-1">
                 <input
                   type="color"
@@ -171,7 +171,7 @@ export default function Branding() {
           <h2 className="text-lg font-semibold text-foreground mb-4">Logo & Favicon</h2>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-foreground">Logo URL</label>
+              <label className="text-sm font-medium text-white">Logo URL</label>
               <Input
                 value={branding.logo_url}
                 onChange={(e) => setBranding({ ...branding, logo_url: e.target.value })}
@@ -185,7 +185,7 @@ export default function Branding() {
               )}
             </div>
             <div>
-              <label className="text-sm font-medium text-foreground">Favicon URL</label>
+              <label className="text-sm font-medium text-white">Favicon URL</label>
               <Input
                 value={branding.favicon_url}
                 onChange={(e) => setBranding({ ...branding, favicon_url: e.target.value })}

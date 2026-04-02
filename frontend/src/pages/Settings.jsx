@@ -139,7 +139,7 @@ export default function Settings() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading text-4xl font-bold tracking-tight">Settings</h1>
+          <h1 className="font-heading text-4xl font-bold tracking-tight text-white">Settings</h1>
           <p className="text-muted-foreground mt-1">
             Configure your Telegram bot and payment settings
           </p>

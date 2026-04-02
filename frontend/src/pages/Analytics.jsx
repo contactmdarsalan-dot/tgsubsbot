@@ -100,7 +100,7 @@ export default function Analytics() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Analytics & Reports</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-white">Analytics & Reports</h1>
           <p className="text-muted-foreground mt-1">
             Track your revenue and user growth
           </p>

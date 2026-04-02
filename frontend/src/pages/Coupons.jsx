@@ -154,7 +154,7 @@ export default function Coupons() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Coupons & Discounts</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-white">Coupons & Discounts</h1>
           <p className="text-muted-foreground mt-1">
             Create and manage discount codes for your subscribers
           </p>

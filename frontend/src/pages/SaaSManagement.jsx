@@ -228,7 +228,7 @@ export default function SaaSManagement() {
   return (
     <div className="space-y-6" data-testid="saas-management">
       <div>
-        <h1 className="text-2xl font-bold text-foreground" data-testid="saas-title">Tenant Management</h1>
+        <h1 className="text-2xl font-bold text-white" data-testid="saas-title">Tenant Management</h1>
         <p className="text-muted-foreground text-sm">Manage tenants, admins, subscriptions & bot plans</p>
       </div>
 
@@ -244,7 +244,7 @@ export default function SaaSManagement() {
         {/* ===== TENANTS TAB ===== */}
         <TabsContent value="tenants" className="space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-foreground">Tenants ({tenants.length})</h2>
+            <h2 className="text-lg font-semibold text-white">Tenants ({tenants.length})</h2>
             <Button onClick={() => openTenantDialog()} data-testid="create-tenant-btn"><Plus className="w-4 h-4 mr-1" /> New Tenant</Button>
           </div>
           <Card>
@@ -264,13 +264,13 @@ export default function SaaSManagement() {
                 {tenants.map(t => (
                   <TableRow key={t.tenant_id} data-testid={`tenant-row-${t.tenant_id}`}>
                     <TableCell>
-                      <p className="font-medium text-foreground">{t.name || t.tenant_id}</p>
+                      <p className="font-medium text-white">{t.name || t.tenant_id}</p>
                       <p className="text-xs text-muted-foreground">{t.email}</p>
                     </TableCell>
-                    <TableCell className="text-sm text-foreground">{t.bot_username ? `@${t.bot_username}` : "-"}</TableCell>
-                    <TableCell className="text-foreground">{t.stats?.total_users || 0}</TableCell>
-                    <TableCell className="text-foreground">{t.stats?.active_subs || 0}</TableCell>
-                    <TableCell className="font-semibold text-foreground">{`\u20B9${(t.stats?.revenue || 0).toLocaleString()}`}</TableCell>
+                    <TableCell className="text-sm text-white">{t.bot_username ? `@${t.bot_username}` : "-"}</TableCell>
+                    <TableCell className="text-white">{t.stats?.total_users || 0}</TableCell>
+                    <TableCell className="text-white">{t.stats?.active_subs || 0}</TableCell>
+                    <TableCell className="font-semibold text-white">{`\u20B9${(t.stats?.revenue || 0).toLocaleString()}`}</TableCell>
                     <TableCell><Badge variant={t.status === "active" ? "default" : "destructive"}>{t.status || "active"}</Badge></TableCell>
                     <TableCell>
                       <div className="flex gap-1">
@@ -290,7 +290,7 @@ export default function SaaSManagement() {
         {/* ===== TENANT ADMINS TAB ===== */}
         <TabsContent value="admins" className="space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-foreground">Tenant Admins ({tenantAdmins.length})</h2>
+            <h2 className="text-lg font-semibold text-white">Tenant Admins ({tenantAdmins.length})</h2>
             <Button onClick={() => openAdminDialog()} data-testid="create-admin-btn"><Plus className="w-4 h-4 mr-1" /> New Admin</Button>
           </div>
           <Card>
@@ -310,8 +310,8 @@ export default function SaaSManagement() {
                   <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No tenant admins yet.</TableCell></TableRow>
                 ) : tenantAdmins.map((a, i) => (
                   <TableRow key={a.id || i} data-testid={`admin-row-${i}`}>
-                    <TableCell className="font-medium text-foreground">{a.name || "-"}</TableCell>
-                    <TableCell className="text-foreground">{a.email}</TableCell>
+                    <TableCell className="font-medium text-white">{a.name || "-"}</TableCell>
+                    <TableCell className="text-white">{a.email}</TableCell>
                     <TableCell><Badge variant="outline">{a.tenant_name || a.tenant_id || "Unassigned"}</Badge></TableCell>
                     <TableCell>
                       <Badge variant={a.dashboard_subscription_status === "active" ? "default" : "secondary"}>
@@ -340,11 +340,11 @@ export default function SaaSManagement() {
         {/* ===== SUBSCRIPTIONS TAB ===== */}
         <TabsContent value="subscriptions" className="space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-foreground">Subscription Requests ({subscriptions.length})</h2>
+            <h2 className="text-lg font-semibold text-white">Subscription Requests ({subscriptions.length})</h2>
             <Button onClick={() => { setAssignForm({ user_id: "", plan_id: "", duration_days: 30 }); setAssignSubDialog(true); }} data-testid="assign-sub-btn"><Plus className="w-4 h-4 mr-1" /> Assign Subscription</Button>
           </div>
           <div className="grid grid-cols-3 gap-4 mb-4">
-            <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-foreground">{subscriptions.filter(s => s.status === "approved").length}</p><p className="text-xs text-muted-foreground">Active</p></CardContent></Card>
+            <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-white">{subscriptions.filter(s => s.status === "approved").length}</p><p className="text-xs text-muted-foreground">Active</p></CardContent></Card>
             <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-amber-500">{subscriptions.filter(s => s.status === "pending").length}</p><p className="text-xs text-muted-foreground">Pending</p></CardContent></Card>
             <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-destructive">{subscriptions.filter(s => s.status === "rejected").length}</p><p className="text-xs text-muted-foreground">Rejected</p></CardContent></Card>
           </div>
@@ -365,7 +365,7 @@ export default function SaaSManagement() {
                 ) : subscriptions.map((s, i) => (
                   <TableRow key={s.id || i} data-testid={`sub-row-${i}`}>
                     <TableCell>
-                      <p className="font-medium text-foreground">{s.user_name || s.user_email || s.user_id}</p>
+                      <p className="font-medium text-white">{s.user_name || s.user_email || s.user_id}</p>
                       <p className="text-xs text-muted-foreground">{s.user_email}</p>
                     </TableCell>
                     <TableCell><Badge variant="outline">{s.plan_id}</Badge></TableCell>
@@ -398,16 +398,16 @@ export default function SaaSManagement() {
         <TabsContent value="trials" className="space-y-4">
           {/* Trial Config Card */}
           <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-foreground">Trial Management</h2>
+            <h2 className="text-lg font-semibold text-white">Trial Management</h2>
             <Button onClick={() => { setTrialForm(trialConfig || {}); setTrialConfigDialog(true); }} variant="outline" data-testid="trial-settings-btn"><Settings className="w-4 h-4 mr-1" /> Trial Settings</Button>
           </div>
 
           {/* Trial Stats */}
           <div className="grid grid-cols-4 gap-4">
-            <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-foreground">{trialAccounts.length}</p><p className="text-xs text-muted-foreground">Total Trials</p></CardContent></Card>
+            <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-white">{trialAccounts.length}</p><p className="text-xs text-muted-foreground">Total Trials</p></CardContent></Card>
             <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-emerald-500">{trialAccounts.filter(a => !a.is_expired).length}</p><p className="text-xs text-muted-foreground">Active Trials</p></CardContent></Card>
             <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-amber-500">{trialAccounts.filter(a => a.is_expired).length}</p><p className="text-xs text-muted-foreground">Expired</p></CardContent></Card>
-            <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-foreground">{trialConfig?.duration_days || 7}</p><p className="text-xs text-muted-foreground">Trial Days</p></CardContent></Card>
+            <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-white">{trialConfig?.duration_days || 7}</p><p className="text-xs text-muted-foreground">Trial Days</p></CardContent></Card>
           </div>
 
           {/* Current Trial Config Summary */}
@@ -416,7 +416,7 @@ export default function SaaSManagement() {
               <div className="flex items-center gap-4">
                 <div className={`w-3 h-3 rounded-full ${trialConfig?.enabled ? "bg-emerald-500" : "bg-red-500"}`} />
                 <div>
-                  <p className="text-sm font-medium text-foreground">Auto Trial on Registration: <Badge variant={trialConfig?.auto_activate_on_register ? "default" : "secondary"}>{trialConfig?.auto_activate_on_register ? "ON" : "OFF"}</Badge></p>
+                  <p className="text-sm font-medium text-white">Auto Trial on Registration: <Badge variant={trialConfig?.auto_activate_on_register ? "default" : "secondary"}>{trialConfig?.auto_activate_on_register ? "ON" : "OFF"}</Badge></p>
                   <p className="text-xs text-muted-foreground">Duration: {trialConfig?.duration_days || 7} days | Max Subs: {trialConfig?.max_subscribers_trial || 50} | Max Broadcasts: {trialConfig?.max_broadcasts_trial || 5}</p>
                 </div>
               </div>
@@ -445,7 +445,7 @@ export default function SaaSManagement() {
                 ) : trialAccounts.map((a, i) => (
                   <TableRow key={a.id || i} data-testid={`trial-row-${i}`}>
                     <TableCell>
-                      <p className="font-medium text-foreground">{a.name || a.email}</p>
+                      <p className="font-medium text-white">{a.name || a.email}</p>
                       <p className="text-xs text-muted-foreground">{a.email}</p>
                     </TableCell>
                     <TableCell><Badge variant="outline">{a.tenant_name || a.tenant_id || "None"}</Badge></TableCell>
@@ -505,7 +505,7 @@ export default function SaaSManagement() {
         {/* ===== BOT PLANS TAB ===== */}
         <TabsContent value="plans" className="space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-foreground">Bot Subscription Plans</h2>
+            <h2 className="text-lg font-semibold text-white">Bot Subscription Plans</h2>
             <Button onClick={() => openPlanDialog()} data-testid="create-bot-plan-btn"><Plus className="w-4 h-4 mr-1" /> New Plan</Button>
           </div>
           {plans.length === 0 ? (
@@ -517,7 +517,7 @@ export default function SaaSManagement() {
                   {plan.is_popular && <Badge className="absolute top-3 right-3 bg-amber-500">Popular</Badge>}
                   <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2"><Crown className="w-5 h-5 text-amber-500" />{plan.name}</CardTitle></CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="flex items-baseline gap-1"><span className="text-3xl font-bold text-foreground">{plan.price > 0 ? `\u20B9${plan.price.toLocaleString()}` : "Free"}</span><span className="text-sm text-muted-foreground">/ {plan.duration_days} days</span></div>
+                    <div className="flex items-baseline gap-1"><span className="text-3xl font-bold text-white">{plan.price > 0 ? `\u20B9${plan.price.toLocaleString()}` : "Free"}</span><span className="text-sm text-muted-foreground">/ {plan.duration_days} days</span></div>
                     <div className="text-xs text-muted-foreground space-y-1"><p>Max Subs: {plan.max_subscribers}</p><p>Max Broadcasts: {plan.max_broadcasts}/day</p></div>
                     <div className="flex flex-wrap gap-1">
                       {plan.ai_verify_enabled && <Badge variant="outline" className="text-xs">AI Verify</Badge>}
@@ -553,10 +553,10 @@ export default function SaaSManagement() {
             </div>
             <div className="space-y-2">
               <Label>Access Controls</Label>
-              <div className="flex items-center justify-between"><span className="text-sm text-foreground">AI Payment Verification</span><Switch checked={planForm.ai_verify_enabled} onCheckedChange={v => setPlanForm(p => ({ ...p, ai_verify_enabled: v }))} /></div>
-              <div className="flex items-center justify-between"><span className="text-sm text-foreground">Live Streaming</span><Switch checked={planForm.live_stream_enabled} onCheckedChange={v => setPlanForm(p => ({ ...p, live_stream_enabled: v }))} /></div>
-              <div className="flex items-center justify-between"><span className="text-sm text-foreground">Paid Posts</span><Switch checked={planForm.paid_posts_enabled} onCheckedChange={v => setPlanForm(p => ({ ...p, paid_posts_enabled: v }))} /></div>
-              <div className="flex items-center justify-between"><span className="text-sm text-foreground">Mark as Popular</span><Switch checked={planForm.is_popular} onCheckedChange={v => setPlanForm(p => ({ ...p, is_popular: v }))} /></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-white">AI Payment Verification</span><Switch checked={planForm.ai_verify_enabled} onCheckedChange={v => setPlanForm(p => ({ ...p, ai_verify_enabled: v }))} /></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-white">Live Streaming</span><Switch checked={planForm.live_stream_enabled} onCheckedChange={v => setPlanForm(p => ({ ...p, live_stream_enabled: v }))} /></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-white">Paid Posts</span><Switch checked={planForm.paid_posts_enabled} onCheckedChange={v => setPlanForm(p => ({ ...p, paid_posts_enabled: v }))} /></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-white">Mark as Popular</span><Switch checked={planForm.is_popular} onCheckedChange={v => setPlanForm(p => ({ ...p, is_popular: v }))} /></div>
             </div>
             <div className="space-y-2">
               <Label>Features</Label>
@@ -647,7 +647,7 @@ export default function SaaSManagement() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="p-3 rounded-lg bg-muted/50 border">
-              <p className="text-sm font-medium text-foreground">{resetPwdAdmin?.name || "Admin"}</p>
+              <p className="text-sm font-medium text-white">{resetPwdAdmin?.name || "Admin"}</p>
               <p className="text-xs text-muted-foreground">{resetPwdAdmin?.email}</p>
             </div>
             <div>
@@ -725,7 +725,7 @@ export default function SaaSManagement() {
                 <div className="space-y-2">{botAdmins.map(a => (
                   <div key={a.id} className="flex items-center justify-between border rounded-lg p-3">
                     <div>
-                      <p className="text-sm font-medium text-foreground">{a.name || "Admin"}</p>
+                      <p className="text-sm font-medium text-white">{a.name || "Admin"}</p>
                       <p className="text-xs text-muted-foreground">TG: {a.telegram_user_id} - {a.role}</p>
                       <div className="flex flex-wrap gap-1 mt-1">{(a.permissions || []).map(p => <span key={p} className="text-[10px] bg-muted px-1.5 py-0.5 rounded">{p.replace(/_/g, " ")}</span>)}</div>
                     </div>

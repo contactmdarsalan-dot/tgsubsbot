@@ -88,7 +88,7 @@ function MetricCard({ title, value, prefix = "", suffix = "", icon: Icon, trend,
       <div className="flex items-start justify-between">
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</p>
-          <p className="font-serif text-3xl font-bold tracking-tight">
+          <p className="font-serif text-3xl font-bold tracking-tight text-white">
             {prefix}{typeof value === 'number' ? value.toLocaleString("en-IN") : value}{suffix}
           </p>
           {trend !== undefined && (
@@ -196,7 +196,7 @@ export default function RevenueDashboard() {
       >
         <div className="space-y-1">
           <div className="flex items-center gap-3">
-            <h1 className="font-serif text-4xl font-semibold tracking-tight">Revenue Analytics</h1>
+            <h1 className="font-serif text-4xl font-semibold tracking-tight text-white">Revenue Analytics</h1>
             <PulseDot color="emerald" />
           </div>
           <p className="text-muted-foreground">

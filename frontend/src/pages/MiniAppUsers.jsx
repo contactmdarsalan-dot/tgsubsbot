@@ -42,7 +42,7 @@ export default function MiniAppUsers() {
     <div className="space-y-5" data-testid="miniapp-users-page">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold" data-testid="miniapp-users-title">Mini App Users</h1>
+          <h1 className="text-xl font-bold text-white" data-testid="miniapp-users-title">Mini App Users</h1>
           <p className="text-sm text-muted-foreground">Phone numbers collected from Telegram Mini App</p>
         </div>
       </div>

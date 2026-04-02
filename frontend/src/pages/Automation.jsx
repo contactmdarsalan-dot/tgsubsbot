@@ -151,7 +151,7 @@ export default function Automation() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="font-heading text-4xl font-bold tracking-tight">Automation</h1>
+        <h1 className="font-heading text-4xl font-bold tracking-tight text-white">Automation</h1>
         <p className="text-muted-foreground mt-1">
           Configure automatic messages and reminders
         </p>

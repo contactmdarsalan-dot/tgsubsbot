@@ -196,7 +196,7 @@ export default function Subscribers() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="font-heading text-4xl font-bold tracking-tight">Subscribers</h1>
+          <h1 className="font-heading text-4xl font-bold tracking-tight text-white">Subscribers</h1>
           <p className="text-muted-foreground mt-1">
             Manage your channel members and subscriptions
           </p>

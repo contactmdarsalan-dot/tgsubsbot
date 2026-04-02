@@ -221,7 +221,7 @@ export default function SupportPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="font-heading text-4xl font-bold tracking-tight">
+          <h1 className="font-heading text-4xl font-bold tracking-tight text-white">
             {isAdmin ? "Support Tickets" : "Contact Support"}
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -342,7 +342,7 @@ export default function SupportPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Total</p>
-                  <p className="font-heading text-3xl font-bold mt-1">{tickets.length}</p>
+                  <p className="font-heading text-3xl font-bold mt-1 text-white">{tickets.length}</p>
                 </div>
                 <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
                   <MessageSquare className="w-6 h-6 text-primary" />

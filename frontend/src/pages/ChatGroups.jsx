@@ -233,7 +233,7 @@ export default function ChatGroups() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Groups & Channels</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-white">Groups & Channels</h1>
           <p className="text-muted-foreground mt-1">
             Manage Telegram groups for chat sessions and channels for subscriptions
           </p>
@@ -333,7 +333,7 @@ export default function ChatGroups() {
           className={`px-4 py-2 text-sm font-medium transition-colors ${
             activeTab === "groups"
               ? "text-primary border-b-2 border-primary"
-              : "text-muted-foreground hover:text-foreground"
+              : "text-muted-foreground hover:text-white"
           }`}
           data-testid="tab-groups"
         >
@@ -344,7 +344,7 @@ export default function ChatGroups() {
           className={`px-4 py-2 text-sm font-medium transition-colors ${
             activeTab === "channels"
               ? "text-primary border-b-2 border-primary"
-              : "text-muted-foreground hover:text-foreground"
+              : "text-muted-foreground hover:text-white"
           }`}
           data-testid="tab-channels"
         >
@@ -355,7 +355,7 @@ export default function ChatGroups() {
           className={`px-4 py-2 text-sm font-medium transition-colors ${
             activeTab === "sessions"
               ? "text-primary border-b-2 border-primary"
-              : "text-muted-foreground hover:text-foreground"
+              : "text-muted-foreground hover:text-white"
           }`}
           data-testid="tab-sessions"
         >

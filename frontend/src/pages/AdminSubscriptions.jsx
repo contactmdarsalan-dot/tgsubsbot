@@ -167,7 +167,7 @@ export default function AdminSubscriptions() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">SaaS Management</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-white">SaaS Management</h1>
           <p className="text-muted-foreground mt-1">Manage tenant users and dashboard subscriptions</p>
         </div>
         <Button variant="outline" onClick={() => { fetchRequests(); fetchTenantUsers(); fetchPlatformUsers(); }}>
@@ -237,7 +237,7 @@ export default function AdminSubscriptions() {
         <button
           onClick={() => setActiveTab("users")}
           className={`px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === "users" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
+            activeTab === "users" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-white"
           }`}
           data-testid="tab-users"
         >
@@ -246,7 +246,7 @@ export default function AdminSubscriptions() {
         <button
           onClick={() => setActiveTab("requests")}
           className={`px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === "requests" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
+            activeTab === "requests" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-white"
           }`}
           data-testid="tab-requests"
         >
@@ -260,7 +260,7 @@ export default function AdminSubscriptions() {
         <button
           onClick={() => setActiveTab("platform")}
           className={`px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === "platform" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
+            activeTab === "platform" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-white"
           }`}
           data-testid="tab-platform"
         >
