@@ -71,11 +71,11 @@ export default function LandingPage() {
     <div className="min-h-screen text-white overflow-x-hidden" style={{ background: "hsl(0, 0%, 2%)", fontFamily: "Manrope, sans-serif" }}>
 
       {/* NAV */}
-      <nav className="fixed top-0 w-full z-50" style={{ background: "hsla(340,50%,4%,0.9)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+      <nav className="fixed top-0 w-full z-50" style={{ background: "hsla(0,0%,3%,0.9)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <div className="max-w-7xl mx-auto px-6 md:px-12 flex items-center justify-between h-16">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#BFFF00] flex items-center justify-center shadow-[0_0_20px_rgba(225,29,72,0.4)]">
-              <Send className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-[#BFFF00] flex items-center justify-center shadow-[0_0_20px_rgba(191,255,0,0.4)]">
+              <Send className="w-5 h-5 text-black" />
             </div>
             <span style={{ fontFamily: "Unbounded" }} className="text-lg font-bold">TGSubsBot</span>
           </div>
@@ -86,13 +86,13 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-3">
             {isLoggedIn ? (
-              <button onClick={() => navigate("/dashboard")} className="text-sm bg-[#BFFF00] hover:bg-[#84CC16] text-white font-semibold rounded-full px-5 py-2 shadow-[0_0_15px_rgba(225,29,72,0.3)] transition-all hover:scale-105 flex items-center gap-2" data-testid="nav-dashboard">
+              <button onClick={() => navigate("/dashboard")} className="text-sm bg-[#BFFF00] hover:bg-[#A3E635] text-black font-semibold rounded-full px-5 py-2 shadow-[0_0_15px_rgba(191,255,0,0.3)] transition-all hover:scale-105 flex items-center gap-2" data-testid="nav-dashboard">
                 Dashboard <ArrowRight className="w-4 h-4" />
               </button>
             ) : (
               <>
                 <button onClick={() => navigate("/login")} className="text-sm text-white/70 hover:text-white transition-colors px-4 py-2" data-testid="nav-login">Login</button>
-                <button onClick={() => navigate("/login")} className="text-sm bg-[#BFFF00] hover:bg-[#84CC16] text-white font-semibold rounded-full px-5 py-2 shadow-[0_0_15px_rgba(225,29,72,0.3)] transition-all hover:scale-105" data-testid="nav-signup">Start Free</button>
+                <button onClick={() => navigate("/login")} className="text-sm bg-[#BFFF00] hover:bg-[#A3E635] text-black font-semibold rounded-full px-5 py-2 shadow-[0_0_15px_rgba(191,255,0,0.3)] transition-all hover:scale-105" data-testid="nav-signup">Start Free</button>
               </>
             )}
           </div>
@@ -115,7 +115,7 @@ export default function LandingPage() {
               Sell subscriptions, run paid lives, and monetize your community — all automated. No coding. No manual work.
             </motion.p>
             <motion.div variants={fadeUp} className="flex flex-wrap gap-4">
-              <button onClick={() => navigate("/login")} className="flex items-center gap-2 bg-[#BFFF00] hover:bg-[#84CC16] text-white font-bold rounded-full px-8 py-4 text-lg shadow-[0_0_30px_rgba(225,29,72,0.4)] transition-all hover:scale-105 hover:shadow-[0_0_40px_rgba(225,29,72,0.6)]" data-testid="hero-cta-start">
+              <button onClick={() => navigate("/login")} className="flex items-center gap-2 bg-[#BFFF00] hover:bg-[#A3E635] text-black font-bold rounded-full px-8 py-4 text-lg shadow-[0_0_30px_rgba(191,255,0,0.4)] transition-all hover:scale-105 hover:shadow-[0_0_40px_rgba(191,255,0,0.6)]" data-testid="hero-cta-start">
                 Start Free <ArrowRight className="w-5 h-5" />
               </button>
               <button className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-bold rounded-full px-8 py-4 text-lg backdrop-blur-md transition-all" data-testid="hero-cta-demo">
@@ -132,7 +132,7 @@ export default function LandingPage() {
           {/* CSS DASHBOARD MOCKUP */}
           <motion.div initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.8, delay: 0.3 }} className="relative">
             <div className="absolute -inset-4 bg-[#BFFF00]/10 rounded-3xl blur-3xl" />
-            <div className="relative bg-[#0A0305] border border-white/10 rounded-2xl p-6 shadow-[0_20px_60px_rgba(225,29,72,0.15)]">
+            <div className="relative bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-[0_20px_60px_rgba(191,255,0,0.1)]">
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <p className="text-xs text-white/40 uppercase tracking-wider">Total Revenue</p>
@@ -222,7 +222,7 @@ export default function LandingPage() {
             {benefits.map((b, i) => {
               const Icon = b.icon;
               return (
-                <motion.div key={i} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} className={`${b.span} group bg-[#0A0305] border border-white/10 rounded-2xl p-8 hover:border-[${b.color}]/50 transition-all duration-300 hover:-translate-y-1`}>
+                <motion.div key={i} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} className={`${b.span} group bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 hover:border-[${b.color}]/50 transition-all duration-300 hover:-translate-y-1`}>
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-5" style={{ background: `${b.color}20` }}>
                     <Icon className="w-6 h-6" style={{ color: b.color }} />
                   </div>
@@ -249,7 +249,7 @@ export default function LandingPage() {
 
           <motion.div initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="flex justify-center">
             {/* Phone Mockup */}
-            <div className="relative w-72 rounded-[2.5rem] border-[6px] border-zinc-800 overflow-hidden shadow-[0_0_60px_rgba(225,29,72,0.2)]" style={{ background: "#0A0305" }}>
+            <div className="relative w-72 rounded-[2.5rem] border-[6px] border-zinc-800 overflow-hidden shadow-[0_0_60px_rgba(191,255,0,0.2)]" className="bg-black">
               <div className="h-[520px] relative">
                 {/* Live Header */}
                 <div className="absolute top-0 left-0 right-0 p-4 z-10" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.8), transparent)" }}>
@@ -266,10 +266,10 @@ export default function LandingPage() {
                   </div>
                 </div>
                 {/* Live Content Area */}
-                <div className="h-full bg-gradient-to-br from-[#1a0510] via-[#0A0305] to-[#150308] flex items-center justify-center">
+                <div className="h-full bg-gradient-to-br from-zinc-950 via-black to-zinc-950 flex items-center justify-center">
                   <div className="text-center">
-                    <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#BFFF00] to-[#BEF264] flex items-center justify-center mx-auto mb-3 shadow-[0_0_40px_rgba(225,29,72,0.5)]">
-                      <Radio className="w-8 h-8 text-white" />
+                    <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#BFFF00] to-[#BEF264] flex items-center justify-center mx-auto mb-3 shadow-[0_0_40px_rgba(191,255,0,0.5)]">
+                      <Radio className="w-8 h-8 text-black" />
                     </div>
                     <p className="text-white/40 text-sm">Premium Session</p>
                   </div>
@@ -321,7 +321,7 @@ export default function LandingPage() {
           </motion.div>
           <div className="grid md:grid-cols-3 gap-6">
             {testimonials.map((t, i) => (
-              <motion.div key={i} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} className="bg-[#0A0305] border border-white/10 rounded-2xl p-6 hover:border-[#BFFF00]/30 transition-all" data-testid={`testimonial-${i}`}>
+              <motion.div key={i} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6 hover:border-[#BFFF00]/30 transition-all" data-testid={`testimonial-${i}`}>
                 <div className="flex items-center gap-1 mb-4">
                   {[...Array(5)].map((_, j) => <Star key={j} className="w-4 h-4 fill-[#F59E0B] text-[#F59E0B]" />)}
                 </div>
@@ -401,7 +401,7 @@ export default function LandingPage() {
 
                 return (
                   <motion.div key={p.id || i} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}
-                    className={`relative rounded-2xl p-8 border transition-all ${isPopular ? "bg-[#0A0305] border-[#BFFF00] scale-105 shadow-[0_0_40px_rgba(225,29,72,0.2)]" : "bg-[#0A0305] border-white/10 hover:border-white/20"}`}
+                    className={`relative rounded-2xl p-8 border transition-all ${isPopular ? "bg-white/5 backdrop-blur-md border-[#BFFF00] scale-105 shadow-[0_0_40px_rgba(191,255,0,0.2)]" : "bg-white/5 backdrop-blur-md border-white/10 hover:border-white/20"}`}
                     data-testid={`pricing-${p.name.toLowerCase().replace(/\s+/g, "-")}`}
                   >
                     {isPopular && (
@@ -447,7 +447,7 @@ export default function LandingPage() {
                     )}
 
                     <button onClick={() => navigate("/login")}
-                      className={`w-full py-3 rounded-full font-bold text-sm transition-all mt-auto ${isPopular ? "bg-[#BFFF00] hover:bg-[#84CC16] text-white shadow-[0_0_20px_rgba(225,29,72,0.4)] hover:scale-105" : "bg-white/10 hover:bg-white/20 text-white"}`}
+                      className={`w-full py-3 rounded-full font-bold text-sm transition-all mt-auto ${isPopular ? "bg-[#BFFF00] hover:bg-[#A3E635] text-black shadow-[0_0_20px_rgba(191,255,0,0.4)] hover:scale-105" : "bg-white/10 hover:bg-white/20 text-white"}`}
                       data-testid={`pricing-cta-${p.name.toLowerCase().replace(/\s+/g, "-")}`}
                     >
                       {isFree ? "Start Free" : "Get Started"} <ArrowRight className="inline w-4 h-4 ml-1" />
@@ -472,7 +472,7 @@ export default function LandingPage() {
               <h3 style={{ fontFamily: "Unbounded" }} className="text-2xl font-bold mb-2">Earn 20% on Every Referral</h3>
               <p className="text-white/50">Invite creators. Earn commission on their subscription. Passive income, forever.</p>
             </div>
-            <button onClick={() => navigate("/login")} className="bg-[#BFFF00] hover:bg-[#84CC16] text-white font-bold rounded-full px-8 py-3 shadow-[0_0_20px_rgba(225,29,72,0.3)] transition-all hover:scale-105 flex-shrink-0" data-testid="referral-cta">
+            <button onClick={() => navigate("/login")} className="bg-[#BFFF00] hover:bg-[#A3E635] text-black font-bold rounded-full px-8 py-3 shadow-[0_0_20px_rgba(191,255,0,0.3)] transition-all hover:scale-105 flex-shrink-0" data-testid="referral-cta">
               Join Program <ArrowRight className="inline w-4 h-4 ml-1" />
             </button>
           </div>
@@ -491,7 +491,7 @@ export default function LandingPage() {
               Join 5,000+ creators who are turning their Telegram communities into revenue machines.
             </motion.p>
             <motion.div variants={fadeUp}>
-              <button onClick={() => navigate("/login")} className="relative bg-[#BFFF00] hover:bg-[#84CC16] text-white font-bold rounded-full px-12 py-5 text-xl shadow-[0_0_40px_rgba(225,29,72,0.5)] transition-all hover:scale-105 hover:shadow-[0_0_60px_rgba(225,29,72,0.7)]" data-testid="final-cta">
+              <button onClick={() => navigate("/login")} className="relative bg-[#BFFF00] hover:bg-[#A3E635] text-black font-bold rounded-full px-12 py-5 text-xl shadow-[0_0_40px_rgba(191,255,0,0.5)] transition-all hover:scale-105 hover:shadow-[0_0_60px_rgba(191,255,0,0.7)]" data-testid="final-cta">
                 <span className="absolute inset-0 rounded-full animate-ping bg-[#BFFF00]/30" style={{ animationDuration: "2s" }} />
                 <span className="relative flex items-center gap-2">Create Your First Paid Community <ArrowRight className="w-5 h-5" /></span>
               </button>

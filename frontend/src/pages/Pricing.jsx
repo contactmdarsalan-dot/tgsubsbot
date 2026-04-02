@@ -124,10 +124,10 @@ export default function Pricing({ onSubscribed }) {
   return (
     <div className="min-h-screen text-white" style={{ background: "hsl(0, 0%, 2%)", fontFamily: "Manrope, sans-serif" }}>
       {/* Nav */}
-      <nav className="sticky top-0 z-50 border-b border-white/6" style={{ background: "hsla(340,50%,4%,0.95)", backdropFilter: "blur(20px)" }}>
+      <nav className="sticky top-0 z-50 border-b border-white/6" style={{ background: "hsla(0,0%,3%,0.95)", backdropFilter: "blur(20px)" }}>
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#BFFF00] flex items-center justify-center shadow-[0_0_20px_rgba(225,29,72,0.4)]">
+            <div className="w-9 h-9 rounded-xl bg-[#BFFF00] flex items-center justify-center shadow-[0_0_20px_rgba(191,255,0,0.4)]">
               <Send className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -180,7 +180,7 @@ export default function Pricing({ onSubscribed }) {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.1 }}
-                    className={`relative rounded-2xl border transition-all duration-300 ${isPopular ? "border-[#BFFF00] shadow-[0_0_40px_rgba(225,29,72,0.15)] scale-[1.03]" : "border-white/10 hover:border-white/20"}`}
+                    className={`relative rounded-2xl border transition-all duration-300 ${isPopular ? "border-[#BFFF00] shadow-[0_0_40px_rgba(191,255,0,0.15)] scale-[1.03]" : "border-white/10 hover:border-white/20"}`}
                     style={{ background: "hsl(0, 0%, 4%)" }}
                     data-testid={`plan-card-${plan.id}`}
                   >
@@ -240,7 +240,7 @@ export default function Pricing({ onSubscribed }) {
                       <button
                         onClick={() => handleSelectPlan(plan)}
                         disabled={isLoading || loading !== null}
-                        className={`w-full py-3 rounded-full font-bold text-sm transition-all flex items-center justify-center gap-2 ${isPopular ? "bg-[#BFFF00] hover:bg-[#84CC16] text-white shadow-[0_0_20px_rgba(225,29,72,0.4)] hover:scale-105" : isFree ? "bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 border border-violet-500/30" : "bg-white/8 hover:bg-white/15 text-white border border-white/10"}`}
+                        className={`w-full py-3 rounded-full font-bold text-sm transition-all flex items-center justify-center gap-2 ${isPopular ? "bg-[#BFFF00] hover:bg-[#A3E635] text-black shadow-[0_0_20px_rgba(191,255,0,0.4)] hover:scale-105" : isFree ? "bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 border border-violet-500/30" : "bg-white/8 hover:bg-white/15 text-white border border-white/10"}`}
                         data-testid={`plan-${plan.id}-btn`}
                       >
                         {isLoading ? (

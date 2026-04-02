@@ -46,7 +46,7 @@ export function StatsCard({
     primary: {
       bg: "bg-primary/10",
       text: "text-primary",
-      glow: "hover:shadow-[0_0_30px_rgba(225,29,72,0.15)]",
+      glow: "hover:shadow-[0_0_30px_rgba(191,255,0,0.15)]",
     },
     emerald: {
       bg: "bg-emerald-500/10",
@@ -189,7 +189,7 @@ export function AnimatedProgress({ value, max = 100, color = "primary", classNam
 // Glowing Card
 export function GlowCard({ children, className = "", glowColor = "rose" }) {
   const glowColors = {
-    rose: "hover:shadow-[0_0_40px_rgba(225,29,72,0.2)]",
+    rose: "hover:shadow-[0_0_40px_rgba(191,255,0,0.2)]",
     emerald: "hover:shadow-[0_0_40px_rgba(16,185,129,0.2)]",
     amber: "hover:shadow-[0_0_40px_rgba(245,158,11,0.2)]",
   };

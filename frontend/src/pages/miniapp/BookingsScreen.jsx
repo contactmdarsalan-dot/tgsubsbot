@@ -231,7 +231,7 @@ function VideoCallRoom({ roomId, onBack }) {
       </div>
 
       {/* Controls */}
-      <div className="p-4 flex items-center justify-center gap-4" style={{ background: "hsla(340,50%,4%,0.95)" }}>
+      <div className="p-4 flex items-center justify-center gap-4" style={{ background: "hsla(0,0%,3%,0.95)" }}>
         <button onClick={toggleMute} className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${muted ? "bg-lime-500" : "bg-zinc-700"}`} data-testid="mute-btn">
           {muted ? <span className="text-white text-xs">UN</span> : <span className="text-white text-xs">MIC</span>}
         </button>
