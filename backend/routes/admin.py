@@ -1706,6 +1706,13 @@ async def migrate_data_to_tenant(data: dict, user: dict = Depends(get_current_us
         )
         migrated += r2.modified_count
 
+        # Migrate null tenant_id
+        r2b = await coll.update_many(
+            {"tenant_id": None},
+            {"$set": {"tenant_id": target_tenant_id}}
+        )
+        migrated += r2b.modified_count
+
         # Migrate empty tenant_id
         r3 = await coll.update_many(
             {"tenant_id": ""},
@@ -1716,6 +1723,12 @@ async def migrate_data_to_tenant(data: dict, user: dict = Depends(get_current_us
         if migrated > 0:
             results[coll_name] = migrated
             total += migrated
+
+    # Also ensure the main bot_settings has tenant_id set
+    await db.settings.update_one(
+        {"id": "bot_settings", "$or": [{"tenant_id": {"$exists": False}}, {"tenant_id": None}, {"tenant_id": ""}, {"tenant_id": "default"}]},
+        {"$set": {"tenant_id": target_tenant_id}}
+    )
 
     # Get post-migration stats
     stats = {

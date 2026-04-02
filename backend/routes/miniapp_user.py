@@ -85,6 +85,12 @@ async def miniapp_resolve_tenant_by_init(data: dict):
         if user_tenant and user_tenant != DEFAULT_TENANT_ID:
             return {"tenant_id": user_tenant, "verified": False}
 
+    # Fallback: use settings tenant_id (resolves for single-bot setups)
+    settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0, "tenant_id": 1})
+    settings_tenant = (settings.get("tenant_id") if settings else None) or ""
+    if settings_tenant and settings_tenant != DEFAULT_TENANT_ID:
+        return {"tenant_id": settings_tenant, "verified": False}
+
     return {"tenant_id": DEFAULT_TENANT_ID, "verified": False}
 
 
@@ -195,8 +201,21 @@ async def miniapp_get_upi_details(tenant_id: str = DEFAULT_TENANT_ID):
 
 @router.get("/plans")
 async def miniapp_get_plans(tenant_id: str = DEFAULT_TENANT_ID):
-    """Get active plans for a specific tenant"""
+    """Get active plans for a specific tenant. Also includes legacy plans with no tenant_id."""
+    # Try exact tenant match first
     plans = await db.plans.find({"is_active": True, "tenant_id": tenant_id}, {"_id": 0}).sort("price", 1).to_list(50)
+    if plans:
+        return plans
+    # Fallback: include plans with None/missing tenant_id (legacy data not yet migrated)
+    plans = await db.plans.find(
+        {"is_active": True, "$or": [
+            {"tenant_id": tenant_id},
+            {"tenant_id": None},
+            {"tenant_id": {"$exists": False}},
+            {"tenant_id": ""},
+        ]},
+        {"_id": 0}
+    ).sort("price", 1).to_list(50)
     return plans
 
 
@@ -204,7 +223,15 @@ async def miniapp_get_plans(tenant_id: str = DEFAULT_TENANT_ID):
 
 @router.get("/status/{telegram_user_id}")
 async def miniapp_get_status(telegram_user_id: str, tenant_id: str = DEFAULT_TENANT_ID):
+    # Try exact tenant match first
     sub = await db.subscribers.find_one({"telegram_user_id": telegram_user_id, "status": "active", "tenant_id": tenant_id}, {"_id": 0})
+    if not sub:
+        # Fallback: check legacy subscribers without tenant_id
+        sub = await db.subscribers.find_one(
+            {"telegram_user_id": telegram_user_id, "status": "active", "$or": [
+                {"tenant_id": tenant_id}, {"tenant_id": None}, {"tenant_id": {"$exists": False}}, {"tenant_id": ""}
+            ]}, {"_id": 0}
+        )
     if sub:
         end_date = sub.get("end_date", "")
         days_remaining = 0
