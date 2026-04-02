@@ -4,74 +4,60 @@
 Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product with multi-tenant isolation, RBAC, and enterprise-grade security.
 
 ## Core Requirements
-1. Multi-Tenant SaaS isolation across database, backend, and webhooks
-2. RBAC: Super Admins (platform) vs Tenant Admins (dashboard) vs Bot Admins (Telegram Mini App)
-3. Security: JWT auth, CORS, Telegram initData HMAC verification, Audit Logging
+1. Multi-Tenant SaaS isolation across ALL database collections, backend routes, and webhooks
+2. RBAC: Super Admins (platform) vs Tenant Admins/Owners (dashboard) vs Bot Admins (Telegram)
+3. Security: JWT auth, CORS, Telegram initData HMAC, tenant data isolation
 4. AI-powered payment verification (GPT-5.2 Vision)
 5. Telegram Bot with subscription management, payments, broadcasts, live sessions
 
 ## What's Been Implemented
 
-### Phase 1-6: (Complete)
+### Phase 1-9: (Complete - see CHANGELOG.md for details)
 - Full Telegram bot, Plans CRUD, Payments, Subscribers, Mini App
-- Multi-Tenant SaaS isolation with RBAC
-- Security hardening (JWT, HMAC, Audit logs)
-- Backend refactoring (monolith -> modular routes)
-- Frontend refactoring + Rose/Crimson design system
-- Super Admin sidebar isolation + UI fixes
+- Multi-Tenant SaaS with RBAC, Trial Management, Team Management
+- Super Admin Control Center, Tenant Profile, Dynamic Pricing
+- Rose/Crimson design system, Login/Registration UI fixes
 
-### Phase 7: Trial Management (Complete)
-- Trial Management System: 7 endpoints + UI tab in SaaSManagement.jsx
+### Phase 10: P0 Core Tenant Isolation (Complete - 2026-04-02)
+- Fixed `get_user_tenant()` to return `__no_tenant__` for users without tenant_id
+- Fixed `tenant_query()` to always filter (no DEFAULT skip)
+- Registration auto-creates unique tenant per user
 
-### Phase 8: Super Admin Control Center + Tenant Profile (Complete)
-- Control Center Dashboard with platform overview, revenue charts, top tenants
-- Tenant Profile Page with 6 tabs
+### Phase 11: Payments & Subscribers Pagination (Complete - 2026-04-02)
+- Server-side pagination with page/limit/search params
+- Server-side stats (total_collected, pending_count, total_transactions)
+- MongoDB aggregation for revenue (removed `.to_list(10000)`)
 
-### Phase 9: Dynamic Pricing + Team Management (Complete)
-- Dynamic Pricing Plans on Landing Page
-- Free Trial self-activation
-- Tenant Team Management
-- Login/Registration UI fixes
-
-### Phase 10: P0 Tenant Data Isolation Fix (Complete - 2026-04-02)
-- **CRITICAL SECURITY FIX**: Fixed tenant data leaking to other tenants
-- Root cause: `get_user_tenant()` returned empty string → no filtering
-- Fix: Returns `"__no_tenant__"` for non-super-admin users without tenant_id
-- Registration auto-creates unique tenant for every new user
-
-### Phase 11: Payments & Subscribers Pagination Fix (Complete - 2026-04-02)
-- **P0 Fix**: Payment routes had `.to_list(1000)` hard limit - production had 1000+ payments, new ones weren't showing
-- Backend: Added server-side pagination (page, limit, search params) to `/api/payments` and `/api/subscribers`
-- Backend: Stats (total_collected, pending_count, total_transactions) now computed server-side from ALL records
-- Backend: Revenue calculation optimized with MongoDB aggregation pipeline (no more `.to_list(10000)`)
-- Frontend: Added pagination controls (First/Prev/Page X of Y/Next/Last)
-- Frontend: Stats cards now use server-side values (not client-side from limited array)
-- Tested: Iteration 28 (14/14 backend, all frontend passed)
+### Phase 12: COMPLETE Data Isolation + UI Fixes (Complete - 2026-04-02)
+- **20+ route files** updated with tenant isolation:
+  - `live_content.py`: Creators, TG Admins, Live Sessions, Paid Posts, Super Chats, Live Tickets, Unlock Requests
+  - `engagement.py`: Coupons, FAQs, Referrals, Video Calls, Tags, Blocked Users, User Notes
+  - `broadcasts.py`: Templates, Broadcasts, Scheduled Broadcasts, Renewal Broadcasts
+  - `dashboard.py`: Channels, Chat Groups, Chat Sessions, Settings, Bot Language
+  - `analytics_exports.py`: Bot Activity logs and stats
+  - `admin.py`: Mini App Users restricted to Super Admin only
+- **Plans Dialog UI**: Widened to 550px with scrollable content
+- **Sidebar**: Mini App Users moved to Super Admin only
+- **Settings**: Tenant-isolated (each tenant gets own settings document)
+- **Data Migration API**: `/api/saas/migrate-to-tenant` for normalizing old data
+- Tested: Iteration 30 (ALL PASSED - 21 routes verified for new tenant = 0 data, original tenant correct)
 
 ## Architecture
 ```
 /app/backend/
 ├── server.py
-├── routes/
-│   ├── admin.py (Super Admin routes + Trial + Platform Stats + Tenant Profile)
-│   ├── auth.py (Login, Registration with auto-tenant, Free Trial)
-│   ├── tenant.py (Tenant Team Management)
-│   ├── dashboard.py (Tenant analytics with aggregation, settings)
-│   ├── payments.py (Paginated, server-side stats)
-│   ├── subscribers.py (Paginated, server-side stats)
-│   ├── plans.py, broadcasts.py, engagement.py, live_content.py
-│   ├── miniapp_user.py, miniapp_admin.py, telegram_webhook.py
+├── routes/ (ALL routes tenant-isolated)
+│   ├── admin.py (Super Admin + Trial + Stats + Migration)
+│   ├── auth.py (Login, Registration with auto-tenant)
+│   ├── tenant.py (Team Management)
+│   ├── dashboard.py (Analytics, Settings, Channels, Groups)
+│   ├── payments.py (Paginated, tenant-filtered)
+│   ├── subscribers.py (Paginated, tenant-filtered)
+│   ├── plans.py, live_content.py, engagement.py, broadcasts.py
+│   ├── analytics_exports.py, miniapp_user.py, miniapp_admin.py
 ├── services/
-│   ├── permissions.py (CRITICAL: tenant isolation)
-│   ├── tenant.py, auth.py, telegram.py, payment.py, chat_pool.py
-
-/app/frontend/
-├── src/pages/
-│   ├── Dashboard.jsx (SuperAdmin + Tenant dashboards)
-│   ├── Payments.jsx (Paginated with server-side stats)
-│   ├── Subscribers.jsx (Paginated with server-side stats)
-│   ├── SaaSManagement.jsx, TeamManagement.jsx, TenantProfile.jsx
-│   ├── LandingPage.jsx, Login.jsx, Pricing.jsx
+│   ├── permissions.py (CRITICAL: get_user_tenant(), tq())
+│   ├── tenant.py (tenant_query(), DEFAULT_TENANT_ID)
 ```
 
 ## Prioritized Backlog
@@ -88,12 +74,18 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 - [ ] WhatsApp integration
 - [ ] Multi-language bot support
 
+## Production Deployment Notes
+- **IMPORTANT**: After deploying, run the data migration endpoint:
+  `POST /api/saas/migrate-to-tenant` with `{"source_tenant_id": "default", "target_tenant_id": "<actual_tenant_id>"}`
+  to normalize old data with `tenant_id: "default"` to the correct tenant.
+- Ensure original creator's user record has correct `tenant_id` and `role: "tenant_owner"`
+- All new users auto-get unique `tenant_id` on registration
+
 ## 3rd Party Integrations
-- OpenAI GPT-5.2 Vision (Emergent LLM Key) - Payment verification
-- Razorpay - Online payments
-- Telegram Bot API - Core bot functionality
-- Resend (BLOCKED: domain verification pending) - Email OTPs
+- OpenAI GPT-5.2 Vision (Emergent LLM Key)
+- Razorpay, Telegram Bot API
+- Resend (BLOCKED: domain verification pending)
 
 ## Known Issues
-- Resend email OTP: Domain verification pending by user
-- Production env vars need user injection (MONGO_URL, JWT_SECRET, etc.)
+- Resend email OTP: Domain verification pending
+- Production env vars need user injection
