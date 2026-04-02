@@ -312,6 +312,116 @@ async def dashboard_end_live(data: dict, user=Depends(get_current_user)):
     return {"success": True}
 
 
+# ============== DASHBOARD: MINI APP PLANS CRUD ==============
+
+@router.get("/miniapp-manage/plans")
+async def dashboard_miniapp_plans(user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
+    plans = await db.plans.find(tq({"source": "miniapp"}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(200)
+    return plans
+
+@router.post("/miniapp-manage/plans")
+async def dashboard_create_miniapp_plan(data: dict, user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
+    plan = {
+        "id": str(uuid.uuid4()), "name": data.get("name", ""), "description": data.get("description", ""),
+        "price": float(data.get("price", 0)), "duration_days": int(data.get("duration_days", 30)),
+        "duration_minutes": int(data.get("duration_minutes", 0)),
+        "plan_type": data.get("plan_type", "subscription"),
+        "is_active": True, "source": "miniapp",
+        "no_channel_access": data.get("plan_type") == "video_call",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "tenant_id": tenant_id if tenant_id else DEFAULT_TENANT_ID,
+    }
+    await db.plans.insert_one(plan)
+    del plan["_id"]
+    return {"success": True, "plan": plan}
+
+@router.put("/miniapp-manage/plans/{plan_id}")
+async def dashboard_update_miniapp_plan(plan_id: str, data: dict, user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
+    update = {}
+    for k in ["name", "description", "price", "duration_days", "duration_minutes", "plan_type", "is_active"]:
+        if k in data:
+            update[k] = data[k]
+    if "price" in update:
+        update["price"] = float(update["price"])
+    if update:
+        await db.plans.update_one(tq({"id": plan_id, "source": "miniapp"}, tenant_id), {"$set": update})
+    return {"success": True}
+
+@router.delete("/miniapp-manage/plans/{plan_id}")
+async def dashboard_delete_miniapp_plan(plan_id: str, user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
+    await db.plans.delete_one(tq({"id": plan_id, "source": "miniapp"}, tenant_id))
+    return {"success": True}
+
+
+# ============== DASHBOARD: MINI APP SUBSCRIBERS ==============
+
+@router.get("/miniapp-manage/subscribers")
+async def dashboard_miniapp_subscribers(page: int = 1, limit: int = 50, user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
+    query = tq({"source": "miniapp"}, tenant_id)
+    total = await db.subscribers.count_documents(query)
+    active = await db.subscribers.count_documents({**query, "status": "active"})
+    subs = await db.subscribers.find(query, {"_id": 0}).sort("start_date", -1).skip((page - 1) * limit).limit(limit).to_list(limit)
+    return {"subscribers": subs, "total": total, "active": active, "page": page}
+
+
+# ============== DASHBOARD: MINI APP PAYMENTS ==============
+
+@router.get("/miniapp-manage/payments")
+async def dashboard_miniapp_payments(page: int = 1, limit: int = 50, status: str = None, user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
+    query = tq({"source": "miniapp"}, tenant_id)
+    if status:
+        query["status"] = status
+    total = await db.payments.count_documents(query)
+    verified = await db.payments.count_documents({**tq({"source": "miniapp"}, tenant_id), "status": "verified"})
+    pipeline = [
+        {"$match": {**tq({"source": "miniapp", "status": "verified"}, tenant_id)}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+    ]
+    rev_result = await db.payments.aggregate(pipeline).to_list(1)
+    revenue = rev_result[0]["total"] if rev_result else 0
+
+    payments = await db.payments.find(query, {"_id": 0}).sort("created_at", -1).skip((page - 1) * limit).limit(limit).to_list(limit)
+    return {"payments": payments, "total": total, "verified": verified, "revenue": revenue, "page": page}
+
+@router.post("/miniapp-manage/payment-action")
+async def dashboard_miniapp_payment_action(data: dict, user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
+    payment_id = data.get("payment_id", "")
+    action = data.get("action", "")
+    new_status = "verified" if action == "approve" else "rejected"
+    await db.payments.update_one(
+        tq({"id": payment_id, "source": "miniapp"}, tenant_id),
+        {"$set": {"status": new_status, "verified_by": user.get("name", user.get("email", "")), "verified_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"success": True}
+
+
+# ============== DASHBOARD: MINI APP SETTINGS ==============
+
+@router.get("/miniapp-manage/settings")
+async def dashboard_miniapp_settings(user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
+    settings_id = f"miniapp_settings_{tenant_id}" if tenant_id else "miniapp_settings"
+    s = await db.settings.find_one({"id": settings_id}, {"_id": 0})
+    return s or {"id": settings_id, "auto_approve_calls": False, "max_call_duration": 30, "live_enabled": True, "chat_enabled": True}
+
+@router.put("/miniapp-manage/settings")
+async def dashboard_update_miniapp_settings(data: dict, user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
+    settings_id = f"miniapp_settings_{tenant_id}" if tenant_id else "miniapp_settings"
+    data["id"] = settings_id
+    if tenant_id:
+        data["tenant_id"] = tenant_id
+    await db.settings.update_one({"id": settings_id}, {"$set": data}, upsert=True)
+    return {"success": True}
+
+
 # ============== WEBSOCKET: VIDEO CALL SIGNALING ==============
 
 @router.websocket("/ws/call/{room_id}")
