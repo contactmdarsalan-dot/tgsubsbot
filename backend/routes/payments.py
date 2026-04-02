@@ -41,7 +41,7 @@ async def get_payments(status=None, page: int = 1, limit: int = 50, search: str 
     for p in payments:
         if isinstance(p.get('created_at'), str):
             p['created_at'] = datetime.fromisoformat(p['created_at'])
-        p['has_screenshot'] = bool(p.get('screenshot_file_id'))
+        p['has_screenshot'] = bool(p.get('screenshot_file_id') or p.get('screenshot_url'))
     
     # Server-side counts (from ALL data, not just current page)
     total_count = await db.payments.count_documents(list_query)

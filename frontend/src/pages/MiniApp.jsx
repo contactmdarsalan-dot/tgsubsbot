@@ -60,11 +60,15 @@ export default function MiniApp() {
   const initApp = async () => {
     try {
       if (tgUser) setUser(tgUser);
-      // Resolve tenant first
+      // Resolve tenant using Telegram initData (most reliable for multi-bot)
       let resolvedTenant = "";
-      if (userId) {
+      const initData = tg?.initData || "";
+      if (initData || userId) {
         try {
-          const tenantRes = await fetch(`${API}/miniapp/resolve-tenant/${userId}`);
+          const tenantRes = await fetch(`${API}/miniapp/resolve-tenant-by-init`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ init_data: initData, telegram_user_id: userId }),
+          });
           const tenantData = await tenantRes.json();
           resolvedTenant = tenantData.tenant_id || "";
           setTenantId(resolvedTenant);
