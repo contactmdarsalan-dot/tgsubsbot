@@ -4,7 +4,7 @@ import { useMiniApp, API, copyToClipboard, tg } from "./context";
 import { Shield, Check, X, ChevronDown, Upload, Loader2, Sparkles, Camera } from "lucide-react";
 
 export default function PlansScreen() {
-  const { plans, selectedPlan, setSelectedPlan, subscription, loginDiscount, userId, user, activeTab, setActiveTab, couponCode, setCouponCode, couponResult, setCouponResult, couponLoading, setCouponLoading, getPayAmount, handleRazorpay, payProcessing, showManualSheet, setShowManualSheet, handlePayNow, upiDetails, setUpiDetails, qrLoading, setQrLoading, uploadStep, setUploadStep, screenshotFile, setScreenshotFile, screenshotPreview, setScreenshotPreview, uploadResult, setUploadResult, paySuccess, setPaySuccess, fetchData } = useMiniApp();
+  const { plans, selectedPlan, setSelectedPlan, subscription, loginDiscount, userId, user, activeTab, setActiveTab, couponCode, setCouponCode, couponResult, setCouponResult, couponLoading, setCouponLoading, getPayAmount, handleRazorpay, payProcessing, showManualSheet, setShowManualSheet, handlePayNow, upiDetails, setUpiDetails, qrLoading, setQrLoading, uploadStep, setUploadStep, screenshotFile, setScreenshotFile, screenshotPreview, setScreenshotPreview, uploadResult, setUploadResult, paySuccess, setPaySuccess, fetchData, tenantId } = useMiniApp();
   const fileInputRef = useRef(null);
 
   const applyCoupon = async () => {
@@ -13,7 +13,7 @@ export default function PlansScreen() {
     try {
       const res = await fetch(`${API}/miniapp/apply-coupon`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: couponCode, plan_id: selectedPlan.id, amount: selectedPlan.price }),
+        body: JSON.stringify({ code: couponCode, plan_id: selectedPlan.id, amount: selectedPlan.price, tenant_id: tenantId }),
       });
       setCouponResult(await res.json());
     } catch { setCouponResult({ valid: false, error: "Network error" }); }
@@ -24,7 +24,8 @@ export default function PlansScreen() {
     if (!upiDetails) {
       setQrLoading(true);
       try {
-        const res = await fetch(`${API}/miniapp/upi-details`);
+        const tParam = tenantId ? `?tenant_id=${tenantId}` : "";
+        const res = await fetch(`${API}/miniapp/upi-details${tParam}`);
         const data = await res.json();
         if (data.qr_code_url && !data.qr_code_url.startsWith("http")) {
           data.qr_code_url = `${process.env.REACT_APP_BACKEND_URL.replace(/\/api\/?$/, "")}${data.qr_code_url}`;
@@ -52,6 +53,7 @@ export default function PlansScreen() {
     formData.append("plan_id", selectedPlan.id);
     formData.append("plan_name", selectedPlan.name);
     formData.append("amount", getPayAmount());
+    if (tenantId) formData.append("tenant_id", tenantId);
     try {
       const res = await fetch(`${API}/miniapp/upload-screenshot`, { method: "POST", body: formData });
       setUploadResult(await res.json());

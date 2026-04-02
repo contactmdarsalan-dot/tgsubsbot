@@ -4,7 +4,7 @@ import { useMiniApp, API } from "./context";
 import { Send, Loader2, Bot, User, Headphones } from "lucide-react";
 
 export default function SupportScreen() {
-  const { userId } = useMiniApp();
+  const { userId, tenantId } = useMiniApp();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -22,7 +22,7 @@ export default function SupportScreen() {
     try {
       const res = await fetch(`${API}/miniapp/support/chat`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ telegram_user_id: userId, message: msg, session_id: sessionId.current }),
+        body: JSON.stringify({ telegram_user_id: userId, message: msg, session_id: sessionId.current, tenant_id: tenantId }),
       });
       const data = await res.json();
       setMessages(prev => [...prev, { role: "assistant", message: data.reply, escalated: data.escalated }]);

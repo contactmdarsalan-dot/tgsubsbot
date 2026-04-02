@@ -22,6 +22,7 @@ export default function MiniApp() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminPerms, setAdminPerms] = useState([]);
   const [adminName, setAdminName] = useState("");
+  const [tenantId, setTenantId] = useState("");
 
   // Phone login
   const [phoneScreen, setPhoneScreen] = useState(true);
@@ -59,12 +60,22 @@ export default function MiniApp() {
   const initApp = async () => {
     try {
       if (tgUser) setUser(tgUser);
+      // Resolve tenant first
+      let resolvedTenant = "";
+      if (userId) {
+        try {
+          const tenantRes = await fetch(`${API}/miniapp/resolve-tenant/${userId}`);
+          const tenantData = await tenantRes.json();
+          resolvedTenant = tenantData.tenant_id || "";
+          setTenantId(resolvedTenant);
+        } catch {}
+      }
       if (userId) {
         const discRes = await fetch(`${API}/miniapp/user-discount/${userId}`);
         const discData = await discRes.json();
         if (discData.has_discount) { setLoginDiscount(discData.discount_percent); setPhoneScreen(false); }
       }
-      await fetchData();
+      await fetchData(resolvedTenant);
       if (userId) {
         try {
           const adminRes = await fetch(`${API}/miniapp/admin/check/${userId}`);
@@ -76,12 +87,14 @@ export default function MiniApp() {
     finally { setLoading(false); }
   };
 
-  const fetchData = async () => {
+  const fetchData = async (tid) => {
+    const t = tid || tenantId;
+    const tParam = t ? `?tenant_id=${t}` : "";
     try {
       const [plansRes, subRes, notifRes] = await Promise.all([
-        fetch(`${API}/miniapp/plans`),
-        userId ? fetch(`${API}/miniapp/status/${userId}`) : null,
-        userId ? fetch(`${API}/miniapp/notifications/${userId}`) : null,
+        fetch(`${API}/miniapp/plans${tParam}`),
+        userId ? fetch(`${API}/miniapp/status/${userId}${tParam}`) : null,
+        userId ? fetch(`${API}/miniapp/notifications/${userId}${tParam}`) : null,
       ]);
       setPlans(await plansRes.json() || []);
       if (subRes) setSubscription(await subRes.json());
@@ -95,7 +108,7 @@ export default function MiniApp() {
     try {
       const res = await fetch(`${API}/miniapp/phone-login`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phoneNum, telegram_user_id: userId, telegram_username: user?.username || "" }),
+        body: JSON.stringify({ phone: phoneNum, telegram_user_id: userId, telegram_username: user?.username || "", tenant_id: tenantId }),
       });
       const data = await res.json();
       if (data.success) { setLoginDiscount(data.discount); setPhoneScreen(false); setDiscountPopup(true); setTimeout(() => setDiscountPopup(false), 3000); }
@@ -118,6 +131,7 @@ export default function MiniApp() {
         body: JSON.stringify({
           plan_id: selectedPlan.id, telegram_user_id: userId, telegram_username: user?.username || "",
           amount: getPayAmount(), coupon_code: couponResult?.valid ? couponResult.coupon_code : null,
+          tenant_id: tenantId,
         }),
       });
       const order = await res.json();
@@ -146,7 +160,8 @@ export default function MiniApp() {
 
   const fetchPayments = async () => {
     if (!userId) return;
-    try { const res = await fetch(`${API}/miniapp/payments/${userId}`); setPayments(await res.json() || []); } catch {}
+    const tParam = tenantId ? `?tenant_id=${tenantId}` : "";
+    try { const res = await fetch(`${API}/miniapp/payments/${userId}${tParam}`); setPayments(await res.json() || []); } catch {}
   };
 
   const switchTab = (tab) => { setActiveTab(tab); setMoreOpen(false); if (tab === "history") fetchPayments(); };
@@ -159,7 +174,7 @@ export default function MiniApp() {
     upiDetails, setUpiDetails, qrLoading, setQrLoading, uploadStep, setUploadStep,
     screenshotFile, setScreenshotFile, screenshotPreview, setScreenshotPreview,
     uploadResult, setUploadResult, paySuccess, setPaySuccess, fetchData,
-    isAdmin, adminPerms, adminName, payments,
+    isAdmin, adminPerms, adminName, payments, tenantId,
   };
 
   // Loading

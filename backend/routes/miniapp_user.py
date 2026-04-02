@@ -31,6 +31,35 @@ async def _get_verified_tg_user(
     return tg_id
 
 
+# ============== TENANT RESOLUTION ==============
+
+@router.get("/resolve-tenant/{telegram_user_id}")
+async def miniapp_resolve_tenant(telegram_user_id: str):
+    """Resolve which tenant this user belongs to, based on bot_users collection and settings."""
+    # Step 1: Check bot_users
+    bot_user = await db.bot_users.find_one(
+        {"telegram_user_id": str(telegram_user_id)}, {"_id": 0, "tenant_id": 1}
+    )
+    user_tenant = bot_user.get("tenant_id", "") if bot_user else ""
+
+    # Step 2: If tenant is "default" or empty, resolve from settings
+    if not user_tenant or user_tenant == DEFAULT_TENANT_ID:
+        # Check if settings has a real tenant_id
+        settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0, "tenant_id": 1})
+        settings_tenant = (settings.get("tenant_id") if settings else None) or ""
+        if settings_tenant and settings_tenant != DEFAULT_TENANT_ID:
+            return {"tenant_id": settings_tenant}
+        # Step 3: Find the first active tenant with plans (most likely the real owner)
+        tenant_with_plans = await db.plans.find_one(
+            {"is_active": True, "tenant_id": {"$ne": DEFAULT_TENANT_ID, "$exists": True}},
+            {"_id": 0, "tenant_id": 1}
+        )
+        if tenant_with_plans:
+            return {"tenant_id": tenant_with_plans["tenant_id"]}
+
+    return {"tenant_id": user_tenant or DEFAULT_TENANT_ID}
+
+
 # ============== PHONE LOGIN ==============
 
 @router.post("/phone-login")

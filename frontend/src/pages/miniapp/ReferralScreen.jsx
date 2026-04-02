@@ -4,22 +4,23 @@ import { useMiniApp, API, copyToClipboard } from "./context";
 import { Gift, Copy, Share2, Users, IndianRupee, Check } from "lucide-react";
 
 export default function ReferralScreen() {
-  const { userId } = useMiniApp();
+  const { userId, tenantId } = useMiniApp();
   const [data, setData] = useState(null);
   const [applyCode, setApplyCode] = useState("");
   const [applyMsg, setApplyMsg] = useState("");
 
   useEffect(() => {
     if (!userId) return;
-    fetch(`${API}/miniapp/referral/${userId}`).then(r => r.json()).then(setData).catch(() => {});
-  }, [userId]);
+    const tParam = tenantId ? `?tenant_id=${tenantId}` : "";
+    fetch(`${API}/miniapp/referral/${userId}${tParam}`).then(r => r.json()).then(setData).catch(() => {});
+  }, [userId, tenantId]);
 
   const applyReferral = async () => {
     if (!applyCode.trim()) return;
     try {
       const res = await fetch(`${API}/miniapp/referral/apply`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: applyCode, telegram_user_id: userId }),
+        body: JSON.stringify({ code: applyCode, telegram_user_id: userId, tenant_id: tenantId }),
       });
       const d = await res.json();
       setApplyMsg(d.valid ? d.message : d.error);
