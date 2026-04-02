@@ -20,58 +20,58 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 - Frontend refactoring + Rose/Crimson design system
 - Super Admin sidebar isolation + UI fixes
 
-### Phase 7: Trial Management (Complete - 2026-04-01)
+### Phase 7: Trial Management (Complete)
 - Trial Management System: 7 endpoints + UI tab in SaaSManagement.jsx
-- All tested: Iteration 23 (19/19 passed)
 
-### Phase 8: Super Admin Control Center + Tenant Profile (Complete - 2026-04-01)
+### Phase 8: Super Admin Control Center + Tenant Profile (Complete)
 - Control Center Dashboard with platform overview, revenue charts, top tenants
-- Tenant Profile Page with 6 tabs (Overview, Subscribers, Payments, Plans, Admins, Config)
-- All tested: Iteration 24 (12/12 passed)
+- Tenant Profile Page with 6 tabs
 
-### Phase 9: Dynamic Pricing + Team Management (Complete - 2026-04-02)
+### Phase 9: Dynamic Pricing + Team Management (Complete)
 - Dynamic Pricing Plans on Landing Page
 - Free Trial self-activation
 - Tenant Team Management
 - Login/Registration UI fixes
-- All tested: Iterations 25-26
 
 ### Phase 10: P0 Tenant Data Isolation Fix (Complete - 2026-04-02)
 - **CRITICAL SECURITY FIX**: Fixed tenant data leaking to other tenants
-- Root cause: `get_user_tenant()` returned empty string for users without `tenant_id`, causing `tq()` to skip filtering → ALL data visible to unauthorized tenants
-- Fix: `get_user_tenant()` now returns `"__no_tenant__"` for non-super-admin users without tenant_id
-- Fix: `tenant_query()` in tenant.py now always filters (removed DEFAULT skip)
-- Fix: Registration auto-creates unique tenant (`tenant_xxxxxxxxxxxx`) for every new user
-- Fix: Free trial activation auto-creates tenant if user doesn't have one
-- Fix: PDF export route now uses tenant filtering
-- All tested: Iteration 27 (17/17 backend, all frontend passed)
+- Root cause: `get_user_tenant()` returned empty string → no filtering
+- Fix: Returns `"__no_tenant__"` for non-super-admin users without tenant_id
+- Registration auto-creates unique tenant for every new user
+
+### Phase 11: Payments & Subscribers Pagination Fix (Complete - 2026-04-02)
+- **P0 Fix**: Payment routes had `.to_list(1000)` hard limit - production had 1000+ payments, new ones weren't showing
+- Backend: Added server-side pagination (page, limit, search params) to `/api/payments` and `/api/subscribers`
+- Backend: Stats (total_collected, pending_count, total_transactions) now computed server-side from ALL records
+- Backend: Revenue calculation optimized with MongoDB aggregation pipeline (no more `.to_list(10000)`)
+- Frontend: Added pagination controls (First/Prev/Page X of Y/Next/Last)
+- Frontend: Stats cards now use server-side values (not client-side from limited array)
+- Tested: Iteration 28 (14/14 backend, all frontend passed)
 
 ## Architecture
 ```
 /app/backend/
-├── server.py               # App setup, CORS, file download
+├── server.py
 ├── routes/
-│   ├── admin.py            # Super Admin routes + Trial + Platform Stats + Tenant Profile
-│   ├── auth.py             # Login, Registration (auto-tenant), Free Trial
-│   ├── tenant.py           # Tenant Team Management
-│   ├── dashboard.py        # Tenant analytics, settings, channels (tenant-filtered)
-│   ├── plans.py, subscribers.py, payments.py (all tenant-filtered)
-│   ├── analytics_exports.py, broadcasts.py, engagement.py
-│   ├── live_content.py, miniapp_user.py, miniapp_admin.py, telegram_webhook.py
+│   ├── admin.py (Super Admin routes + Trial + Platform Stats + Tenant Profile)
+│   ├── auth.py (Login, Registration with auto-tenant, Free Trial)
+│   ├── tenant.py (Tenant Team Management)
+│   ├── dashboard.py (Tenant analytics with aggregation, settings)
+│   ├── payments.py (Paginated, server-side stats)
+│   ├── subscribers.py (Paginated, server-side stats)
+│   ├── plans.py, broadcasts.py, engagement.py, live_content.py
+│   ├── miniapp_user.py, miniapp_admin.py, telegram_webhook.py
 ├── services/
-│   ├── permissions.py      # CRITICAL: get_user_tenant(), tq() - tenant isolation
-│   ├── tenant.py           # tenant_query(), DEFAULT_TENANT_ID
-│   ├── auth.py, telegram.py, payment.py, chat_pool.py, background_tasks.py
+│   ├── permissions.py (CRITICAL: tenant isolation)
+│   ├── tenant.py, auth.py, telegram.py, payment.py, chat_pool.py
 
 /app/frontend/
-├── src/
-│   ├── App.js
-│   ├── components/Layout.jsx  # RBAC sidebar
-│   ├── pages/
-│   │   ├── Dashboard.jsx      # SuperAdmin + Tenant dashboards
-│   │   ├── TenantProfile.jsx  # 6-tab tenant deep-dive
-│   │   ├── TeamManagement.jsx # Tenant owner admin management
-│   │   ├── SaaSManagement.jsx # 5 tabs: Tenants, Admins, Subs, Trials, Plans
+├── src/pages/
+│   ├── Dashboard.jsx (SuperAdmin + Tenant dashboards)
+│   ├── Payments.jsx (Paginated with server-side stats)
+│   ├── Subscribers.jsx (Paginated with server-side stats)
+│   ├── SaaSManagement.jsx, TeamManagement.jsx, TenantProfile.jsx
+│   ├── LandingPage.jsx, Login.jsx, Pricing.jsx
 ```
 
 ## Prioritized Backlog
