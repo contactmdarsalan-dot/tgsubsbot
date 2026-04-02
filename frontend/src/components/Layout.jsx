@@ -27,16 +27,12 @@ const botNav = [
   { path: "/dashboard/plans", label: "Plans", icon: Package },
   { path: "/dashboard/subscribers", label: "Subscribers", icon: Users },
   { path: "/dashboard/payments", label: "Payments", icon: CreditCard },
-  { path: "/dashboard/telegram-admins", label: "TG Admins", icon: ShieldCheck },
   { path: "/dashboard/bot-activity", label: "Bot Activity", icon: Activity },
   { path: "/dashboard/paid-posts", label: "Paid Posts", icon: Lock },
   { path: "/dashboard/creators", label: "Creators", icon: Sparkles },
   { path: "/dashboard/chat-groups", label: "Groups & Channels", icon: MessagesSquare },
-  { path: "/dashboard/referrals", label: "Referrals", icon: Share2 },
-  { path: "/dashboard/faqs", label: "FAQs", icon: HelpCircle },
   { path: "/dashboard/automation", label: "Automation", icon: Bell },
   { path: "/dashboard/settings", label: "Settings", icon: Settings },
-  { path: "/dashboard/bot-language", label: "Bot Language", icon: Languages },
 ];
 
 const miniAppNav = [
@@ -51,6 +47,10 @@ const miniAppNav = [
 const accountNav = [
   { path: "/dashboard/broadcast", label: "Broadcast", icon: Radio },
   { path: "/dashboard/coupons", label: "Coupons", icon: Ticket },
+  { path: "/dashboard/telegram-admins", label: "TG Admins", icon: ShieldCheck },
+  { path: "/dashboard/referrals", label: "Referrals", icon: Share2 },
+  { path: "/dashboard/faqs", label: "FAQs", icon: HelpCircle },
+  { path: "/dashboard/bot-language", label: "Bot Language", icon: Languages },
   { path: "/dashboard/team", label: "Team", icon: UserCog },
   { path: "/dashboard/support", label: "Support", icon: MessageSquare },
 ];
