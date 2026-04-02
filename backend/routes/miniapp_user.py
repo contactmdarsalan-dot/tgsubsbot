@@ -345,6 +345,7 @@ async def miniapp_upload_screenshot(
     plan_id: str = Form(""),
     plan_name: str = Form(""),
     amount: float = Form(0),
+    tenant_id: str = Form(""),
 ):
     if not file:
         raise HTTPException(status_code=400, detail="No file uploaded")
@@ -362,18 +363,36 @@ async def miniapp_upload_screenshot(
 
     screenshot_url = f"/api/uploads/{filename}"
 
-    settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
+    # Resolve correct tenant_id: explicit param > plan's tenant > bot_user's tenant > default
+    resolved_tenant = tenant_id.strip() if tenant_id else ""
+    plan = None
+    if plan_id:
+        plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+        if not resolved_tenant and plan:
+            resolved_tenant = plan.get("tenant_id", "")
+    if not resolved_tenant:
+        bot_user = await db.bot_users.find_one({"telegram_user_id": str(telegram_user_id)}, {"_id": 0})
+        resolved_tenant = (bot_user.get("tenant_id", "") if bot_user else "") or DEFAULT_TENANT_ID
+    else:
+        bot_user = await db.bot_users.find_one({"telegram_user_id": str(telegram_user_id)}, {"_id": 0})
+
+    # Get tenant-specific settings for UPI
+    settings_id = f"bot_settings_{resolved_tenant}" if resolved_tenant and resolved_tenant != DEFAULT_TENANT_ID else "bot_settings"
+    settings = await db.settings.find_one({"id": settings_id}, {"_id": 0})
+    if not settings:
+        settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
     expected_upi = settings.get("payment_upi_id") or settings.get("upi_id", "")
 
     payment_id = str(uuid.uuid4())
-    bot_user = await db.bot_users.find_one({"telegram_user_id": str(telegram_user_id)}, {"_id": 0})
 
     payment = {
         "id": payment_id, "telegram_user_id": str(telegram_user_id),
-        "telegram_username": bot_user.get("telegram_username", "") if bot_user else "",
-        "plan_id": plan_id, "plan_name": plan_name, "amount": amount,
+        "telegram_username": (bot_user.get("telegram_username", "") or bot_user.get("username", "")) if bot_user else "",
+        "plan_id": plan_id, "plan_name": plan_name or (plan.get("name", "") if plan else ""),
+        "amount": amount,
         "status": "pending", "payment_method": "miniapp_upi", "screenshot_url": screenshot_url,
-        "created_at": datetime.now(timezone.utc).isoformat(), "source": "miniapp", "tenant_id": bot_user.get("tenant_id", DEFAULT_TENANT_ID) if bot_user else DEFAULT_TENANT_ID,
+        "created_at": datetime.now(timezone.utc).isoformat(), "source": "miniapp",
+        "tenant_id": resolved_tenant,
     }
 
     ai_result = {}
@@ -392,20 +411,21 @@ async def miniapp_upload_screenshot(
     del payment["_id"]
 
     if payment["status"] == "verified":
-        plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+        if not plan and plan_id:
+            plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
         duration = plan.get("duration_days", 30) if plan else 30
         channel_id = ""
         if plan:
             channel_id = plan.get("channel_id", "") or settings.get("telegram_channel_id", "")
 
         await db.subscribers.update_one(
-            {"telegram_user_id": str(telegram_user_id)},
+            {"telegram_user_id": str(telegram_user_id), "tenant_id": resolved_tenant},
             {"$set": {
                 "telegram_user_id": str(telegram_user_id), "plan_id": plan_id, "plan_name": plan_name,
                 "amount_paid": amount, "status": "active",
                 "start_date": datetime.now(timezone.utc).isoformat(),
                 "end_date": (datetime.now(timezone.utc) + timedelta(days=duration)).isoformat(),
-                "payment_id": payment_id,
+                "payment_id": payment_id, "tenant_id": resolved_tenant,
             }},
             upsert=True
         )

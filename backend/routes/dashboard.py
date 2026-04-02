@@ -269,6 +269,9 @@ async def update_settings(settings: BotSettings, user=Depends(get_current_user))
     settings_id = f"bot_settings_{tenant_id}" if tenant_id else "bot_settings"
     doc = settings.model_dump()
     doc["id"] = settings_id
+    # Ensure tenant_id is stored so webhook can resolve the correct tenant
+    if tenant_id:
+        doc["tenant_id"] = tenant_id
     await db.settings.update_one({"id": settings_id}, {"$set": doc}, upsert=True)
     return {"message": "Settings updated"}
 

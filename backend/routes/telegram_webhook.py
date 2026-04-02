@@ -39,6 +39,8 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
+        # Resolve tenant for this bot — all data created in this webhook uses this tenant_id
+        bot_tenant_id = settings.get("tenant_id") or DEFAULT_TENANT_ID
         
         # Log bot token status for debugging
         if not bot_token:
@@ -159,7 +161,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "price": post_price,
                         "unlock_count": 0,
                         "is_active": True,
-                        "tenant_id": DEFAULT_TENANT_ID,
+                        "tenant_id": bot_tenant_id,
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
                     await db.paid_posts.insert_one(paid_post)
@@ -612,7 +614,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             "razorpay_order_id": None,
                             "razorpay_payment_id": None,
                             "status": "pending",
-                            "tenant_id": DEFAULT_TENANT_ID,
+                            "tenant_id": bot_tenant_id,
                             "created_at": datetime.now(timezone.utc).isoformat()
                         }
                         await db.payments.insert_one(payment_obj)
@@ -718,7 +720,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "screenshot_file_id": photo_file_id,
                         "status": "verified",
                         "auto_verified": True,
-                        "tenant_id": DEFAULT_TENANT_ID,
+                        "tenant_id": bot_tenant_id,
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
                     await db.payments.insert_one(payment_obj)
@@ -796,7 +798,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             "end_date": end_date.isoformat(),
                             "grace_end_date": grace_end.isoformat(),
                             "reminder_sent": False,
-                            "tenant_id": DEFAULT_TENANT_ID,
+                            "tenant_id": bot_tenant_id,
                             "created_at": datetime.now(timezone.utc).isoformat()
                         }
                         await db.subscribers.insert_one(subscriber_obj)
@@ -1167,7 +1169,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 "end_date": end_date.isoformat(),
                                 "grace_end_date": grace_end.isoformat(),
                                 "reminder_sent": False,
-                                "tenant_id": payment.get("tenant_id", DEFAULT_TENANT_ID),
+                                "tenant_id": payment.get("tenant_id", bot_tenant_id),
                                 "created_at": datetime.now(timezone.utc).isoformat()
                             }
                             await db.subscribers.insert_one(subscriber_obj)
@@ -1436,7 +1438,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 "telegram_username": username,
                                 "amount": 0,
                                 "status": "approved",
-                                "tenant_id": session.get("tenant_id", DEFAULT_TENANT_ID),
+                                "tenant_id": session.get("tenant_id", bot_tenant_id),
                                 "created_at": datetime.now(timezone.utc).isoformat()
                             }
                             await db.live_tickets.insert_one(ticket)
@@ -2105,7 +2107,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     "last_seen": datetime.now(timezone.utc).isoformat()
                 }, "$setOnInsert": {
                     "created_at": datetime.now(timezone.utc).isoformat(),
-                    "tenant_id": DEFAULT_TENANT_ID,
+                    "tenant_id": bot_tenant_id,
                 }},
                 upsert=True
             )
@@ -2243,7 +2245,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "price": post_price,
                         "unlock_count": 0,
                         "is_active": True,
-                        "tenant_id": DEFAULT_TENANT_ID,
+                        "tenant_id": bot_tenant_id,
                         "created_at": datetime.now(timezone.utc).isoformat(),
                         "created_via": "private_message"  # Mark as created via private message
                     }
@@ -2527,7 +2529,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "screenshot_file_id": photo_file_id,
                         "status": ticket_status,
                         "ai_verification": ai_result if ai_result else None,
-                        "tenant_id": session.get("tenant_id", DEFAULT_TENANT_ID),
+                        "tenant_id": session.get("tenant_id", bot_tenant_id),
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
                     await db.live_tickets.insert_one(ticket)
@@ -2714,7 +2716,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                     "payment_method": "qr_screenshot",
                                     "start_date": datetime.now(timezone.utc).isoformat(),
                                     "end_date": (datetime.now(timezone.utc) + timedelta(days=plan['duration_days'])).isoformat(),
-                                    "tenant_id": DEFAULT_TENANT_ID,
+                                    "tenant_id": bot_tenant_id,
                                     "created_at": datetime.now(timezone.utc).isoformat()
                                 }
                                 await db.subscribers.insert_one(new_subscriber)
@@ -2737,7 +2739,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 "ai_confidence": ai_result.get("confidence_score") if ai_result.get("ai_enabled") else None,
                                 "ai_extracted_data": ai_result.get("extracted_data") if ai_result.get("ai_enabled") else None,
                                 "ai_fake_indicators": ai_result.get("fake_indicators", []) if ai_result.get("ai_enabled") else [],
-                                "tenant_id": DEFAULT_TENANT_ID,
+                                "tenant_id": bot_tenant_id,
                                 "created_at": datetime.now(timezone.utc).isoformat(),
                                 "verified_at": datetime.now(timezone.utc).isoformat()
                             }
@@ -3034,7 +3036,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                     "status": "pending",
                                     "ocr_result": ocr_result,
                                     "ai_result": ai_result if ai_result.get("ai_enabled") else None,
-                                    "tenant_id": DEFAULT_TENANT_ID,
+                                    "tenant_id": bot_tenant_id,
                                     "created_at": datetime.now(timezone.utc).isoformat()
                                 }
                                 await db.payments.insert_one(payment_pending)
@@ -3062,7 +3064,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             "payment_method": "qr_screenshot",
                             "screenshot_file_id": photo_file_id,
                             "status": "pending",
-                            "tenant_id": DEFAULT_TENANT_ID,
+                            "tenant_id": bot_tenant_id,
                             "created_at": datetime.now(timezone.utc).isoformat()
                         }
                         await db.payments.insert_one(payment_pending)
@@ -3759,7 +3761,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             "status": "scheduled",
                             "tickets_sold": 0,
                             "created_by": username or chat_id,
-                            "tenant_id": DEFAULT_TENANT_ID,
+                            "tenant_id": bot_tenant_id,
                             "created_at": now.isoformat()
                         }
                         await db.live_sessions.insert_one(session)
@@ -3862,7 +3864,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     "superchat_min_amount": 10,
                     "status": "scheduled",
                     "tickets_sold": 0,
-                    "tenant_id": DEFAULT_TENANT_ID,
+                    "tenant_id": bot_tenant_id,
                     "created_at": now.isoformat(),
                     "created_by": username or chat_id
                 }
@@ -3988,7 +3990,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "tickets_sold": 0,
                         "superchat_total": 0,
                         "created_by": username or chat_id,
-                        "tenant_id": DEFAULT_TENANT_ID,
+                        "tenant_id": bot_tenant_id,
                         "created_at": now.isoformat()
                     }
                     
