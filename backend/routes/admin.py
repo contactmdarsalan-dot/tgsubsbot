@@ -1235,14 +1235,16 @@ async def create_tenant_admin_direct(data: dict, user: dict = Depends(get_curren
 
 @router.get("/miniapp-users")
 async def get_miniapp_users(user: dict = Depends(get_current_user)):
-    """Get all phone numbers collected from Mini App"""
+    """Get all phone numbers collected from Mini App - Super Admin only"""
+    ensure_super_admin(user)
     users = await db.miniapp_users.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return users
 
 
 @router.get("/miniapp-users/stats")
 async def get_miniapp_users_stats(user: dict = Depends(get_current_user)):
-    """Get Mini App user stats"""
+    """Get Mini App user stats - Super Admin only"""
+    ensure_super_admin(user)
     total = await db.miniapp_users.count_documents({})
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     today_count = await db.miniapp_users.count_documents({"created_at": {"$gte": today.isoformat()}})

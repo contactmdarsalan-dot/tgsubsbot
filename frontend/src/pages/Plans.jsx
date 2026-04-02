@@ -221,7 +221,7 @@ export default function Plans() {
 
       {/* Dialog - Moved outside of header */}
       <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[550px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-heading text-xl font-bold">
               {editingPlan ? "Edit Plan" : "Create New Plan"}

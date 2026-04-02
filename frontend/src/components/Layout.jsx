@@ -17,6 +17,7 @@ const superAdminNav = [
   { path: "/dashboard/revenue", label: "Revenue", icon: IndianRupee },
   { path: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { path: "/dashboard/admin-subs", label: "Subscriptions", icon: Crown },
+  { path: "/dashboard/miniapp-users", label: "Mini App Users", icon: Smartphone },
   { path: "/dashboard/support", label: "Support", icon: Headphones },
   { path: "/dashboard/user-management", label: "Users", icon: Users },
   { path: "/dashboard/branding", label: "Platform Settings", icon: Settings },
@@ -40,7 +41,6 @@ const tenantOpsNav = [
   { path: "/dashboard/automation", label: "Automation", icon: Bell },
   { path: "/dashboard/settings", label: "Settings", icon: Settings },
   { path: "/dashboard/bot-language", label: "Bot Language", icon: Languages },
-  { path: "/dashboard/miniapp-users", label: "Mini App Users", icon: Smartphone },
 ];
 
 const tenantOnlyNav = [

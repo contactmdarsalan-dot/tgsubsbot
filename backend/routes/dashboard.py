@@ -242,16 +242,23 @@ async def delete_channel(channel_id: str, user=Depends(get_current_user)):
 
 @router.get("/settings")
 async def get_settings(user=Depends(get_current_user)):
-    settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0})
+    tenant_id = get_user_tenant(user)
+    settings_id = f"bot_settings_{tenant_id}" if tenant_id else "bot_settings"
+    settings = await db.settings.find_one({"id": settings_id}, {"_id": 0})
     if not settings:
+        # Return empty defaults for new tenants (no data from other tenants)
         settings = BotSettings().model_dump()
+        settings["id"] = settings_id
     return settings
 
 
 @router.put("/settings")
 async def update_settings(settings: BotSettings, user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
+    settings_id = f"bot_settings_{tenant_id}" if tenant_id else "bot_settings"
     doc = settings.model_dump()
-    await db.settings.update_one({"id": "bot_settings"}, {"$set": doc}, upsert=True)
+    doc["id"] = settings_id
+    await db.settings.update_one({"id": settings_id}, {"$set": doc}, upsert=True)
     return {"message": "Settings updated"}
 
 
@@ -562,7 +569,10 @@ async def get_bot_language(user=Depends(get_current_user)):
             }
         }
     }
-    lang_settings = await db.bot_language.find_one({}, {"_id": 0})
+    lang_settings = await db.bot_language.find_one({"tenant_id": get_user_tenant(user)}, {"_id": 0})
+    if not lang_settings:
+        # Try default settings as fallback
+        lang_settings = await db.bot_language.find_one({"tenant_id": {"$exists": False}}, {"_id": 0})
     if lang_settings:
         for key in defaults:
             if key not in lang_settings:
@@ -593,5 +603,10 @@ async def update_bot_language(data: dict, user=Depends(get_current_user)):
     if not update:
         raise HTTPException(status_code=400, detail="No valid fields to update")
 
-    await db.bot_language.update_one({}, {"$set": update}, upsert=True)
+    tenant_id = get_user_tenant(user)
+    if tenant_id:
+        update["tenant_id"] = tenant_id
+        await db.bot_language.update_one({"tenant_id": tenant_id}, {"$set": update}, upsert=True)
+    else:
+        await db.bot_language.update_one({}, {"$set": update}, upsert=True)
     return {"message": "Language settings updated"}
