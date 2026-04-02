@@ -55,6 +55,14 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 - **`miniapp_user.py` fixes**: upload-screenshot uses bot_user's tenant_id instead of hardcoded DEFAULT
 - Tested: Iteration 31 (ALL 24 TESTS PASSED - cross-tenant access fully blocked)
 
+### Phase 14: Mini App Tenant Resolution Fix (Complete - 2026-04-02)
+- **Root cause**: Mini App frontend was NOT passing tenant_id to ANY backend API calls → all queries defaulted to "default" tenant which had 0 plans
+- **New endpoint**: `/api/miniapp/resolve-tenant/{userId}` - 3-step smart fallback: bot_users → settings → first tenant with active plans
+- **Frontend fixes**: MiniApp.jsx, PlansScreen.jsx, ReferralScreen.jsx, SupportScreen.jsx all now pass tenant_id
+- **Webhook fix**: telegram_webhook.py - 15+ `DEFAULT_TENANT_ID` usages replaced with `bot_tenant_id` resolved from settings
+- **Settings fix**: dashboard.py settings update now persists `tenant_id` in settings document
+- Tested: Iteration 32 (ALL TESTS PASSED - 8 plans show in Mini App matching Dashboard)
+
 ## Architecture
 ```
 /app/backend/
