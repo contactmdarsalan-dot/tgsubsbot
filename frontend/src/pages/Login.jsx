@@ -200,14 +200,14 @@ export default function Login() {
             backgroundImage: "url('https://images.pexels.com/photos/4722583/pexels-photo-4722583.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940')"
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-rose-950/95 via-rose-900/90 to-red-950/95" />
+        <div className="absolute inset-0 bg-gradient-to-br from-lime-950/95 via-lime-900/90 to-red-950/95" />
         
         {/* Content */}
         <div className="relative z-10 flex flex-col justify-between p-12 w-full">
           <div>
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/10">
-                <Heart className="w-6 h-6 text-rose-300" fill="currentColor" />
+                <Heart className="w-6 h-6 text-lime-300" fill="currentColor" />
               </div>
               <span className="font-serif text-2xl font-semibold text-white">TGSubsBot</span>
             </div>
@@ -215,7 +215,7 @@ export default function Login() {
 
           <div className="space-y-8">
             <div className="space-y-4">
-              <div className="flex items-center gap-2 text-rose-300">
+              <div className="flex items-center gap-2 text-lime-300">
                 <Sparkles className="w-5 h-5" />
                 <span className="text-sm font-medium tracking-wider uppercase">Premium Experience</span>
               </div>
@@ -225,7 +225,7 @@ export default function Login() {
                 <span className="text-gradient-romance">Intimate Connections</span>
               </h1>
             </div>
-            <p className="text-rose-200/80 text-lg max-w-md leading-relaxed">
+            <p className="text-lime-200/80 text-lg max-w-md leading-relaxed">
               Manage your premium subscribers, live sessions, and exclusive content with our elegant dashboard designed for creators.
             </p>
             
@@ -233,16 +233,16 @@ export default function Login() {
             <div className="flex gap-8 pt-4">
               <div>
                 <p className="font-serif text-3xl font-semibold text-white">5000+</p>
-                <p className="text-rose-300/70 text-sm">Happy Subscribers</p>
+                <p className="text-lime-300/70 text-sm">Happy Subscribers</p>
               </div>
               <div>
                 <p className="font-serif text-3xl font-semibold text-white">99%</p>
-                <p className="text-rose-300/70 text-sm">Satisfaction Rate</p>
+                <p className="text-lime-300/70 text-sm">Satisfaction Rate</p>
               </div>
             </div>
           </div>
 
-          <div className="text-rose-300/50 text-sm">
+          <div className="text-lime-300/50 text-sm">
             © 2025 TGSubsBot. All rights reserved.
           </div>
         </div>
@@ -253,7 +253,7 @@ export default function Login() {
         <div className="w-full max-w-md space-y-8">
           {/* Mobile Logo */}
           <div className="lg:hidden flex items-center gap-3 justify-center mb-8">
-            <div className="w-12 h-12 bg-gradient-to-br from-rose-600 to-red-700 rounded-2xl flex items-center justify-center shadow-lg glow-rose">
+            <div className="w-12 h-12 bg-gradient-to-br from-lime-600 to-red-700 rounded-2xl flex items-center justify-center shadow-lg glow-rose">
               <Heart className="w-6 h-6 text-white" fill="currentColor" />
             </div>
             <span className="font-serif text-2xl font-semibold">TGSubsBot</span>
@@ -482,7 +482,7 @@ export default function Login() {
               <span className="w-full border-t border-white/10" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="px-4 text-white/40" style={{ background: "hsl(340,50%,4%)" }}>
+              <span className="px-4 text-white/40" style={{ background: "hsl(0, 0%, 2%)" }}>
                 Or continue with
               </span>
             </div>

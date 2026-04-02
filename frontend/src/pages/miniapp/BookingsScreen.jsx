@@ -28,7 +28,7 @@ export default function BookingsScreen() {
     scheduled: { bg: "bg-blue-500/15", text: "text-blue-400", label: "Scheduled" },
     in_call: { bg: "bg-emerald-500/15", text: "text-emerald-400", label: "In Call" },
     completed: { bg: "bg-zinc-500/15", text: "text-zinc-400", label: "Completed" },
-    rejected: { bg: "bg-rose-500/15", text: "text-rose-400", label: "Rejected" },
+    rejected: { bg: "bg-lime-500/15", text: "text-lime-400", label: "Rejected" },
   };
 
   const joinCall = (booking) => {
@@ -42,11 +42,11 @@ export default function BookingsScreen() {
   return (
     <div className="pb-24" data-testid="bookings-screen">
       <h2 className="font-heading text-xl font-bold text-white mb-4 flex items-center gap-2">
-        <Video className="w-5 h-5 text-rose-400" /> My Video Calls
+        <Video className="w-5 h-5 text-lime-400" /> My Video Calls
       </h2>
 
       {loading ? (
-        <div className="glass-card rounded-2xl p-8 text-center"><Loader2 className="w-6 h-6 animate-spin text-rose-400 mx-auto" /></div>
+        <div className="glass-card rounded-2xl p-8 text-center"><Loader2 className="w-6 h-6 animate-spin text-lime-400 mx-auto" /></div>
       ) : bookings.length === 0 ? (
         <div className="glass-card rounded-2xl p-8 text-center">
           <Video className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
@@ -201,7 +201,7 @@ function VideoCallRoom({ roomId, onBack }) {
   const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "hsl(340,50%,2%)" }} data-testid="video-call-room">
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "hsl(0,0%,2%)" }} data-testid="video-call-room">
       {/* Remote Video (Full Screen) */}
       <div className="flex-1 relative">
         {remoteStream ? (
@@ -232,13 +232,13 @@ function VideoCallRoom({ roomId, onBack }) {
 
       {/* Controls */}
       <div className="p-4 flex items-center justify-center gap-4" style={{ background: "hsla(340,50%,4%,0.95)" }}>
-        <button onClick={toggleMute} className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${muted ? "bg-rose-500" : "bg-zinc-700"}`} data-testid="mute-btn">
+        <button onClick={toggleMute} className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${muted ? "bg-lime-500" : "bg-zinc-700"}`} data-testid="mute-btn">
           {muted ? <span className="text-white text-xs">UN</span> : <span className="text-white text-xs">MIC</span>}
         </button>
-        <button onClick={() => { endCall(); onBack(); }} className="w-14 h-14 rounded-full bg-rose-600 flex items-center justify-center active:scale-90 transition-transform" data-testid="end-call-btn">
+        <button onClick={() => { endCall(); onBack(); }} className="w-14 h-14 rounded-full bg-lime-600 flex items-center justify-center active:scale-90 transition-transform" data-testid="end-call-btn">
           <PhoneCall className="w-6 h-6 text-white rotate-[135deg]" />
         </button>
-        <button onClick={toggleVideo} className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${videoOff ? "bg-rose-500" : "bg-zinc-700"}`} data-testid="video-toggle-btn">
+        <button onClick={toggleVideo} className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${videoOff ? "bg-lime-500" : "bg-zinc-700"}`} data-testid="video-toggle-btn">
           <Video className="w-5 h-5 text-white" />
         </button>
       </div>

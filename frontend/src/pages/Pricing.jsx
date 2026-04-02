@@ -92,7 +92,7 @@ export default function Pricing({ onSubscribed }) {
           }
         },
         prefill: { name: user.name || "", email: user.email || "" },
-        theme: { color: "#E11D48" },
+        theme: { color: "#BFFF00" },
         modal: { ondismiss: () => setLoading(null) },
       };
       new window.Razorpay(options).open();
@@ -122,12 +122,12 @@ export default function Pricing({ onSubscribed }) {
   const maxMonthlyRate = Math.max(...plans.filter(p => p.price > 0).map(p => (p.price / (p.duration_days || 30)) * 30), 1);
 
   return (
-    <div className="min-h-screen text-white" style={{ background: "hsl(340,50%,4%)", fontFamily: "Manrope, sans-serif" }}>
+    <div className="min-h-screen text-white" style={{ background: "hsl(0, 0%, 2%)", fontFamily: "Manrope, sans-serif" }}>
       {/* Nav */}
       <nav className="sticky top-0 z-50 border-b border-white/6" style={{ background: "hsla(340,50%,4%,0.95)", backdropFilter: "blur(20px)" }}>
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#E11D48] flex items-center justify-center shadow-[0_0_20px_rgba(225,29,72,0.4)]">
+            <div className="w-9 h-9 rounded-xl bg-[#BFFF00] flex items-center justify-center shadow-[0_0_20px_rgba(225,29,72,0.4)]">
               <Send className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -148,9 +148,9 @@ export default function Pricing({ onSubscribed }) {
         <div className="max-w-6xl mx-auto">
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: -15 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-14">
-            <Badge className="mb-4 bg-[#E11D48]/10 text-[#E11D48] border-[#E11D48]/20 px-3 py-1 text-xs font-bold" data-testid="pricing-badge">SubsBot Pro</Badge>
+            <Badge className="mb-4 bg-[#BFFF00]/10 text-[#BFFF00] border-[#BFFF00]/20 px-3 py-1 text-xs font-bold" data-testid="pricing-badge">SubsBot Pro</Badge>
             <h1 style={{ fontFamily: "Unbounded" }} className="text-4xl md:text-5xl font-black tracking-tight mb-4">
-              Choose Your <span className="bg-gradient-to-r from-[#E11D48] to-[#FB7185] bg-clip-text text-transparent">Plan</span>
+              Choose Your <span className="bg-gradient-to-r from-[#BFFF00] to-[#BEF264] bg-clip-text text-transparent">Plan</span>
             </h1>
             <p className="text-base text-zinc-500 max-w-lg mx-auto">
               Get full access to SubsBot Dashboard and start managing your Telegram subscriptions like a pro
@@ -160,7 +160,7 @@ export default function Pricing({ onSubscribed }) {
           {/* Plans */}
           {plansLoading ? (
             <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-8 h-8 text-[#E11D48] animate-spin" />
+              <Loader2 className="w-8 h-8 text-[#BFFF00] animate-spin" />
             </div>
           ) : plans.length === 0 ? (
             <div className="text-center py-20 text-zinc-500">No plans available. Contact admin.</div>
@@ -180,21 +180,21 @@ export default function Pricing({ onSubscribed }) {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.1 }}
-                    className={`relative rounded-2xl border transition-all duration-300 ${isPopular ? "border-[#E11D48] shadow-[0_0_40px_rgba(225,29,72,0.15)] scale-[1.03]" : "border-white/10 hover:border-white/20"}`}
-                    style={{ background: "hsl(340,40%,6%)" }}
+                    className={`relative rounded-2xl border transition-all duration-300 ${isPopular ? "border-[#BFFF00] shadow-[0_0_40px_rgba(225,29,72,0.15)] scale-[1.03]" : "border-white/10 hover:border-white/20"}`}
+                    style={{ background: "hsl(0, 0%, 4%)" }}
                     data-testid={`plan-card-${plan.id}`}
                   >
                     {/* Badges */}
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex gap-2">
-                      {isPopular && <span className="bg-[#E11D48] text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg">Most Popular</span>}
+                      {isPopular && <span className="bg-[#BFFF00] text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg">Most Popular</span>}
                       {savePct > 0 && <span className="bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg">Save {savePct}%</span>}
                       {isFree && <span className="bg-violet-500 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg">Free Trial</span>}
                     </div>
 
                     <div className="p-8 text-center">
                       {/* Icon */}
-                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5 ${isPopular ? "bg-[#E11D48]/15 border border-[#E11D48]/30" : "bg-white/5 border border-white/10"}`}>
-                        <Icon className={`w-6 h-6 ${isPopular ? "text-[#E11D48]" : "text-zinc-400"}`} />
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5 ${isPopular ? "bg-[#BFFF00]/15 border border-[#BFFF00]/30" : "bg-white/5 border border-white/10"}`}>
+                        <Icon className={`w-6 h-6 ${isPopular ? "text-[#BFFF00]" : "text-zinc-400"}`} />
                       </div>
 
                       {/* Name + Duration */}
@@ -240,7 +240,7 @@ export default function Pricing({ onSubscribed }) {
                       <button
                         onClick={() => handleSelectPlan(plan)}
                         disabled={isLoading || loading !== null}
-                        className={`w-full py-3 rounded-full font-bold text-sm transition-all flex items-center justify-center gap-2 ${isPopular ? "bg-[#E11D48] hover:bg-[#BE123C] text-white shadow-[0_0_20px_rgba(225,29,72,0.4)] hover:scale-105" : isFree ? "bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 border border-violet-500/30" : "bg-white/8 hover:bg-white/15 text-white border border-white/10"}`}
+                        className={`w-full py-3 rounded-full font-bold text-sm transition-all flex items-center justify-center gap-2 ${isPopular ? "bg-[#BFFF00] hover:bg-[#84CC16] text-white shadow-[0_0_20px_rgba(225,29,72,0.4)] hover:scale-105" : isFree ? "bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 border border-violet-500/30" : "bg-white/8 hover:bg-white/15 text-white border border-white/10"}`}
                         data-testid={`plan-${plan.id}-btn`}
                       >
                         {isLoading ? (
@@ -258,7 +258,7 @@ export default function Pricing({ onSubscribed }) {
 
           {/* Support */}
           <p className="text-center text-xs text-zinc-600 mt-10">
-            Having trouble? <a href="mailto:support@tgsubsbot.com" className="text-[#E11D48] hover:underline">Contact Support</a>
+            Having trouble? <a href="mailto:support@tgsubsbot.com" className="text-[#BFFF00] hover:underline">Contact Support</a>
           </p>
         </div>
       </div>

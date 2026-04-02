@@ -27,7 +27,7 @@ function MetricCard({ label, value, sub, icon: Icon, color, delay, onClick, badg
       transition={{ duration: 0.35, delay }}
       onClick={onClick}
       className={`relative rounded-2xl p-4 border border-white/6 transition-all duration-200 ${onClick ? "cursor-pointer hover:border-white/12 hover:scale-[1.01]" : ""}`}
-      style={{ background: "hsl(340,40%,6%)" }}
+      style={{ background: "hsl(0, 0%, 4%)" }}
       data-testid={`metric-${label.toLowerCase().replace(/\s+/g, "-")}`}
     >
       {badge && (
@@ -46,7 +46,7 @@ function MetricCard({ label, value, sub, icon: Icon, color, delay, onClick, badg
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="px-3 py-2 rounded-lg text-sm" style={{ background: "hsl(340,40%,7%)", border: "1px solid hsl(340,40%,15%)" }}>
+    <div className="px-3 py-2 rounded-lg text-sm" style={{ background: "hsl(0, 0%, 5%)", border: "1px solid hsl(0, 0%, 12%)" }}>
       <p className="text-zinc-400 text-xs">{label}</p>
       {payload.map((p, i) => (
         <p key={i} className="text-white font-semibold">Rs. {p.value?.toLocaleString()}</p>
@@ -74,7 +74,7 @@ function GlassCard({ children, className = "", delay = 0, testId }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.4 }}
       className={`rounded-2xl border border-white/6 p-5 ${className}`}
-      style={{ background: "hsl(340,40%,6%)" }}
+      style={{ background: "hsl(0, 0%, 4%)" }}
       data-testid={testId}
     >
       {children}
@@ -109,12 +109,12 @@ function SuperAdminDashboard() {
       <div className="space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {[...Array(8)].map((_, i) => (
-            <div key={i} className="h-28 rounded-2xl animate-pulse" style={{ background: "hsl(340,40%,8%)" }} />
+            <div key={i} className="h-28 rounded-2xl animate-pulse" style={{ background: "hsl(0, 0%, 6%)" }} />
           ))}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="h-72 lg:col-span-2 rounded-2xl animate-pulse" style={{ background: "hsl(340,40%,8%)" }} />
-          <div className="h-72 rounded-2xl animate-pulse" style={{ background: "hsl(340,40%,8%)" }} />
+          <div className="h-72 lg:col-span-2 rounded-2xl animate-pulse" style={{ background: "hsl(0, 0%, 6%)" }} />
+          <div className="h-72 rounded-2xl animate-pulse" style={{ background: "hsl(0, 0%, 6%)" }} />
         </div>
       </div>
     );
@@ -125,7 +125,7 @@ function SuperAdminDashboard() {
   const r = stats?.revenue || {};
   const t = stats?.trials || {};
 
-  const COLORS = ["#E11D48", "#F43F5E", "#FB7185", "#10B981", "#F59E0B"];
+  const COLORS = ["#BFFF00", "#A3E635", "#BEF264", "#10B981", "#F59E0B"];
 
   const formatDate = (d) => {
     if (!d) return "";
@@ -149,9 +149,9 @@ function SuperAdminDashboard() {
 
       {/* ── Platform Metrics ── */}
       <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-rose-400/60 mb-3 px-1">Platform Overview</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-lime-400/60 mb-3 px-1">Platform Overview</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <MetricCard label="Total Tenants" value={p.total_tenants || 0} sub={`${p.active_tenants || 0} active`} icon={Building2} color="bg-rose-500/20" delay={0.05} onClick={() => navigate("/dashboard/saas-management")} />
+          <MetricCard label="Total Tenants" value={p.total_tenants || 0} sub={`${p.active_tenants || 0} active`} icon={Building2} color="bg-lime-500/20" delay={0.05} onClick={() => navigate("/dashboard/saas-management")} />
           <MetricCard label="Tenant Admins" value={p.total_tenant_admins || 0} icon={Shield} color="bg-violet-500/20" delay={0.1} />
           <MetricCard label="Platform Revenue" value={`Rs.${(p.platform_revenue || 0).toLocaleString()}`} icon={IndianRupee} color="bg-emerald-500/20" delay={0.15} />
           <MetricCard label="Pending Requests" value={p.pending_requests || 0} icon={Clock} color="bg-amber-500/20" delay={0.2} badge={p.pending_requests > 0 ? "Action" : null} onClick={() => navigate("/dashboard/admin-subs")} />
@@ -160,11 +160,11 @@ function SuperAdminDashboard() {
 
       {/* ── Bot Ecosystem Metrics ── */}
       <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-rose-400/60 mb-3 px-1">Bot Ecosystem</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-lime-400/60 mb-3 px-1">Bot Ecosystem</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MetricCard label="Total Bot Users" value={(b.total_bot_users || 0).toLocaleString()} icon={Users} color="bg-blue-500/20" delay={0.25} />
           <MetricCard label="Active Subscribers" value={(b.active_subscribers || 0).toLocaleString()} sub={`${b.expired_subscribers || 0} expired`} icon={UserPlus} color="bg-emerald-500/20" delay={0.3} />
-          <MetricCard label="Tenant Revenue" value={`Rs.${(r.total_tenant_revenue || 0).toLocaleString()}`} sub={`Rs.${(r.monthly_revenue || 0).toLocaleString()} this month`} icon={TrendingUp} color="bg-rose-600/20" delay={0.35} />
+          <MetricCard label="Tenant Revenue" value={`Rs.${(r.total_tenant_revenue || 0).toLocaleString()}`} sub={`Rs.${(r.monthly_revenue || 0).toLocaleString()} this month`} icon={TrendingUp} color="bg-lime-600/20" delay={0.35} />
           <MetricCard label="Payments" value={(b.total_payments || 0).toLocaleString()} sub={`${b.pending_payments || 0} pending`} icon={CreditCard} color="bg-cyan-500/20" delay={0.4} badge={b.pending_payments > 0 ? b.pending_payments : null} />
         </div>
       </div>
@@ -179,15 +179,15 @@ function SuperAdminDashboard() {
               <AreaChart data={r.daily_chart}>
                 <defs>
                   <linearGradient id="revGradP" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#E11D48" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#E11D48" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#BFFF00" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#BFFF00" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                 <XAxis dataKey="date" tick={{ fill: "#52525B", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => v?.slice(5)} />
                 <YAxis tick={{ fill: "#52525B", fontSize: 10 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="revenue" stroke="#E11D48" fill="url(#revGradP)" strokeWidth={2} />
+                <Area type="monotone" dataKey="revenue" stroke="#BFFF00" fill="url(#revGradP)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -235,7 +235,7 @@ function SuperAdminDashboard() {
             title="Recent Tenants"
             subtitle="Latest registered tenants"
             action={
-              <button onClick={() => navigate("/dashboard/saas-management")} className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 transition-colors">
+              <button onClick={() => navigate("/dashboard/saas-management")} className="text-xs text-lime-400 hover:text-lime-300 flex items-center gap-1 transition-colors">
                 View All <ArrowRight className="w-3 h-3" />
               </button>
             }
@@ -248,8 +248,8 @@ function SuperAdminDashboard() {
                 className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-white/4 cursor-pointer transition-all border-b border-white/4 last:border-0 group"
                 data-testid={`recent-tenant-${i}`}
               >
-                <div className="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center">
-                  <Building2 className="w-4 h-4 text-rose-400" />
+                <div className="w-8 h-8 rounded-lg bg-lime-500/10 flex items-center justify-center">
+                  <Building2 className="w-4 h-4 text-lime-400" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-white truncate">{t.name || t.tenant_id}</p>
@@ -275,7 +275,7 @@ function SuperAdminDashboard() {
             title="Recent Subscription Activity"
             subtitle="Dashboard plan requests"
             action={
-              <button onClick={() => navigate("/dashboard/admin-subs")} className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 transition-colors">
+              <button onClick={() => navigate("/dashboard/admin-subs")} className="text-xs text-lime-400 hover:text-lime-300 flex items-center gap-1 transition-colors">
                 Manage <ArrowRight className="w-3 h-3" />
               </button>
             }
@@ -283,8 +283,8 @@ function SuperAdminDashboard() {
           <div className="space-y-2">
             {(stats?.recent_subscriptions || []).map((s, i) => (
               <div key={s.id || i} className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-white/4 transition-all border-b border-white/4 last:border-0">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${s.status === "approved" ? "bg-emerald-500/10" : s.status === "pending" ? "bg-amber-500/10" : "bg-rose-500/10"}`}>
-                  <CreditCard className={`w-4 h-4 ${s.status === "approved" ? "text-emerald-400" : s.status === "pending" ? "text-amber-400" : "text-rose-400"}`} />
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${s.status === "approved" ? "bg-emerald-500/10" : s.status === "pending" ? "bg-amber-500/10" : "bg-lime-500/10"}`}>
+                  <CreditCard className={`w-4 h-4 ${s.status === "approved" ? "text-emerald-400" : s.status === "pending" ? "text-amber-400" : "text-lime-400"}`} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-white truncate">{s.user_name || s.user_email || "User"}</p>
@@ -385,7 +385,7 @@ function TenantDashboard() {
     return (
       <div className="space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {[...Array(6)].map((_, i) => <div key={i} className="h-28 rounded-2xl animate-pulse" style={{ background: "hsl(340,40%,8%)" }} />)}
+          {[...Array(6)].map((_, i) => <div key={i} className="h-28 rounded-2xl animate-pulse" style={{ background: "hsl(0, 0%, 6%)" }} />)}
         </div>
       </div>
     );
@@ -402,7 +402,7 @@ function TenantDashboard() {
   const revenueGrowth = r.revenue_growth || 0;
   const chartData = (r.daily_chart || []).map(d => ({ date: d.date?.slice(5) || "", revenue: d.revenue || 0 }));
   const planStats = a.plan_stats || r.plan_performance || [];
-  const COLORS = ["#E11D48", "#F43F5E", "#FB7185", "#10B981", "#F59E0B", "#3B82F6"];
+  const COLORS = ["#BFFF00", "#A3E635", "#BEF264", "#10B981", "#F59E0B", "#3B82F6"];
   const recentPayments = (a.recent_payments || []).slice(0, 5);
   const recentSubs = (a.recent_subscribers || []).slice(0, 5);
 
@@ -416,8 +416,8 @@ function TenantDashboard() {
       </motion.div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <MetricCard label="Total Revenue" value={`Rs.${totalRevenue.toLocaleString()}`} icon={IndianRupee} color="bg-rose-500/20" delay={0.05} />
-        <MetricCard label="Monthly Revenue" value={`Rs.${monthlyRevenue.toLocaleString()}`} icon={TrendingUp} color="bg-rose-600/20" delay={0.1} />
+        <MetricCard label="Total Revenue" value={`Rs.${totalRevenue.toLocaleString()}`} icon={IndianRupee} color="bg-lime-500/20" delay={0.05} />
+        <MetricCard label="Monthly Revenue" value={`Rs.${monthlyRevenue.toLocaleString()}`} icon={TrendingUp} color="bg-lime-600/20" delay={0.1} />
         <MetricCard label="Active Subs" value={activeSubs.toLocaleString()} icon={Users} color="bg-emerald-500/20" delay={0.15} />
         <MetricCard label="Total Users" value={totalSubs.toLocaleString()} icon={UserPlus} color="bg-amber-500/20" delay={0.2} />
         <MetricCard label="Churn Rate" value={`${churnRate}%`} icon={Activity} color="bg-blue-500/20" delay={0.25} />
@@ -433,7 +433,7 @@ function TenantDashboard() {
             </div>
             <div className="flex gap-1 bg-white/5 rounded-lg p-0.5">
               {["7d", "30d", "90d"].map(range => (
-                <button key={range} onClick={() => setChartRange(range)} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${chartRange === range ? "bg-rose-600 text-white" : "text-zinc-500 hover:text-zinc-300"}`} data-testid={`chart-range-${range}`}>
+                <button key={range} onClick={() => setChartRange(range)} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${chartRange === range ? "bg-lime-600 text-white" : "text-zinc-500 hover:text-zinc-300"}`} data-testid={`chart-range-${range}`}>
                   {range}
                 </button>
               ))}
@@ -443,15 +443,15 @@ function TenantDashboard() {
             <AreaChart data={chartRange === "7d" ? chartData.slice(-7) : chartData}>
               <defs>
                 <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#E11D48" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="#E11D48" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#BFFF00" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#BFFF00" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
               <XAxis dataKey="date" tick={{ fill: "#52525B", fontSize: 10 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: "#52525B", fontSize: 10 }} axisLine={false} tickLine={false} />
               <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="revenue" stroke="#E11D48" fill="url(#revGrad)" strokeWidth={2} />
+              <Area type="monotone" dataKey="revenue" stroke="#BFFF00" fill="url(#revGrad)" strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
         </GlassCard>
@@ -492,8 +492,8 @@ function TenantDashboard() {
             {recentPayments.length > 0 ? recentPayments.map((p, i) => (
               <div key={i} className="flex items-center justify-between py-2 border-b border-white/4 last:border-0">
                 <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${p.status === "verified" ? "bg-emerald-500/10" : p.status === "pending" ? "bg-amber-500/10" : "bg-rose-500/10"}`}>
-                    <CreditCard className={`w-4 h-4 ${p.status === "verified" ? "text-emerald-400" : p.status === "pending" ? "text-amber-400" : "text-rose-400"}`} />
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${p.status === "verified" ? "bg-emerald-500/10" : p.status === "pending" ? "bg-amber-500/10" : "bg-lime-500/10"}`}>
+                    <CreditCard className={`w-4 h-4 ${p.status === "verified" ? "text-emerald-400" : p.status === "pending" ? "text-amber-400" : "text-lime-400"}`} />
                   </div>
                   <div>
                     <p className="text-sm text-white font-medium">{p.telegram_username || p.telegram_user_id || "User"}</p>
@@ -514,8 +514,8 @@ function TenantDashboard() {
             {recentSubs.length > 0 ? recentSubs.map((s, i) => (
               <div key={i} className="flex items-center justify-between py-2 border-b border-white/4 last:border-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center">
-                    <UserPlus className="w-4 h-4 text-rose-400" />
+                  <div className="w-8 h-8 rounded-lg bg-lime-500/10 flex items-center justify-center">
+                    <UserPlus className="w-4 h-4 text-lime-400" />
                   </div>
                   <div>
                     <p className="text-sm text-white font-medium">{s.telegram_username || s.telegram_user_id || "User"}</p>

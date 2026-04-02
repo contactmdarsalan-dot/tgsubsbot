@@ -97,14 +97,14 @@ export default function LiveViewerScreen() {
   };
 
   if (loading) {
-    return <div className="py-12 text-center"><Loader2 className="w-6 h-6 animate-spin text-rose-400 mx-auto" /></div>;
+    return <div className="py-12 text-center"><Loader2 className="w-6 h-6 animate-spin text-lime-400 mx-auto" /></div>;
   }
 
   if (!liveSession) {
     return (
       <div className="pb-24" data-testid="live-screen-empty">
         <h2 className="font-heading text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <Radio className="w-5 h-5 text-rose-400" /> Live
+          <Radio className="w-5 h-5 text-lime-400" /> Live
         </h2>
         <div className="glass-card rounded-2xl p-8 text-center">
           <Radio className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
@@ -118,7 +118,7 @@ export default function LiveViewerScreen() {
   return (
     <div className="pb-24" data-testid="live-viewer-screen">
       <h2 className="font-heading text-xl font-bold text-white mb-4 flex items-center gap-2">
-        <Radio className="w-5 h-5 text-rose-400 animate-pulse" /> LIVE
+        <Radio className="w-5 h-5 text-lime-400 animate-pulse" /> LIVE
       </h2>
 
       {/* Video Area */}
@@ -132,7 +132,7 @@ export default function LiveViewerScreen() {
             </button>
           </div>
         )}
-        <div className="absolute top-2 left-2 bg-rose-600 px-2 py-0.5 rounded-full flex items-center gap-1">
+        <div className="absolute top-2 left-2 bg-lime-600 px-2 py-0.5 rounded-full flex items-center gap-1">
           <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
           <span className="text-[10px] text-white font-bold">LIVE</span>
         </div>
@@ -155,7 +155,7 @@ export default function LiveViewerScreen() {
           <p className="text-xs font-semibold text-zinc-400 mb-2 flex items-center gap-1"><MessageCircle className="w-3 h-3" /> Live Chat</p>
           <div className="max-h-32 overflow-y-auto space-y-1 mb-2">
             {chatMessages.map((m, i) => (
-              <div key={i} className="text-xs"><span className="text-rose-400 font-semibold">{m.name}: </span><span className="text-white">{m.text}</span></div>
+              <div key={i} className="text-xs"><span className="text-lime-400 font-semibold">{m.name}: </span><span className="text-white">{m.text}</span></div>
             ))}
             <div ref={chatEndRef} />
           </div>

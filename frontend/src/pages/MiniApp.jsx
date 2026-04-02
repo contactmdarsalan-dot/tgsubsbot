@@ -158,7 +158,7 @@ export default function MiniApp() {
             } catch {} finally { setPayProcessing(false); }
           },
           prefill: { name: user?.first_name || "", contact: phoneNum || "" },
-          theme: { color: "#E11D48" },
+          theme: { color: "#BFFF00" },
           modal: { ondismiss: () => setPayProcessing(false) },
         });
         rzp.open();
@@ -188,7 +188,7 @@ export default function MiniApp() {
   // Loading
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "hsl(340,50%,4%)" }}>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "hsl(0, 0%, 2%)" }}>
         <div className="text-center">
           <div className="w-12 h-12 rounded-2xl gradient-cta flex items-center justify-center mx-auto mb-4 animate-pulse">
             <Smartphone className="w-6 h-6 text-white" />
@@ -203,18 +203,18 @@ export default function MiniApp() {
   // Phone Login Screen
   if (phoneScreen) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: "hsl(340,50%,4%)" }}>
+      <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: "hsl(0, 0%, 2%)" }}>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm">
           <div className="text-center mb-8">
             <div className="w-16 h-16 rounded-2xl gradient-cta flex items-center justify-center mx-auto mb-4">
               <Smartphone className="w-8 h-8 text-white" />
             </div>
             <h1 className="font-heading text-2xl font-bold text-white mb-2">Welcome!</h1>
-            <p className="text-sm text-zinc-500">Enter your phone to unlock <span className="text-rose-400 font-semibold">20% OFF</span></p>
+            <p className="text-sm text-zinc-500">Enter your phone to unlock <span className="text-lime-400 font-semibold">20% OFF</span></p>
           </div>
 
           <div className="glass-card rounded-2xl p-5 mb-4">
-            <input type="tel" value={phoneNum} onChange={e => setPhoneNum(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="Enter phone number" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3.5 text-white text-center text-lg font-mono placeholder-zinc-600 focus:outline-none focus:border-rose-500/50 mb-4" data-testid="phone-input" />
+            <input type="tel" value={phoneNum} onChange={e => setPhoneNum(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="Enter phone number" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3.5 text-white text-center text-lg font-mono placeholder-zinc-600 focus:outline-none focus:border-lime-500/50 mb-4" data-testid="phone-input" />
             <button onClick={handlePhoneLogin} disabled={phoneLoading || phoneNum.length < 10} className="gradient-cta text-white font-bold rounded-2xl py-3.5 w-full text-base disabled:opacity-30 active:scale-95 transition-transform" data-testid="phone-login-btn">
               {phoneLoading ? "Verifying..." : "Unlock 20% Discount"}
             </button>
@@ -243,11 +243,11 @@ export default function MiniApp() {
 
   return (
     <MiniAppContext.Provider value={contextValue}>
-      <div className="min-h-screen text-white relative" style={{ background: "hsl(340,50%,4%)" }}>
+      <div className="min-h-screen text-white relative" style={{ background: "hsl(0, 0%, 2%)" }}>
         {/* Discount popup */}
         <AnimatePresence>
           {discountPopup && (
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="fixed top-4 left-4 right-4 z-50 glass-card rounded-2xl p-4 text-center border-rose-500/30">
+            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="fixed top-4 left-4 right-4 z-50 glass-card rounded-2xl p-4 text-center border-lime-500/30">
               <p className="text-sm font-semibold text-white">🎉 {loginDiscount}% discount unlocked!</p>
             </motion.div>
           )}
@@ -277,7 +277,7 @@ export default function MiniApp() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-mono font-semibold text-white">Rs.{p.amount}</p>
-                    <span className={`text-[10px] font-semibold ${p.status === "verified" ? "text-emerald-400" : p.status === "pending" ? "text-amber-400" : "text-rose-400"}`}>{p.status}</span>
+                    <span className={`text-[10px] font-semibold ${p.status === "verified" ? "text-emerald-400" : p.status === "pending" ? "text-amber-400" : "text-lime-400"}`}>{p.status}</span>
                   </div>
                 </div>
               ))}
@@ -290,7 +290,7 @@ export default function MiniApp() {
               {notifications.length === 0 ? (
                 <div className="glass-card rounded-2xl p-6 text-center text-zinc-500 text-sm">No notifications</div>
               ) : notifications.map(n => (
-                <div key={n.id} className={`glass-card rounded-xl p-3 mb-2 border-l-2 ${n.type === "warning" ? "border-amber-500" : n.type === "promo" ? "border-rose-500" : "border-emerald-500"}`}>
+                <div key={n.id} className={`glass-card rounded-xl p-3 mb-2 border-l-2 ${n.type === "warning" ? "border-amber-500" : n.type === "promo" ? "border-lime-500" : "border-emerald-500"}`}>
                   <p className="text-sm font-semibold text-white">{n.title}</p>
                   <p className="text-xs text-zinc-400 mt-0.5">{n.message}</p>
                 </div>
@@ -300,13 +300,13 @@ export default function MiniApp() {
         </div>
 
         {/* Bottom Nav */}
-        <nav className="fixed bottom-0 w-full z-40 pb-safe" style={{ background: "hsla(340,50%,4%,0.9)", backdropFilter: "blur(20px)", borderTop: "1px solid hsl(340,40%,12%)" }}>
+        <nav className="fixed bottom-0 w-full z-40 pb-safe" style={{ background: "hsla(0,0%,3%,0.9)", backdropFilter: "blur(20px)", borderTop: "1px solid hsl(0,0%,10%)" }}>
           <div className="flex items-center justify-around px-2 py-2">
             {mainTabs.map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
-                <button key={tab.id} onClick={() => switchTab(tab.id)} className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all ${isActive ? "text-rose-400" : "text-zinc-600"}`} data-testid={`nav-${tab.id}`}>
+                <button key={tab.id} onClick={() => switchTab(tab.id)} className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all ${isActive ? "text-lime-400" : "text-zinc-600"}`} data-testid={`nav-${tab.id}`}>
                   <Icon className="w-5 h-5" strokeWidth={isActive ? 2 : 1.5} />
                   <span className="text-[10px] font-semibold">{tab.label}</span>
                 </button>
@@ -314,21 +314,21 @@ export default function MiniApp() {
             })}
             {/* More button */}
             <div className="relative">
-              <button onClick={() => setMoreOpen(!moreOpen)} className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all ${moreTabs.some(t => t.id === activeTab) ? "text-rose-400" : "text-zinc-600"}`} data-testid="nav-more">
+              <button onClick={() => setMoreOpen(!moreOpen)} className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all ${moreTabs.some(t => t.id === activeTab) ? "text-lime-400" : "text-zinc-600"}`} data-testid="nav-more">
                 <MoreHorizontal className="w-5 h-5" />
                 <span className="text-[10px] font-semibold">More</span>
-                {notifications.length > 0 && <div className="absolute top-0 right-2 w-2 h-2 bg-rose-500 rounded-full" />}
+                {notifications.length > 0 && <div className="absolute top-0 right-2 w-2 h-2 bg-lime-500 rounded-full" />}
               </button>
               <AnimatePresence>
                 {moreOpen && (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute bottom-full right-0 mb-2 w-48 rounded-2xl p-2 z-50" style={{ background: "hsl(340,40%,7%)", border: "1px solid hsl(340,40%,15%)" }}>
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute bottom-full right-0 mb-2 w-48 rounded-2xl p-2 z-50" style={{ background: "hsl(0, 0%, 5%)", border: "1px solid hsl(0, 0%, 12%)" }}>
                     {moreTabs.map(tab => {
                       const Icon = tab.icon;
                       return (
-                        <button key={tab.id} onClick={() => switchTab(tab.id)} className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm transition-all ${activeTab === tab.id ? "bg-rose-500/15 text-rose-400" : "text-zinc-400 hover:text-white hover:bg-white/5"}`} data-testid={`nav-${tab.id}`}>
+                        <button key={tab.id} onClick={() => switchTab(tab.id)} className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm transition-all ${activeTab === tab.id ? "bg-lime-500/15 text-lime-400" : "text-zinc-400 hover:text-white hover:bg-white/5"}`} data-testid={`nav-${tab.id}`}>
                           <Icon className="w-4 h-4" />
                           <span className="font-medium">{tab.label}</span>
-                          {tab.badge > 0 && <span className="ml-auto px-1.5 py-0.5 text-[10px] bg-rose-500 text-white rounded-full">{tab.badge}</span>}
+                          {tab.badge > 0 && <span className="ml-auto px-1.5 py-0.5 text-[10px] bg-lime-500 text-white rounded-full">{tab.badge}</span>}
                         </button>
                       );
                     })}

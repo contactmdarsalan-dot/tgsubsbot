@@ -88,7 +88,7 @@ export default function TeamManagement() {
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2" data-testid="team-title">
-            <Users className="w-6 h-6 text-rose-400" /> Team Members
+            <Users className="w-6 h-6 text-lime-400" /> Team Members
           </h1>
           <p className="text-sm text-zinc-500 mt-1">Manage dashboard access for your team</p>
         </div>
@@ -99,10 +99,10 @@ export default function TeamManagement() {
 
       {/* Team Table */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-        className="rounded-2xl border border-white/6 overflow-hidden" style={{ background: "hsl(340,40%,6%)" }}
+        className="rounded-2xl border border-white/6 overflow-hidden" style={{ background: "hsl(0, 0%, 4%)" }}
       >
         {loading ? (
-          <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-rose-400" /></div>
+          <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-lime-400" /></div>
         ) : members.length === 0 ? (
           <div className="text-center py-16">
             <Users className="w-10 h-10 text-zinc-700 mx-auto mb-3" />
@@ -125,12 +125,12 @@ export default function TeamManagement() {
                 <TableRow key={m.id} className="border-white/4 hover:bg-white/3">
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center">
-                        <span className="text-xs font-bold text-rose-400">{(m.name || "U").charAt(0).toUpperCase()}</span>
+                      <div className="w-8 h-8 rounded-lg bg-lime-500/10 flex items-center justify-center">
+                        <span className="text-xs font-bold text-lime-400">{(m.name || "U").charAt(0).toUpperCase()}</span>
                       </div>
                       <div>
                         <p className="text-sm text-white font-medium">{m.name || "Unnamed"}</p>
-                        {m.id === user.id && <span className="text-[10px] text-rose-400 font-bold">YOU</span>}
+                        {m.id === user.id && <span className="text-[10px] text-lime-400 font-bold">YOU</span>}
                       </div>
                     </div>
                   </TableCell>

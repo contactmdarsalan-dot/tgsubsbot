@@ -30,7 +30,7 @@ function GlassCard({ children, className = "", delay = 0, testId }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.4 }}
       className={`rounded-2xl border border-white/6 p-5 ${className}`}
-      style={{ background: "hsl(340,40%,6%)" }}
+      style={{ background: "hsl(0, 0%, 4%)" }}
       data-testid={testId}
     >
       {children}
@@ -56,7 +56,7 @@ function StatBlock({ label, value, icon: Icon, color, sub }) {
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="px-3 py-2 rounded-lg text-sm" style={{ background: "hsl(340,40%,7%)", border: "1px solid hsl(340,40%,15%)" }}>
+    <div className="px-3 py-2 rounded-lg text-sm" style={{ background: "hsl(0, 0%, 5%)", border: "1px solid hsl(0, 0%, 12%)" }}>
       <p className="text-zinc-400 text-xs">{label}</p>
       {payload.map((p, i) => (
         <p key={i} className="text-white font-semibold">Rs. {p.value?.toLocaleString()}</p>
@@ -65,7 +65,7 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-const COLORS = ["#E11D48", "#F43F5E", "#FB7185", "#10B981", "#F59E0B", "#3B82F6"];
+const COLORS = ["#BFFF00", "#A3E635", "#BEF264", "#10B981", "#F59E0B", "#3B82F6"];
 
 const formatDate = (d) => {
   if (!d) return "-";
@@ -109,9 +109,9 @@ export default function TenantProfile() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="h-10 w-48 rounded-xl animate-pulse" style={{ background: "hsl(340,40%,8%)" }} />
+        <div className="h-10 w-48 rounded-xl animate-pulse" style={{ background: "hsl(0, 0%, 6%)" }} />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[...Array(8)].map((_, i) => <div key={i} className="h-24 rounded-xl animate-pulse" style={{ background: "hsl(340,40%,8%)" }} />)}
+          {[...Array(8)].map((_, i) => <div key={i} className="h-24 rounded-xl animate-pulse" style={{ background: "hsl(0, 0%, 6%)" }} />)}
         </div>
       </div>
     );
@@ -120,9 +120,9 @@ export default function TenantProfile() {
   if (!data) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
-        <AlertTriangle className="w-12 h-12 text-rose-400 mb-4" />
+        <AlertTriangle className="w-12 h-12 text-lime-400 mb-4" />
         <p className="text-white text-lg font-semibold">Tenant not found</p>
-        <button onClick={() => navigate("/dashboard/saas-management")} className="mt-4 text-sm text-rose-400 hover:text-rose-300 flex items-center gap-1">
+        <button onClick={() => navigate("/dashboard/saas-management")} className="mt-4 text-sm text-lime-400 hover:text-lime-300 flex items-center gap-1">
           <ArrowLeft className="w-4 h-4" /> Back to Tenants
         </button>
       </div>
@@ -142,7 +142,7 @@ export default function TenantProfile() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="font-heading text-2xl font-bold text-white" data-testid="tenant-name">{tenant.name || tenant.tenant_id}</h1>
-              <Badge className={`text-[10px] ${tenant.status === "active" ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400"}`}>
+              <Badge className={`text-[10px] ${tenant.status === "active" ? "bg-emerald-500/15 text-emerald-400" : "bg-lime-500/15 text-lime-400"}`}>
                 {tenant.status}
               </Badge>
             </div>
@@ -165,7 +165,7 @@ export default function TenantProfile() {
 
       {/* Key Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatBlock label="Total Revenue" value={`Rs.${(stats.total_revenue || 0).toLocaleString()}`} icon={IndianRupee} color="bg-rose-500/20" sub={`Rs.${(stats.monthly_revenue || 0).toLocaleString()} this month`} />
+        <StatBlock label="Total Revenue" value={`Rs.${(stats.total_revenue || 0).toLocaleString()}`} icon={IndianRupee} color="bg-lime-500/20" sub={`Rs.${(stats.monthly_revenue || 0).toLocaleString()} this month`} />
         <StatBlock label="Bot Users" value={stats.bot_users || 0} icon={Users} color="bg-blue-500/20" />
         <StatBlock label="Active Subs" value={stats.active_subscribers || 0} icon={UserPlus} color="bg-emerald-500/20" sub={`${stats.expired_subscribers || 0} expired`} />
         <StatBlock label="Payments" value={stats.total_payments || 0} icon={CreditCard} color="bg-cyan-500/20" sub={`${stats.pending_payments || 0} pending`} />
@@ -180,12 +180,12 @@ export default function TenantProfile() {
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="bg-white/5 border border-white/6 p-1 rounded-xl">
-          <TabsTrigger value="overview" className="data-[state=active]:bg-rose-500/20 data-[state=active]:text-white text-zinc-500 rounded-lg text-xs" data-testid="tab-overview">Overview</TabsTrigger>
-          <TabsTrigger value="subscribers" className="data-[state=active]:bg-rose-500/20 data-[state=active]:text-white text-zinc-500 rounded-lg text-xs" data-testid="tab-subscribers">Subscribers</TabsTrigger>
-          <TabsTrigger value="payments" className="data-[state=active]:bg-rose-500/20 data-[state=active]:text-white text-zinc-500 rounded-lg text-xs" data-testid="tab-payments">Payments</TabsTrigger>
-          <TabsTrigger value="plans" className="data-[state=active]:bg-rose-500/20 data-[state=active]:text-white text-zinc-500 rounded-lg text-xs" data-testid="tab-plans">Plans</TabsTrigger>
-          <TabsTrigger value="admins" className="data-[state=active]:bg-rose-500/20 data-[state=active]:text-white text-zinc-500 rounded-lg text-xs" data-testid="tab-admins">Admins</TabsTrigger>
-          <TabsTrigger value="config" className="data-[state=active]:bg-rose-500/20 data-[state=active]:text-white text-zinc-500 rounded-lg text-xs" data-testid="tab-config">Config</TabsTrigger>
+          <TabsTrigger value="overview" className="data-[state=active]:bg-lime-500/20 data-[state=active]:text-white text-zinc-500 rounded-lg text-xs" data-testid="tab-overview">Overview</TabsTrigger>
+          <TabsTrigger value="subscribers" className="data-[state=active]:bg-lime-500/20 data-[state=active]:text-white text-zinc-500 rounded-lg text-xs" data-testid="tab-subscribers">Subscribers</TabsTrigger>
+          <TabsTrigger value="payments" className="data-[state=active]:bg-lime-500/20 data-[state=active]:text-white text-zinc-500 rounded-lg text-xs" data-testid="tab-payments">Payments</TabsTrigger>
+          <TabsTrigger value="plans" className="data-[state=active]:bg-lime-500/20 data-[state=active]:text-white text-zinc-500 rounded-lg text-xs" data-testid="tab-plans">Plans</TabsTrigger>
+          <TabsTrigger value="admins" className="data-[state=active]:bg-lime-500/20 data-[state=active]:text-white text-zinc-500 rounded-lg text-xs" data-testid="tab-admins">Admins</TabsTrigger>
+          <TabsTrigger value="config" className="data-[state=active]:bg-lime-500/20 data-[state=active]:text-white text-zinc-500 rounded-lg text-xs" data-testid="tab-config">Config</TabsTrigger>
         </TabsList>
 
         {/* OVERVIEW */}
@@ -200,15 +200,15 @@ export default function TenantProfile() {
                   <AreaChart data={revenue_chart}>
                     <defs>
                       <linearGradient id="tRevGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#E11D48" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="#E11D48" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#BFFF00" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="#BFFF00" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                     <XAxis dataKey="date" tick={{ fill: "#52525B", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => v?.slice(5)} />
                     <YAxis tick={{ fill: "#52525B", fontSize: 10 }} axisLine={false} tickLine={false} />
                     <Tooltip content={<ChartTooltip />} />
-                    <Area type="monotone" dataKey="revenue" stroke="#E11D48" fill="url(#tRevGrad)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="revenue" stroke="#BFFF00" fill="url(#tRevGrad)" strokeWidth={2} />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
@@ -271,7 +271,7 @@ export default function TenantProfile() {
                         <TableCell className="text-zinc-400 text-xs">{p.plan_name || p.plan_id || "-"}</TableCell>
                         <TableCell className="text-white text-xs font-semibold">Rs.{(p.amount || 0).toLocaleString()}</TableCell>
                         <TableCell>
-                          <Badge className={`text-[10px] ${p.status === "verified" || p.status === "approved" ? "bg-emerald-500/15 text-emerald-400" : p.status === "pending" ? "bg-amber-500/15 text-amber-400" : "bg-rose-500/15 text-rose-400"}`}>
+                          <Badge className={`text-[10px] ${p.status === "verified" || p.status === "approved" ? "bg-emerald-500/15 text-emerald-400" : p.status === "pending" ? "bg-amber-500/15 text-amber-400" : "bg-lime-500/15 text-lime-400"}`}>
                             {p.status}
                           </Badge>
                         </TableCell>
@@ -313,7 +313,7 @@ export default function TenantProfile() {
                         <TableCell className="text-zinc-400 text-xs">@{s.telegram_username || "-"}</TableCell>
                         <TableCell className="text-zinc-400 text-xs">{s.plan_name || s.plan_id}</TableCell>
                         <TableCell>
-                          <Badge className={`text-[10px] ${s.status === "active" ? "bg-emerald-500/15 text-emerald-400" : s.status === "grace" ? "bg-amber-500/15 text-amber-400" : "bg-rose-500/15 text-rose-400"}`}>
+                          <Badge className={`text-[10px] ${s.status === "active" ? "bg-emerald-500/15 text-emerald-400" : s.status === "grace" ? "bg-amber-500/15 text-amber-400" : "bg-lime-500/15 text-lime-400"}`}>
                             {s.status}
                           </Badge>
                         </TableCell>
@@ -358,14 +358,14 @@ export default function TenantProfile() {
                         <TableCell className="text-white text-xs font-semibold">Rs.{(p.amount || 0).toLocaleString()}</TableCell>
                         <TableCell className="text-zinc-400 text-xs">{p.payment_method || "-"}</TableCell>
                         <TableCell>
-                          <Badge className={`text-[10px] ${p.status === "verified" || p.status === "approved" ? "bg-emerald-500/15 text-emerald-400" : p.status === "pending" ? "bg-amber-500/15 text-amber-400" : "bg-rose-500/15 text-rose-400"}`}>
+                          <Badge className={`text-[10px] ${p.status === "verified" || p.status === "approved" ? "bg-emerald-500/15 text-emerald-400" : p.status === "pending" ? "bg-amber-500/15 text-amber-400" : "bg-lime-500/15 text-lime-400"}`}>
                             {p.status}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-zinc-500 text-xs">{formatDateTime(p.created_at)}</TableCell>
                         <TableCell>
                           {p.screenshot_url ? (
-                            <a href={p.screenshot_url} target="_blank" rel="noopener noreferrer" className="text-rose-400 hover:text-rose-300">
+                            <a href={p.screenshot_url} target="_blank" rel="noopener noreferrer" className="text-lime-400 hover:text-lime-300">
                               <Eye className="w-4 h-4" />
                             </a>
                           ) : <span className="text-zinc-700">-</span>}
@@ -497,7 +497,7 @@ export default function TenantProfile() {
                 <div key={i} className="p-3 rounded-xl bg-white/3 border border-white/5">
                   <p className="text-[10px] text-zinc-600 uppercase tracking-wider mb-1">{item.label}</p>
                   {item.badge ? (
-                    <Badge className={`text-[10px] ${item.value === "active" ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400"}`}>
+                    <Badge className={`text-[10px] ${item.value === "active" ? "bg-emerald-500/15 text-emerald-400" : "bg-lime-500/15 text-lime-400"}`}>
                       {item.value}
                     </Badge>
                   ) : (

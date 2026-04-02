@@ -106,7 +106,7 @@ export default function MiniAppPlans() {
                 <Button size="sm" variant="outline" onClick={() => handleEdit(plan)} className="flex-1 border-white/10 text-zinc-300 hover:text-white hover:bg-white/5" data-testid={`edit-plan-${plan.id}`}>
                   <Pencil className="w-3 h-3 mr-1" /> Edit
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => handleDelete(plan.id)} className="border-rose-500/20 text-rose-400 hover:bg-rose-500/10" data-testid={`delete-plan-${plan.id}`}>
+                <Button size="sm" variant="outline" onClick={() => handleDelete(plan.id)} className="border-lime-500/20 text-lime-400 hover:bg-lime-500/10" data-testid={`delete-plan-${plan.id}`}>
                   <Trash2 className="w-3 h-3" />
                 </Button>
               </div>

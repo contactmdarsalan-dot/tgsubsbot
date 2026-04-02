@@ -29,7 +29,7 @@ const EVENT_CONFIG = {
   message: { label: "Message", icon: MessageSquare, color: "text-gray-400", bg: "bg-gray-500/10" },
   payment_screenshot: { label: "Payment Screenshot", icon: CreditCard, color: "text-amber-400", bg: "bg-amber-500/10" },
   payment_verified: { label: "Payment Verified", icon: CreditCard, color: "text-emerald-400", bg: "bg-emerald-500/10" },
-  new_subscriber: { label: "New Subscriber", icon: Users, color: "text-rose-400", bg: "bg-rose-500/10" },
+  new_subscriber: { label: "New Subscriber", icon: Users, color: "text-lime-400", bg: "bg-lime-500/10" },
   photo: { label: "Photo", icon: Image, color: "text-cyan-400", bg: "bg-cyan-500/10" },
 };
 

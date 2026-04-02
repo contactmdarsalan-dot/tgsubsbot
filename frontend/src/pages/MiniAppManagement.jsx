@@ -25,7 +25,7 @@ export default function MiniAppManagement() {
       <div className="flex gap-1 p-1 bg-zinc-900/50 border border-white/5 rounded-xl">
         {tabs.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} data-testid={`tab-${t.id}`}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === t.id ? "bg-rose-600 text-white" : "text-zinc-400 hover:text-white"}`}>
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === t.id ? "bg-lime-600 text-white" : "text-zinc-400 hover:text-white"}`}>
             <t.icon className="w-4 h-4" /> {t.label}
           </button>
         ))}
@@ -77,7 +77,7 @@ function VideoCallsTab({ headers }) {
     scheduled: "bg-blue-500/15 text-blue-400",
     in_call: "bg-emerald-500/15 text-emerald-400",
     completed: "bg-zinc-500/15 text-zinc-400",
-    rejected: "bg-rose-500/15 text-rose-400",
+    rejected: "bg-lime-500/15 text-lime-400",
   };
 
   return (
@@ -106,7 +106,7 @@ function VideoCallsTab({ headers }) {
 
       {/* Bookings List */}
       {loading ? (
-        <div className="text-center py-12"><Loader2 className="w-6 h-6 animate-spin text-rose-400 mx-auto" /></div>
+        <div className="text-center py-12"><Loader2 className="w-6 h-6 animate-spin text-lime-400 mx-auto" /></div>
       ) : bookings.length === 0 ? (
         <div className="text-center py-12 bg-zinc-900/30 border border-white/5 rounded-xl">
           <Video className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
@@ -142,7 +142,7 @@ function VideoCallsTab({ headers }) {
                   </button>
                 )}
                 {b.status === "in_call" && (
-                  <button onClick={() => handleAction(b.id, "complete")} className="flex-1 bg-rose-600 text-white text-xs font-semibold rounded-lg py-2 flex items-center justify-center gap-1" data-testid="end-call-btn">
+                  <button onClick={() => handleAction(b.id, "complete")} className="flex-1 bg-lime-600 text-white text-xs font-semibold rounded-lg py-2 flex items-center justify-center gap-1" data-testid="end-call-btn">
                     <Square className="w-3 h-3" /> End Call
                   </button>
                 )}
@@ -222,17 +222,17 @@ function LiveStreamTab({ headers }) {
     <div className="space-y-4" data-testid="live-stream-tab">
       {/* Active Live */}
       {activeStream && (
-        <div className="bg-rose-900/20 border border-rose-500/30 rounded-xl p-4">
+        <div className="bg-lime-900/20 border border-lime-500/30 rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-              <p className="text-sm font-bold text-rose-400">Currently LIVE</p>
+              <div className="w-2 h-2 rounded-full bg-lime-500 animate-pulse" />
+              <p className="text-sm font-bold text-lime-400">Currently LIVE</p>
             </div>
             <div className="flex items-center gap-1 text-zinc-400 text-xs"><Eye className="w-3 h-3" /> {activeStream.viewer_count || 0}</div>
           </div>
           <p className="text-white font-semibold">{activeStream.title}</p>
           <p className="text-xs text-zinc-400 mt-1">Room: {activeStream.room_id}</p>
-          <button onClick={() => endLive(activeStream.id)} className="mt-3 w-full bg-rose-600 text-white text-xs font-semibold rounded-lg py-2 flex items-center justify-center gap-1" data-testid="end-live-btn">
+          <button onClick={() => endLive(activeStream.id)} className="mt-3 w-full bg-lime-600 text-white text-xs font-semibold rounded-lg py-2 flex items-center justify-center gap-1" data-testid="end-live-btn">
             <Square className="w-3 h-3" /> End Live
           </button>
         </div>
@@ -240,16 +240,16 @@ function LiveStreamTab({ headers }) {
 
       {/* Start Live Button */}
       {!activeStream && (
-        <button onClick={() => setShowCreate(!showCreate)} className="w-full bg-rose-600 text-white font-semibold rounded-xl py-3 flex items-center justify-center gap-2 hover:bg-rose-500 transition-colors" data-testid="start-live-btn">
+        <button onClick={() => setShowCreate(!showCreate)} className="w-full bg-lime-600 text-white font-semibold rounded-xl py-3 flex items-center justify-center gap-2 hover:bg-lime-500 transition-colors" data-testid="start-live-btn">
           <Radio className="w-5 h-5" /> Go Live in Mini App
         </button>
       )}
 
       {showCreate && (
         <div className="bg-zinc-900/50 border border-white/5 rounded-xl p-4 space-y-3">
-          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Live stream title..." className="w-full bg-zinc-800 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-rose-500/30" />
-          <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="Description (optional)..." rows={2} className="w-full bg-zinc-800 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-rose-500/30 resize-none" />
-          <button onClick={startLive} disabled={!title.trim() || creating} className="w-full bg-rose-600 text-white font-semibold rounded-lg py-2.5 text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Live stream title..." className="w-full bg-zinc-800 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-lime-500/30" />
+          <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="Description (optional)..." rows={2} className="w-full bg-zinc-800 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-lime-500/30 resize-none" />
+          <button onClick={startLive} disabled={!title.trim() || creating} className="w-full bg-lime-600 text-white font-semibold rounded-lg py-2.5 text-sm disabled:opacity-50 flex items-center justify-center gap-2">
             {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />} Start Live
           </button>
         </div>
@@ -258,7 +258,7 @@ function LiveStreamTab({ headers }) {
       {/* Stream History */}
       <h3 className="text-sm font-semibold text-zinc-400">Stream History</h3>
       {loading ? (
-        <div className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rose-400 mx-auto" /></div>
+        <div className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin text-lime-400 mx-auto" /></div>
       ) : streams.length === 0 ? (
         <div className="text-center py-8 bg-zinc-900/30 border border-white/5 rounded-xl">
           <Radio className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
@@ -272,7 +272,7 @@ function LiveStreamTab({ headers }) {
                 <p className="text-sm font-medium text-white">{s.title}</p>
                 <p className="text-xs text-zinc-500">{new Date(s.created_at).toLocaleString("en-IN")} - {s.viewer_count || 0} viewers</p>
               </div>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.status === "live" ? "bg-rose-500/15 text-rose-400" : "bg-zinc-700 text-zinc-400"}`}>{s.status}</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.status === "live" ? "bg-lime-500/15 text-lime-400" : "bg-zinc-700 text-zinc-400"}`}>{s.status}</span>
             </div>
           ))}
         </div>
@@ -343,14 +343,14 @@ function MessagesTab({ headers }) {
           Back to conversations
         </button>
         <div className="flex items-center gap-2 mb-2">
-          <div className="w-8 h-8 rounded-full bg-rose-600/20 flex items-center justify-center"><User className="w-4 h-4 text-rose-400" /></div>
+          <div className="w-8 h-8 rounded-full bg-lime-600/20 flex items-center justify-center"><User className="w-4 h-4 text-lime-400" /></div>
           <div><p className="text-sm font-semibold text-white">{conv?.name || activeChat}</p></div>
         </div>
 
         <div className="bg-zinc-900/50 border border-white/5 rounded-xl p-3 max-h-96 overflow-y-auto space-y-2">
           {messages.map((m, i) => (
             <div key={m.id || i} className={`flex ${m.sender_type === "admin" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[75%] rounded-2xl px-3 py-2 ${m.sender_type === "admin" ? "bg-rose-600/80 rounded-br-sm" : "bg-zinc-800 rounded-bl-sm"}`}>
+              <div className={`max-w-[75%] rounded-2xl px-3 py-2 ${m.sender_type === "admin" ? "bg-lime-600/80 rounded-br-sm" : "bg-zinc-800 rounded-bl-sm"}`}>
                 <p className="text-sm text-white">{m.message}</p>
                 <p className="text-[9px] text-white/40 mt-0.5 text-right">{m.created_at ? new Date(m.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : ""}</p>
               </div>
@@ -361,7 +361,7 @@ function MessagesTab({ headers }) {
 
         <div className="flex items-center gap-2">
           <input value={reply} onChange={e => setReply(e.target.value)} onKeyDown={e => e.key === "Enter" && sendReply()} placeholder="Type a reply..." className="flex-1 bg-zinc-800 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none" data-testid="dashboard-chat-input" />
-          <button onClick={sendReply} disabled={!reply.trim() || sending} className="bg-rose-600 text-white rounded-lg px-4 py-2.5 text-sm font-semibold disabled:opacity-50 flex items-center gap-1" data-testid="dashboard-chat-send">
+          <button onClick={sendReply} disabled={!reply.trim() || sending} className="bg-lime-600 text-white rounded-lg px-4 py-2.5 text-sm font-semibold disabled:opacity-50 flex items-center gap-1" data-testid="dashboard-chat-send">
             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
         </div>
@@ -377,13 +377,13 @@ function MessagesTab({ headers }) {
           <p className="text-xs text-zinc-500 mt-1">Conversations</p>
         </div>
         <div className="bg-zinc-900/50 border border-white/5 rounded-xl p-4 text-center">
-          <p className="text-2xl font-bold text-rose-400">{stats.unread_total || 0}</p>
+          <p className="text-2xl font-bold text-lime-400">{stats.unread_total || 0}</p>
           <p className="text-xs text-zinc-500 mt-1">Unread</p>
         </div>
       </div>
 
       {loading ? (
-        <div className="text-center py-12"><Loader2 className="w-6 h-6 animate-spin text-rose-400 mx-auto" /></div>
+        <div className="text-center py-12"><Loader2 className="w-6 h-6 animate-spin text-lime-400 mx-auto" /></div>
       ) : conversations.length === 0 ? (
         <div className="text-center py-12 bg-zinc-900/30 border border-white/5 rounded-xl">
           <MessageCircle className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
@@ -392,14 +392,14 @@ function MessagesTab({ headers }) {
       ) : (
         <div className="space-y-1">
           {conversations.map(c => (
-            <button key={c.user_id} onClick={() => openChat(c.user_id)} className="w-full bg-zinc-900/50 border border-white/5 rounded-xl p-3 flex items-center gap-3 hover:border-rose-500/20 transition-colors text-left" data-testid={`conv-${c.user_id}`}>
-              <div className="w-10 h-10 rounded-full bg-rose-600/20 flex items-center justify-center flex-shrink-0">
-                <User className="w-5 h-5 text-rose-400" />
+            <button key={c.user_id} onClick={() => openChat(c.user_id)} className="w-full bg-zinc-900/50 border border-white/5 rounded-xl p-3 flex items-center gap-3 hover:border-lime-500/20 transition-colors text-left" data-testid={`conv-${c.user_id}`}>
+              <div className="w-10 h-10 rounded-full bg-lime-600/20 flex items-center justify-center flex-shrink-0">
+                <User className="w-5 h-5 text-lime-400" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-white truncate">{c.name || c.user_id}</p>
-                  {c.unread > 0 && <span className="bg-rose-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">{c.unread}</span>}
+                  {c.unread > 0 && <span className="bg-lime-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">{c.unread}</span>}
                 </div>
                 <p className="text-xs text-zinc-500 truncate">{c.last_message}</p>
               </div>

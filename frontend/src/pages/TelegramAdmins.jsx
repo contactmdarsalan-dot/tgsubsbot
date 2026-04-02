@@ -352,7 +352,7 @@ export default function TelegramAdmins() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${
-                      admin.is_active ? "bg-gradient-to-br from-rose-500 to-red-600" : "bg-muted"
+                      admin.is_active ? "bg-gradient-to-br from-lime-500 to-red-600" : "bg-muted"
                     }`}>
                       {(admin.name || admin.telegram_username || "A").charAt(0).toUpperCase()}
                     </div>

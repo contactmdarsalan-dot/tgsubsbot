@@ -27,35 +27,35 @@ code {
     font-family: 'JetBrains Mono', monospace;
 }
 
-/* Dark Rose/Crimson SaaS Theme - Matched to Landing Page */
+/* Neon Lime + Deep Black Theme - Inspired by Prism Scripts */
 @layer base {
     :root {
-        --background: 340 50% 3%;
+        --background: 0 0% 2%;
         --foreground: 0 0% 100%;
-        --card: 340 40% 6%;
+        --card: 0 0% 5%;
         --card-foreground: 0 0% 100%;
-        --popover: 340 40% 6%;
+        --popover: 0 0% 5%;
         --popover-foreground: 0 0% 100%;
-        --primary: 346 80% 50%;
-        --primary-foreground: 0 0% 100%;
-        --secondary: 340 30% 12%;
-        --secondary-foreground: 340 10% 90%;
-        --muted: 340 20% 10%;
-        --muted-foreground: 340 10% 55%;
-        --accent: 346 80% 60%;
-        --accent-foreground: 0 0% 100%;
+        --primary: 80 100% 50%;
+        --primary-foreground: 0 0% 0%;
+        --secondary: 80 20% 10%;
+        --secondary-foreground: 80 10% 90%;
+        --muted: 0 0% 8%;
+        --muted-foreground: 0 0% 55%;
+        --accent: 80 100% 55%;
+        --accent-foreground: 0 0% 0%;
         --destructive: 350 89% 60%;
         --destructive-foreground: 0 0% 100%;
         --success: 160 60% 45%;
         --success-foreground: 0 0% 100%;
         --warning: 38 92% 50%;
         --warning-foreground: 0 0% 100%;
-        --border: 340 40% 14%;
-        --input: 340 40% 14%;
-        --ring: 346 80% 50%;
+        --border: 0 0% 12%;
+        --input: 0 0% 12%;
+        --ring: 80 100% 50%;
         --radius: 1rem;
-        --chart-1: 346 80% 50%;
-        --chart-2: 346 80% 60%;
+        --chart-1: 80 100% 50%;
+        --chart-2: 80 80% 60%;
         --chart-3: 160 60% 45%;
         --chart-4: 38 92% 50%;
         --chart-5: 210 70% 55%;
@@ -83,7 +83,7 @@ code {
 
 /* Gradient text */
 .gradient-text {
-    background: linear-gradient(135deg, #E11D48, #F43F5E, #FB7185);
+    background: linear-gradient(135deg, #BFFF00, #84CC16, #A3E635);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -91,8 +91,8 @@ code {
 
 /* Primary gradient CTA */
 .gradient-cta {
-    background: linear-gradient(135deg, #E11D48, #BE123C);
-    box-shadow: inset 0 1px 1px rgba(255,255,255,0.3), 0 4px 14px hsla(346,80%,50%,0.35);
+    background: linear-gradient(135deg, #BFFF00, #84CC16);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.3), 0 4px 14px hsla(80,100%,50%,0.3);
 }
 
 .gradient-cta:hover {
@@ -101,17 +101,17 @@ code {
 
 /* Sidebar */
 .sidebar-saas {
-    background: hsl(340, 50%, 4%);
-    border-right: 1px solid hsl(340, 40%, 12%);
+    background: hsl(0, 0%, 3%);
+    border-right: 1px solid hsl(0, 0%, 10%);
 }
 
 /* Glow effects */
 .glow-rose {
-    box-shadow: 0 0 20px hsla(346, 80%, 50%, 0.3);
+    box-shadow: 0 0 20px hsla(80, 100%, 50%, 0.3);
 }
 
 .glow-crimson {
-    box-shadow: 0 0 20px hsla(346, 80%, 40%, 0.3);
+    box-shadow: 0 0 20px hsla(80, 100%, 40%, 0.3);
 }
 
 /* Status indicators */
@@ -120,21 +120,21 @@ code {
 .status-error { color: #F43F5E; }
 .status-info { color: #3B82F6; }
 
-/* Romance gradient button (Login page) */
+/* Neon lime button */
 .btn-romance {
-    background: linear-gradient(135deg, #E11D48, #BE123C) !important;
-    color: white !important;
+    background: linear-gradient(135deg, #BFFF00, #84CC16) !important;
+    color: black !important;
     border: none !important;
-    box-shadow: 0 4px 14px hsla(346, 80%, 50%, 0.35);
+    box-shadow: 0 4px 14px hsla(80, 100%, 50%, 0.3);
 }
 
 .btn-romance:hover {
     filter: brightness(1.1);
 }
 
-/* Romance text gradient */
+/* Neon text gradient */
 .text-gradient-romance {
-    background: linear-gradient(135deg, #FB7185, #F43F5E, #E11D48);
+    background: linear-gradient(135deg, #BFFF00, #A3E635, #84CC16);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -182,7 +182,7 @@ code {
 
 .metric-card:hover {
     background: rgba(255, 255, 255, 0.06);
-    border-color: hsla(346, 80%, 50%, 0.3);
+    border-color: hsla(80, 100%, 50%, 0.3);
     transform: translateY(-2px);
 }
 

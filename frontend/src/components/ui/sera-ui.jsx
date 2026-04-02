@@ -59,8 +59,8 @@ export function StatsCard({
       glow: "hover:shadow-[0_0_30px_rgba(245,158,11,0.15)]",
     },
     rose: {
-      bg: "bg-rose-500/10",
-      text: "text-rose-500",
+      bg: "bg-lime-500/10",
+      text: "text-lime-500",
       glow: "hover:shadow-[0_0_30px_rgba(244,63,94,0.15)]",
     },
   };
@@ -171,7 +171,7 @@ export function AnimatedProgress({ value, max = 100, color = "primary", classNam
     primary: "bg-primary",
     emerald: "bg-emerald-500",
     amber: "bg-amber-500",
-    rose: "bg-rose-500",
+    rose: "bg-lime-500",
   };
 
   return (
@@ -242,7 +242,7 @@ export function AnimatedListItem({ children, index = 0 }) {
 export function PulseDot({ color = "emerald", className = "" }) {
   const colors = {
     emerald: "bg-emerald-500",
-    rose: "bg-rose-500",
+    rose: "bg-lime-500",
     amber: "bg-amber-500",
     primary: "bg-primary",
   };

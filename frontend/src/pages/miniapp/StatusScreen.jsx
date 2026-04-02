@@ -58,7 +58,7 @@ export default function StatusScreen() {
               initial={{ width: 0 }}
               animate={{ width: `${progress}%` }}
               transition={{ duration: 1, ease: "easeOut" }}
-              className={`h-full rounded-full ${isExpiring ? "bg-gradient-to-r from-amber-500 to-rose-500" : "bg-gradient-to-r from-rose-500 to-red-600"}`}
+              className={`h-full rounded-full ${isExpiring ? "bg-gradient-to-r from-amber-500 to-lime-500" : "bg-gradient-to-r from-lime-500 to-red-600"}`}
             />
           </div>
         </div>

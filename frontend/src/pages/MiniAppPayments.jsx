@@ -49,7 +49,7 @@ export default function MiniAppPayments() {
     ? payments.filter(p => (p.telegram_user_id || "").includes(search) || (p.telegram_username || "").toLowerCase().includes(search.toLowerCase()) || (p.plan_name || "").toLowerCase().includes(search.toLowerCase()))
     : payments;
 
-  const statusColors = { pending: "bg-amber-500/15 text-amber-400", verified: "bg-emerald-500/15 text-emerald-400", approved: "bg-emerald-500/15 text-emerald-400", rejected: "bg-rose-500/15 text-rose-400" };
+  const statusColors = { pending: "bg-amber-500/15 text-amber-400", verified: "bg-emerald-500/15 text-emerald-400", approved: "bg-emerald-500/15 text-emerald-400", rejected: "bg-lime-500/15 text-lime-400" };
   const filterTabs = [{ id: "all", label: "All" }, { id: "pending", label: "Pending" }, { id: "verified", label: "Verified" }, { id: "rejected", label: "Rejected" }];
 
   return (
@@ -127,7 +127,7 @@ export default function MiniAppPayments() {
                     <Button size="sm" onClick={() => handleAction(p.id, "approve")} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs" data-testid={`approve-${p.id}`}>
                       <CheckCircle className="w-3 h-3 mr-1" /> Approve
                     </Button>
-                    <Button size="sm" onClick={() => handleAction(p.id, "reject")} variant="outline" className="border-rose-500/20 text-rose-400 hover:bg-rose-500/10 text-xs" data-testid={`reject-${p.id}`}>
+                    <Button size="sm" onClick={() => handleAction(p.id, "reject")} variant="outline" className="border-lime-500/20 text-lime-400 hover:bg-lime-500/10 text-xs" data-testid={`reject-${p.id}`}>
                       <XCircle className="w-3 h-3 mr-1" /> Reject
                     </Button>
                   </>

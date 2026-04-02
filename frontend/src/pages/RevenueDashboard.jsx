@@ -48,12 +48,12 @@ const getAuthHeaders = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
 });
 
-const COLORS = ["#E11D48", "#10B981", "#F59E0B", "#8B5CF6", "#3B82F6", "#EC4899"];
+const COLORS = ["#BFFF00", "#10B981", "#F59E0B", "#8B5CF6", "#3B82F6", "#EC4899"];
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-[hsl(340,40%,7%)] border border-[hsl(340,40%,20%)] rounded-xl px-4 py-3 shadow-xl">
+      <div className="bg-[hsl(0, 0%, 5%)] border border-[hsl(0,0%,15%)] rounded-xl px-4 py-3 shadow-xl">
         <p className="text-xs text-gray-400 mb-1">{label}</p>
         {payload.map((item, i) => (
           <p key={i} className="text-sm font-semibold" style={{ color: item.color }}>
@@ -69,12 +69,12 @@ const CustomTooltip = ({ active, payload, label }) => {
 function MetricCard({ title, value, prefix = "", suffix = "", icon: Icon, trend, trendLabel, color = "primary", delay = 0 }) {
   const isPositive = trend >= 0;
   const colorMap = {
-    primary: "from-rose-500 to-red-600",
+    primary: "from-lime-500 to-red-600",
     emerald: "from-emerald-500 to-green-600",
     amber: "from-amber-500 to-yellow-600",
     violet: "from-violet-500 to-purple-600",
     blue: "from-blue-500 to-cyan-600",
-    rose: "from-rose-500 to-pink-600",
+    rose: "from-lime-500 to-pink-600",
   };
   
   return (
@@ -316,19 +316,19 @@ export default function RevenueDashboard() {
             <AreaChart data={getChartData()}>
               <defs>
                 <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#E11D48" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#E11D48" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#BFFF00" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#BFFF00" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(340 30% 15%)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0 0% 12%)" />
               <XAxis
                 dataKey={getXKey()}
-                stroke="hsl(340 20% 40%)"
+                stroke="hsl(0 0% 30%)"
                 fontSize={11}
                 tickFormatter={(v) => chartPeriod === "daily" ? v.slice(5) : v}
               />
               <YAxis
-                stroke="hsl(340 20% 40%)"
+                stroke="hsl(0 0% 30%)"
                 fontSize={11}
                 tickFormatter={(v) => `₹${v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}`}
               />
@@ -337,11 +337,11 @@ export default function RevenueDashboard() {
                 type="monotone"
                 dataKey="revenue"
                 name="Revenue"
-                stroke="#E11D48"
+                stroke="#BFFF00"
                 strokeWidth={2.5}
                 fill="url(#revenueGradient)"
                 dot={false}
-                activeDot={{ r: 5, strokeWidth: 2, fill: "#E11D48" }}
+                activeDot={{ r: 5, strokeWidth: 2, fill: "#BFFF00" }}
               />
             </AreaChart>
           </ResponsiveContainer>
