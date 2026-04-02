@@ -108,8 +108,16 @@ def _is_valid_qr_file(qr_url: str) -> bool:
 
 
 @router.get("/upi-details")
-async def miniapp_get_upi_details():
-    settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
+async def miniapp_get_upi_details(tenant_id: str = DEFAULT_TENANT_ID):
+    # Try tenant-specific settings first
+    settings_id = f"bot_settings_{tenant_id}" if tenant_id and tenant_id != DEFAULT_TENANT_ID else "bot_settings"
+    settings = await db.settings.find_one({"id": settings_id}, {"_id": 0})
+    if not settings:
+        # Only fallback to default for the default tenant
+        if tenant_id == DEFAULT_TENANT_ID:
+            settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
+        else:
+            settings = {}
     upi_id = settings.get("payment_upi_id") or settings.get("upi_id", "")
     upi_name = settings.get("upi_name", "")
     qr_url = settings.get("qr_code_url", "")
@@ -129,16 +137,17 @@ async def miniapp_get_upi_details():
 # ============== PLANS ==============
 
 @router.get("/plans")
-async def miniapp_get_plans():
-    plans = await db.plans.find({"is_active": True}, {"_id": 0}).sort("price", 1).to_list(50)
+async def miniapp_get_plans(tenant_id: str = DEFAULT_TENANT_ID):
+    """Get active plans for a specific tenant"""
+    plans = await db.plans.find({"is_active": True, "tenant_id": tenant_id}, {"_id": 0}).sort("price", 1).to_list(50)
     return plans
 
 
 # ============== SUBSCRIPTION STATUS ==============
 
 @router.get("/status/{telegram_user_id}")
-async def miniapp_get_status(telegram_user_id: str):
-    sub = await db.subscribers.find_one({"telegram_user_id": telegram_user_id, "status": "active"}, {"_id": 0})
+async def miniapp_get_status(telegram_user_id: str, tenant_id: str = DEFAULT_TENANT_ID):
+    sub = await db.subscribers.find_one({"telegram_user_id": telegram_user_id, "status": "active", "tenant_id": tenant_id}, {"_id": 0})
     if sub:
         end_date = sub.get("end_date", "")
         days_remaining = 0
@@ -169,11 +178,12 @@ async def miniapp_apply_coupon(data: dict):
     code = data.get("code", "").upper().strip()
     plan_id = data.get("plan_id")
     amount = float(data.get("amount", 0))
+    tenant_id = data.get("tenant_id", DEFAULT_TENANT_ID)
 
     if not code:
         return {"valid": False, "error": "Enter a coupon code"}
 
-    coupon = await db.coupons.find_one({"code": code, "is_active": True}, {"_id": 0})
+    coupon = await db.coupons.find_one({"code": code, "is_active": True, "tenant_id": tenant_id}, {"_id": 0})
     if not coupon:
         return {"valid": False, "error": "Invalid coupon code"}
 
@@ -212,15 +222,16 @@ async def miniapp_create_razorpay_order(data: dict):
     telegram_username = data.get("telegram_username", "")
     coupon_code = data.get("coupon_code")
     amount = float(data.get("amount", 0))
+    tenant_id = data.get("tenant_id", DEFAULT_TENANT_ID)
 
-    plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+    plan = await db.plans.find_one({"id": plan_id, "tenant_id": tenant_id}, {"_id": 0})
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
     final_amount = amount if amount > 0 else plan["price"]
 
     if coupon_code:
-        coupon = await db.coupons.find_one({"code": coupon_code.upper().strip(), "is_active": True}, {"_id": 0})
+        coupon = await db.coupons.find_one({"code": coupon_code.upper().strip(), "is_active": True, "tenant_id": tenant_id}, {"_id": 0})
         if coupon:
             if coupon["discount_type"] == "percentage":
                 discount = (plan["price"] * coupon["discount_value"]) / 100
@@ -322,8 +333,8 @@ async def miniapp_verify_payment(data: dict, background_tasks: BackgroundTasks):
 # ============== PAYMENT HISTORY ==============
 
 @router.get("/payments/{telegram_user_id}")
-async def miniapp_payment_history(telegram_user_id: str):
-    payments = await db.payments.find({"telegram_user_id": telegram_user_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
+async def miniapp_payment_history(telegram_user_id: str, tenant_id: str = DEFAULT_TENANT_ID):
+    payments = await db.payments.find({"telegram_user_id": telegram_user_id, "tenant_id": tenant_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
     return payments
 
 
@@ -532,19 +543,22 @@ async def miniapp_support_history(telegram_user_id: str):
 # ============== REFERRAL SYSTEM ==============
 
 @router.get("/referral/{telegram_user_id}")
-async def miniapp_get_referral(telegram_user_id: str):
-    referral = await db.referrals.find_one({"referrer_id": telegram_user_id}, {"_id": 0})
+async def miniapp_get_referral(telegram_user_id: str, tenant_id: str = DEFAULT_TENANT_ID):
+    referral = await db.referrals.find_one({"referrer_id": telegram_user_id, "tenant_id": tenant_id}, {"_id": 0})
 
     if not referral:
         code = f"REF{telegram_user_id[-6:].upper()}{uuid.uuid4().hex[:4].upper()}"
         referral = {
             "id": str(uuid.uuid4()), "referrer_id": telegram_user_id, "referral_code": code,
-            "referred_users": [], "total_earnings": 0, "is_active": True, "created_at": datetime.now(timezone.utc).isoformat()
+            "referred_users": [], "total_earnings": 0, "is_active": True, "tenant_id": tenant_id, "created_at": datetime.now(timezone.utc).isoformat()
         }
         await db.referrals.insert_one(referral)
         referral.pop("_id", None)
 
-    settings = await db.referral_settings.find_one({"id": "referral_settings"}, {"_id": 0})
+    settings_id = f"referral_settings_{tenant_id}" if tenant_id and tenant_id != DEFAULT_TENANT_ID else "referral_settings"
+    settings = await db.referral_settings.find_one({"id": settings_id}, {"_id": 0})
+    if not settings:
+        settings = await db.referral_settings.find_one({"id": "referral_settings"}, {"_id": 0})
     if not settings:
         settings = {"referrer_reward_type": "discount", "referrer_reward_value": 10, "referee_reward_type": "discount", "referee_reward_value": 10}
 
@@ -559,11 +573,12 @@ async def miniapp_get_referral(telegram_user_id: str):
 async def miniapp_apply_referral(data: dict):
     code = data.get("code", "").upper().strip()
     telegram_user_id = data.get("telegram_user_id", "")
+    tenant_id = data.get("tenant_id", DEFAULT_TENANT_ID)
 
     if not code or not telegram_user_id:
         return {"valid": False, "error": "Missing referral code or user ID"}
 
-    referral = await db.referrals.find_one({"referral_code": code, "is_active": True}, {"_id": 0})
+    referral = await db.referrals.find_one({"referral_code": code, "is_active": True, "tenant_id": tenant_id}, {"_id": 0})
     if not referral:
         return {"valid": False, "error": "Invalid referral code"}
 
@@ -573,8 +588,9 @@ async def miniapp_apply_referral(data: dict):
     if telegram_user_id in referral.get("referred_users", []):
         return {"valid": False, "error": "You've already used a referral code"}
 
-    await db.referrals.update_one({"referral_code": code}, {"$push": {"referred_users": telegram_user_id}})
-    settings = await db.referral_settings.find_one({"id": "referral_settings"}, {"_id": 0})
+    await db.referrals.update_one({"referral_code": code, "tenant_id": tenant_id}, {"$push": {"referred_users": telegram_user_id}})
+    settings_id = f"referral_settings_{tenant_id}" if tenant_id and tenant_id != DEFAULT_TENANT_ID else "referral_settings"
+    settings = await db.referral_settings.find_one({"id": settings_id}, {"_id": 0})
     referee_discount = settings.get("referee_reward_value", 10) if settings else 10
     return {"valid": True, "discount_percent": referee_discount, "message": f"Referral applied! You get {referee_discount}% off on your next purchase!"}
 
@@ -582,10 +598,10 @@ async def miniapp_apply_referral(data: dict):
 # ============== NOTIFICATIONS ==============
 
 @router.get("/notifications/{telegram_user_id}")
-async def miniapp_get_notifications(telegram_user_id: str):
+async def miniapp_get_notifications(telegram_user_id: str, tenant_id: str = DEFAULT_TENANT_ID):
     notifications = []
 
-    sub = await db.subscribers.find_one({"telegram_user_id": telegram_user_id, "status": "active"}, {"_id": 0})
+    sub = await db.subscribers.find_one({"telegram_user_id": telegram_user_id, "status": "active", "tenant_id": tenant_id}, {"_id": 0})
     if sub:
         end_date = sub.get("end_date", "")
         if end_date:
@@ -601,7 +617,7 @@ async def miniapp_get_notifications(telegram_user_id: str):
             except Exception:
                 pass
 
-    pending = await db.payments.find({"telegram_user_id": telegram_user_id, "status": "pending"}, {"_id": 0}).to_list(5)
+    pending = await db.payments.find({"telegram_user_id": telegram_user_id, "status": "pending", "tenant_id": tenant_id}, {"_id": 0}).to_list(5)
     for p in pending:
         notifications.append({
             "id": f"pending_{p.get('id', '')}", "type": "info", "title": "Payment Under Review",
@@ -609,7 +625,7 @@ async def miniapp_get_notifications(telegram_user_id: str):
             "created_at": p.get("created_at", "")
         })
 
-    recent_plans = await db.plans.find({"is_active": True}, {"_id": 0, "name": 1, "price": 1, "created_at": 1}).sort("created_at", -1).to_list(3)
+    recent_plans = await db.plans.find({"is_active": True, "tenant_id": tenant_id}, {"_id": 0, "name": 1, "price": 1, "created_at": 1}).sort("created_at", -1).to_list(3)
     if not sub and recent_plans:
         notifications.append({
             "id": "new_plans", "type": "promo", "title": "Check Out Our Plans!",
@@ -753,15 +769,15 @@ async def miniapp_live_ticket_upload_screenshot(
 
 
 @router.get("/live-sessions/public")
-async def miniapp_get_live_sessions_public():
-    sessions = await db.live_sessions.find({"status": {"$in": ["scheduled", "announced", "live"]}}, {"_id": 0}).sort("created_at", -1).to_list(20)
+async def miniapp_get_live_sessions_public(tenant_id: str = DEFAULT_TENANT_ID):
+    sessions = await db.live_sessions.find({"status": {"$in": ["scheduled", "announced", "live"]}, "tenant_id": tenant_id}, {"_id": 0}).sort("created_at", -1).to_list(20)
     return sessions
 
 
 @router.get("/live-ticket/status/{telegram_user_id}/{session_id}")
-async def miniapp_live_ticket_status(telegram_user_id: str, session_id: str):
+async def miniapp_live_ticket_status(telegram_user_id: str, session_id: str, tenant_id: str = DEFAULT_TENANT_ID):
     ticket = await db.live_tickets.find_one(
-        {"telegram_user_id": str(telegram_user_id), "session_id": session_id, "status": {"$in": ["approved", "pending"]}}, {"_id": 0}
+        {"telegram_user_id": str(telegram_user_id), "session_id": session_id, "status": {"$in": ["approved", "pending"]}, "tenant_id": tenant_id}, {"_id": 0}
     )
     if ticket:
         return {"has_ticket": True, "status": ticket["status"], "ticket_id": ticket["id"]}

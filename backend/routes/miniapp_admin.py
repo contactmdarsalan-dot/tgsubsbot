@@ -95,7 +95,7 @@ async def miniapp_admin_payment_action(data: dict):
     if action not in ("approve", "reject"):
         raise HTTPException(status_code=400, detail="Invalid action")
 
-    payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+    payment = await db.payments.find_one(tenant_query({"id": payment_id}, admin.get("tenant_id", DEFAULT_TENANT_ID)), {"_id": 0})
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
 
