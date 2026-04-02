@@ -30,14 +30,10 @@ const botNav = [
   { path: "/dashboard/telegram-admins", label: "TG Admins", icon: ShieldCheck },
   { path: "/dashboard/bot-activity", label: "Bot Activity", icon: Activity },
   { path: "/dashboard/paid-posts", label: "Paid Posts", icon: Lock },
-  { path: "/dashboard/live-stream", label: "Live", icon: Radio },
   { path: "/dashboard/creators", label: "Creators", icon: Sparkles },
   { path: "/dashboard/chat-groups", label: "Groups & Channels", icon: MessagesSquare },
-  { path: "/dashboard/broadcast", label: "Broadcast", icon: Radio },
-  { path: "/dashboard/coupons", label: "Coupons", icon: Ticket },
   { path: "/dashboard/referrals", label: "Referrals", icon: Share2 },
   { path: "/dashboard/faqs", label: "FAQs", icon: HelpCircle },
-  { path: "/dashboard/video-calls", label: "Video Calls", icon: Video },
   { path: "/dashboard/automation", label: "Automation", icon: Bell },
   { path: "/dashboard/settings", label: "Settings", icon: Settings },
   { path: "/dashboard/bot-language", label: "Bot Language", icon: Languages },
@@ -48,15 +44,22 @@ const miniAppNav = [
   { path: "/dashboard/miniapp-plans", label: "Plans", icon: Package },
   { path: "/dashboard/miniapp-subscribers", label: "Subscribers", icon: Users },
   { path: "/dashboard/miniapp-payments", label: "Payments", icon: CreditCard },
+  { path: "/dashboard/video-calls", label: "Video Calls", icon: Video },
+  { path: "/dashboard/live-stream", label: "Live", icon: Radio },
 ];
 
-const tenantOpsNav = [...botNav, ...miniAppNav];
+const accountNav = [
+  { path: "/dashboard/broadcast", label: "Broadcast", icon: Radio },
+  { path: "/dashboard/coupons", label: "Coupons", icon: Ticket },
+  { path: "/dashboard/team", label: "Team", icon: UserCog },
+  { path: "/dashboard/support", label: "Support", icon: MessageSquare },
+];
+
+const tenantOpsNav = [...botNav, ...miniAppNav, ...accountNav];
 
 const tenantOnlyNav = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   ...tenantOpsNav,
-  { path: "/dashboard/team", label: "Team", icon: UserCog },
-  { path: "/dashboard/support", label: "Support", icon: MessageSquare },
 ];
 
 function NavItem({ item, isActive, onClick }) {
@@ -200,8 +203,9 @@ export default function Layout() {
                   <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500/60">Account</span>
                 </div>
                 <div className="space-y-0.5">
-                  <NavItem item={{ path: "/dashboard/team", label: "Team", icon: UserCog }} isActive={location.pathname === "/dashboard/team"} onClick={() => setSidebarOpen(false)} />
-                  <NavItem item={{ path: "/dashboard/support", label: "Support", icon: MessageSquare }} isActive={location.pathname === "/dashboard/support"} onClick={() => setSidebarOpen(false)} />
+                  {accountNav.map(item => (
+                    <NavItem key={item.path} item={item} isActive={location.pathname === item.path} onClick={() => setSidebarOpen(false)} />
+                  ))}
                 </div>
               </>
             )}
