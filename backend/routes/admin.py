@@ -1150,18 +1150,17 @@ async def create_tenant_admin_direct(data: dict, user: dict = Depends(get_curren
     if existing:
         raise HTTPException(status_code=400, detail="Email already exists")
     
-    import bcrypt
-    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    hashed = hash_password(password)
     
     new_user = {
         "id": str(uuid.uuid4()),
         "email": email,
         "name": name,
-        "password": hashed,
+        "password_hash": hashed,
         "role": "tenant_admin",
         "tenant_id": tenant_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "dashboard_subscription_status": "inactive",
+        "dashboard_subscription_status": "active",
     }
     await db.users.insert_one(new_user)
     
