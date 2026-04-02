@@ -99,9 +99,10 @@ async def miniapp_admin_payment_action(data: dict):
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
 
+    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
     new_status = "verified" if action == "approve" else "rejected"
     await db.payments.update_one(
-        {"id": payment_id},
+        tenant_query({"id": payment_id}, admin_tenant),
         {"$set": {"status": new_status, "verified_by": admin.get("name", "Admin"), "verified_at": datetime.now(timezone.utc).isoformat()}}
     )
 
@@ -114,7 +115,7 @@ async def miniapp_admin_payment_action(data: dict):
             msg = f"<b>Payment Approved!</b>\n\nAmount: Rs.{payment.get('amount', 0)}\nPlan: {payment.get('plan_name', '')}\n\nYour subscription is now active!"
             await send_telegram_message(user_chat_id, msg, bot_token)
 
-            plan = await db.plans.find_one({"id": payment.get("plan_id")}, {"_id": 0})
+            plan = await db.plans.find_one(tenant_query({"id": payment.get("plan_id")}, admin_tenant), {"_id": 0})
             channel_id = ""
             if plan:
                 channel_id = plan.get("channel_id", "") or settings.get("telegram_channel_id", "")
@@ -124,14 +125,14 @@ async def miniapp_admin_payment_action(data: dict):
                 await add_to_channel(user_chat_id, channel_id, bot_token)
 
             await db.subscribers.update_one(
-                {"telegram_user_id": user_chat_id},
+                tenant_query({"telegram_user_id": user_chat_id}, admin_tenant),
                 {"$set": {
                     "telegram_user_id": user_chat_id, "telegram_username": payment.get("telegram_username", ""),
                     "plan_id": payment.get("plan_id", ""), "plan_name": payment.get("plan_name", ""),
                     "amount_paid": payment.get("amount", 0), "status": "active",
                     "start_date": datetime.now(timezone.utc).isoformat(),
                     "end_date": (datetime.now(timezone.utc) + timedelta(days=plan.get("duration_days", 30) if plan else 30)).isoformat(),
-                    "payment_id": payment_id,
+                    "payment_id": payment_id, "tenant_id": admin_tenant,
                 }},
                 upsert=True
             )
@@ -246,7 +247,8 @@ async def miniapp_admin_announce_live(session_id: str, data: dict):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    session = await db.live_sessions.find_one(tenant_query({"id": session_id}, admin_tenant), {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -265,7 +267,6 @@ async def miniapp_admin_announce_live(session_id: str, data: dict):
         msg += "Price: FREE\n"
     msg += "\nDon't miss it!"
 
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
     bot_users = await db.bot_users.find(tenant_query({}, admin_tenant), {"_id": 0, "telegram_user_id": 1}).to_list(10000)
     sent = 0
     for u in bot_users:
@@ -277,7 +278,7 @@ async def miniapp_admin_announce_live(session_id: str, data: dict):
             except Exception:
                 pass
 
-    await db.live_sessions.update_one({"id": session_id}, {"$set": {"status": "announced"}})
+    await db.live_sessions.update_one(tenant_query({"id": session_id}, admin_tenant), {"$set": {"status": "announced"}})
     return {"success": True, "sent_to": sent}
 
 
@@ -375,12 +376,13 @@ async def miniapp_toggle_paid_post(post_id: str, data: dict):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    post = await db.paid_posts.find_one({"id": post_id}, {"_id": 0})
+    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    post = await db.paid_posts.find_one(tenant_query({"id": post_id}, admin_tenant), {"_id": 0})
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
 
     new_status = not post.get("is_active", True)
-    await db.paid_posts.update_one({"id": post_id}, {"$set": {"is_active": new_status}})
+    await db.paid_posts.update_one(tenant_query({"id": post_id}, admin_tenant), {"$set": {"is_active": new_status}})
     return {"success": True, "is_active": new_status}
 
 
@@ -391,9 +393,10 @@ async def miniapp_update_blur(post_id: str, data: dict):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
+    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
     blur_level = data.get("blur_level", 10)
     blur_level = max(0, min(50, blur_level))
-    await db.paid_posts.update_one({"id": post_id}, {"$set": {"blur_level": blur_level}})
+    await db.paid_posts.update_one(tenant_query({"id": post_id}, admin_tenant), {"$set": {"blur_level": blur_level}})
     return {"success": True, "blur_level": blur_level}
 
 
@@ -404,13 +407,13 @@ async def miniapp_broadcast_paid_post(post_id: str, data: dict, background_tasks
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    post = await db.paid_posts.find_one({"id": post_id, "is_active": True}, {"_id": 0})
+    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    post = await db.paid_posts.find_one(tenant_query({"id": post_id, "is_active": True}, admin_tenant), {"_id": 0})
     if not post:
         raise HTTPException(status_code=404, detail="Post not found or inactive")
 
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
     bot_users = await db.bot_users.find(tenant_query({}, admin_tenant), {"_id": 0, "telegram_user_id": 1}).to_list(10000)
     user_ids = [u["telegram_user_id"] for u in bot_users if u.get("telegram_user_id")]
 
@@ -437,15 +440,15 @@ async def miniapp_go_live(session_id: str, data: dict):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    session = await db.live_sessions.find_one(tenant_query({"id": session_id}, admin_tenant), {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    await db.live_sessions.update_one({"id": session_id}, {"$set": {"status": "live", "started_at": datetime.now(timezone.utc).isoformat()}})
+    await db.live_sessions.update_one(tenant_query({"id": session_id}, admin_tenant), {"$set": {"status": "live", "started_at": datetime.now(timezone.utc).isoformat()}})
 
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
     bot_users = await db.bot_users.find(tenant_query({}, admin_tenant), {"_id": 0, "telegram_user_id": 1}).to_list(10000)
 
     msg = f"<b>LIVE NOW!</b>\n\n{session.get('title', 'Live Session')}\n"
@@ -471,7 +474,8 @@ async def miniapp_delete_live(session_id: str, data: dict):
     admin = await _verify_miniapp_admin(telegram_user_id)
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
-    result = await db.live_sessions.delete_one({"id": session_id})
+    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    result = await db.live_sessions.delete_one(tenant_query({"id": session_id}, admin_tenant))
     return {"success": result.deleted_count > 0}
 
 
@@ -481,8 +485,9 @@ async def miniapp_end_live(session_id: str, data: dict):
     admin = await _verify_miniapp_admin(telegram_user_id)
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
+    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
     result = await db.live_sessions.update_one(
-        {"id": session_id}, {"$set": {"status": "ended", "ended_at": datetime.now(timezone.utc).isoformat()}}
+        tenant_query({"id": session_id}, admin_tenant), {"$set": {"status": "ended", "ended_at": datetime.now(timezone.utc).isoformat()}}
     )
     return {"success": result.modified_count > 0, "status": "ended"}
 

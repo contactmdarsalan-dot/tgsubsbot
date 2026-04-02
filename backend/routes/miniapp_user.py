@@ -373,7 +373,7 @@ async def miniapp_upload_screenshot(
         "telegram_username": bot_user.get("telegram_username", "") if bot_user else "",
         "plan_id": plan_id, "plan_name": plan_name, "amount": amount,
         "status": "pending", "payment_method": "miniapp_upi", "screenshot_url": screenshot_url,
-        "created_at": datetime.now(timezone.utc).isoformat(), "source": "miniapp", "tenant_id": DEFAULT_TENANT_ID,
+        "created_at": datetime.now(timezone.utc).isoformat(), "source": "miniapp", "tenant_id": bot_user.get("tenant_id", DEFAULT_TENANT_ID) if bot_user else DEFAULT_TENANT_ID,
     }
 
     ai_result = {}
@@ -685,7 +685,7 @@ async def miniapp_live_ticket_upload_screenshot(
     if not file:
         raise HTTPException(status_code=400, detail="No file uploaded")
 
-    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    session = await db.live_sessions.find_one({"id": session_id, "status": {"$in": ["scheduled", "announced", "live"]}}, {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Live session not found")
 
