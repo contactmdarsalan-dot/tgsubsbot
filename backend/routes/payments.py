@@ -18,7 +18,7 @@ router = APIRouter()
 @router.get("/payments")
 async def get_payments(status=None, page: int = 1, limit: int = 50, search: str = None, user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
-    base_query = tq({}, tenant_id)
+    base_query = tq({"source": {"$ne": "miniapp"}}, tenant_id)
     
     # Build filter query for listing
     list_query = dict(base_query)

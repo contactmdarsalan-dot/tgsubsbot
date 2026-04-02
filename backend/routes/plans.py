@@ -14,7 +14,7 @@ router = APIRouter()
 @router.get("/plans", response_model=List[SubscriptionPlan])
 async def get_plans(user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
-    plans = await db.plans.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
+    plans = await db.plans.find(tq({"source": {"$ne": "miniapp"}}, tenant_id), {"_id": 0}).to_list(100)
     for plan in plans:
         if isinstance(plan.get('created_at'), str):
             plan['created_at'] = datetime.fromisoformat(plan['created_at'])

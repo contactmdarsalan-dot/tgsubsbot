@@ -20,7 +20,7 @@ router = APIRouter()
 @router.get("/subscribers")
 async def get_subscribers(status: Optional[str] = None, page: int = 1, limit: int = 50, search: str = None, user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
-    base_query = tq({}, tenant_id)
+    base_query = tq({"source": {"$ne": "miniapp"}}, tenant_id)
     
     list_query = dict(base_query)
     if status:

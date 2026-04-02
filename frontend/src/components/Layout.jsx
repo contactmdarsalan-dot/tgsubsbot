@@ -45,6 +45,9 @@ const botNav = [
 
 const miniAppNav = [
   { path: "/dashboard/miniapp-manage", label: "Mini App Hub", icon: Smartphone },
+  { path: "/dashboard/miniapp-plans", label: "Plans", icon: Package },
+  { path: "/dashboard/miniapp-subscribers", label: "Subscribers", icon: Users },
+  { path: "/dashboard/miniapp-payments", label: "Payments", icon: CreditCard },
 ];
 
 const tenantOpsNav = [...botNav, ...miniAppNav];
