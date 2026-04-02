@@ -23,7 +23,7 @@ const superAdminNav = [
   { path: "/dashboard/branding", label: "Platform Settings", icon: Settings },
 ];
 
-const tenantOpsNav = [
+const botNav = [
   { path: "/dashboard/plans", label: "Plans", icon: Package },
   { path: "/dashboard/subscribers", label: "Subscribers", icon: Users },
   { path: "/dashboard/payments", label: "Payments", icon: CreditCard },
@@ -42,6 +42,12 @@ const tenantOpsNav = [
   { path: "/dashboard/settings", label: "Settings", icon: Settings },
   { path: "/dashboard/bot-language", label: "Bot Language", icon: Languages },
 ];
+
+const miniAppNav = [
+  { path: "/dashboard/miniapp-manage", label: "Mini App Hub", icon: Smartphone },
+];
+
+const tenantOpsNav = [...botNav, ...miniAppNav];
 
 const tenantOnlyNav = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -162,13 +168,39 @@ export default function Layout() {
               </>
             )}
 
-            {/* Tenant Admin items */}
+            {/* Tenant Admin items - separated into Bot & Mini App */}
             {!isSuperAdmin && (
-              <div className="space-y-0.5">
-                {tenantOnlyNav.map(item => (
-                  <NavItem key={item.path} item={item} isActive={location.pathname === item.path} onClick={() => setSidebarOpen(false)} />
-                ))}
-              </div>
+              <>
+                <div className="space-y-0.5 mb-2">
+                  <NavItem item={{ path: "/dashboard", label: "Dashboard", icon: LayoutDashboard }} isActive={location.pathname === "/dashboard"} onClick={() => setSidebarOpen(false)} />
+                </div>
+
+                <div className="px-3 pt-2 pb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-rose-400/60">Telegram Bot</span>
+                </div>
+                <div className="space-y-0.5 mb-2">
+                  {botNav.map(item => (
+                    <NavItem key={item.path} item={item} isActive={location.pathname === item.path} onClick={() => setSidebarOpen(false)} />
+                  ))}
+                </div>
+
+                <div className="px-3 pt-2 pb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-400/60">Mini App</span>
+                </div>
+                <div className="space-y-0.5 mb-2">
+                  {miniAppNav.map(item => (
+                    <NavItem key={item.path} item={item} isActive={location.pathname === item.path} onClick={() => setSidebarOpen(false)} />
+                  ))}
+                </div>
+
+                <div className="px-3 pt-2 pb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500/60">Account</span>
+                </div>
+                <div className="space-y-0.5">
+                  <NavItem item={{ path: "/dashboard/team", label: "Team", icon: UserCog }} isActive={location.pathname === "/dashboard/team"} onClick={() => setSidebarOpen(false)} />
+                  <NavItem item={{ path: "/dashboard/support", label: "Support", icon: MessageSquare }} isActive={location.pathname === "/dashboard/support"} onClick={() => setSidebarOpen(false)} />
+                </div>
+              </>
             )}
           </nav>
         </div>

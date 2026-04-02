@@ -6,9 +6,13 @@ import StatusScreen from "./miniapp/StatusScreen";
 import SupportScreen from "./miniapp/SupportScreen";
 import ReferralScreen from "./miniapp/ReferralScreen";
 import AdminPanel from "./miniapp/AdminPanel";
+import BookingsScreen from "./miniapp/BookingsScreen";
+import PrivateChatScreen from "./miniapp/PrivateChatScreen";
+import LiveViewerScreen from "./miniapp/LiveViewerScreen";
 import {
   Package, CheckCircle, Headphones, Gift, ShieldCheck, History,
   Bell, Radio, Smartphone, ChevronDown, MoreHorizontal, X,
+  Video, MessageCircle,
 } from "lucide-react";
 
 export default function MiniApp() {
@@ -223,12 +227,15 @@ export default function MiniApp() {
 
   const mainTabs = [
     { id: "plans", label: "Plans", icon: Package },
-    { id: "status", label: "Status", icon: CheckCircle },
-    { id: "support", label: "Support", icon: Headphones },
-    { id: "referral", label: "Refer", icon: Gift },
+    { id: "bookings", label: "Calls", icon: Video },
+    { id: "live", label: "Live", icon: Radio },
+    { id: "chat", label: "Chat", icon: MessageCircle },
   ];
 
   const moreTabs = [
+    { id: "status", label: "Status", icon: CheckCircle },
+    { id: "support", label: "Support", icon: Headphones },
+    { id: "referral", label: "Refer", icon: Gift },
     { id: "history", label: "Payment History", icon: History },
     { id: "notifications", label: "Notifications", icon: Bell, badge: notifications.length },
     ...(isAdmin ? [{ id: "admin", label: "Admin Panel", icon: ShieldCheck }] : []),
@@ -249,6 +256,9 @@ export default function MiniApp() {
         {/* Page Content */}
         <div className="px-4 pt-4 pb-20 min-h-screen">
           {activeTab === "plans" && <PlansScreen />}
+          {activeTab === "bookings" && <BookingsScreen />}
+          {activeTab === "live" && <LiveViewerScreen />}
+          {activeTab === "chat" && <PrivateChatScreen />}
           {activeTab === "status" && <StatusScreen />}
           {activeTab === "support" && <SupportScreen />}
           {activeTab === "referral" && <ReferralScreen />}

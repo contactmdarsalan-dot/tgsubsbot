@@ -1,0 +1,155 @@
+{
+  "summary": "Iteration 33: Mini App New Features Testing - ALL TESTS PASSED. Verified Video Call Booking, Private Messaging, Live Stream, and Dashboard Mini App Management features. Backend: 28/28 tests passed. Frontend: Dashboard Mini App Management page loads with 3 tabs (Video Calls, Live Stream, Messages). Mini App frontend shows 5 tabs (Plans, Calls, Live, Chat, More).",
+
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Mini App Plans Screen",
+        "issues": ["Plans not loading when accessed without Telegram context (expected - requires tenant_id from Telegram initData)"]
+      }
+    ]
+  },
+
+  "test_report_links": [
+    "/app/backend/tests/test_iteration33_miniapp_new_features.py",
+    "/app/test_reports/pytest/iteration33_miniapp_new_features_results.xml"
+  ],
+
+  "action_items": [],
+
+  "critical_code_review_comments": [
+    "miniapp_calls.py: Video call booking creates session_type='video_call_booking' with source='miniapp' - correctly isolated from Bot features",
+    "miniapp_calls.py: Live stream creates session_type='live_stream' with source='miniapp' - correctly isolated",
+    "miniapp_chat.py: Private messaging creates chat_type='private' with source='miniapp' - correctly isolated",
+    "MiniAppManagement.jsx: Dashboard page has 3 tabs (Video Calls, Live Stream, Messages) with proper data-testid attributes",
+    "Layout.jsx: Sidebar correctly shows separate sections - TELEGRAM BOT, MINI APP, ACCOUNT",
+    "MiniApp.jsx: Bottom navigation has 5 tabs - Plans, Calls, Live, Chat, More",
+    "WebSocket endpoints /api/ws/call/{room_id} and /api/ws/live/{session_id} are available for WebRTC signaling"
+  ],
+
+  "updated_files": [
+    "/app/backend/tests/test_iteration33_miniapp_new_features.py"
+  ],
+
+  "success_rate": {
+    "backend": "100% (28/28 tests passed)",
+    "frontend": "100% (Dashboard and Mini App load correctly with all tabs)"
+  },
+
+  "test_credentials": {
+    "super_admin_email": "gamerxboys8958@gmail.com",
+    "super_admin_password": "Sumit@8958",
+    "tenant_admin_email": "anamika@test.com",
+    "tenant_admin_password": "Admin123",
+    "tenant_id": "tenant_85ee971d0285"
+  },
+
+  "seed_data_creation": "Created test video bookings, chat messages, and live streams during testing (prefixed with test_user_*)",
+
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+
+  "context_for_next_testing_agent": "Iteration 33 verified all new Mini App features: 1) Video Call Booking API works - POST /api/miniapp/book-video-call creates booking with session_type='video_call_booking', GET /api/miniapp/my-bookings/{user_id} returns user's bookings, 2) Dashboard Video Bookings - GET /api/miniapp-manage/video-bookings returns bookings with stats, POST /api/miniapp-manage/booking-action handles schedule/start/complete/reject actions, 3) Private Messaging - POST /api/miniapp/chat/send creates messages, GET /api/miniapp/chat/history/{user_id} returns history, 4) Dashboard Chat - GET /api/miniapp-manage/chats returns conversations with unread counts, POST /api/miniapp-manage/chat/reply sends admin replies, 5) Live Stream - POST /api/miniapp-manage/start-live creates live session, POST /api/miniapp-manage/end-live ends it, GET /api/miniapp/active-live returns active stream, 6) WebSocket endpoints available at /api/ws/call/{room_id} and /api/ws/live/{session_id}, 7) Dashboard sidebar shows separate TELEGRAM BOT and MINI APP sections, 8) Mini App frontend has 5 tabs: Plans, Calls, Live, Chat, More. NOTE: WebRTC video calls require real camera/mic and cannot be fully tested in automation.",
+
+  "features_tested": {
+    "video_call_booking": {
+      "status": "PASS",
+      "tests": [
+        "POST /api/miniapp/book-video-call creates booking with session_type='video_call_booking'",
+        "GET /api/miniapp/my-bookings/{user_id} returns user's bookings",
+        "Missing fields returns 400",
+        "Invalid plan returns 404"
+      ]
+    },
+    "dashboard_video_bookings": {
+      "status": "PASS",
+      "tests": [
+        "GET /api/miniapp-manage/video-bookings returns bookings with stats (requires auth)",
+        "POST /api/miniapp-manage/booking-action handles schedule/start/complete/reject",
+        "Unauthenticated request returns 403"
+      ]
+    },
+    "private_messaging": {
+      "status": "PASS",
+      "tests": [
+        "POST /api/miniapp/chat/send creates message with chat_type='private'",
+        "GET /api/miniapp/chat/history/{user_id} returns chat history",
+        "Missing message returns 400"
+      ]
+    },
+    "dashboard_chat_management": {
+      "status": "PASS",
+      "tests": [
+        "GET /api/miniapp-manage/chats returns conversations with unread counts",
+        "POST /api/miniapp-manage/chat/reply sends admin reply",
+        "GET /api/miniapp-manage/chat/{user_id} returns messages for user"
+      ]
+    },
+    "live_stream": {
+      "status": "PASS",
+      "tests": [
+        "POST /api/miniapp-manage/start-live creates live session with status='live'",
+        "POST /api/miniapp-manage/end-live ends live session",
+        "GET /api/miniapp-manage/live-streams returns stream history",
+        "GET /api/miniapp/active-live returns active stream (public)"
+      ]
+    },
+    "websocket_endpoints": {
+      "status": "PASS",
+      "tests": [
+        "/api/ws/call/{room_id} endpoint available for video call signaling",
+        "/api/ws/live/{session_id} endpoint available for live stream signaling"
+      ]
+    },
+    "data_isolation": {
+      "status": "PASS",
+      "tests": [
+        "Video bookings isolated by tenant_id",
+        "Chat messages isolated by tenant_id",
+        "Live streams isolated by tenant_id"
+      ]
+    },
+    "dashboard_sidebar": {
+      "status": "PASS",
+      "tests": [
+        "Sidebar shows TELEGRAM BOT section",
+        "Sidebar shows MINI APP section",
+        "Sidebar shows ACCOUNT section"
+      ]
+    },
+    "miniapp_management_page": {
+      "status": "PASS",
+      "tests": [
+        "Page loads at /dashboard/miniapp-manage",
+        "Video Calls tab shows bookings with stats",
+        "Live Stream tab shows Go Live button and history",
+        "Messages tab shows conversations with unread counts"
+      ]
+    },
+    "miniapp_frontend": {
+      "status": "PASS",
+      "tests": [
+        "Plans tab loads",
+        "Calls tab shows 'My Video Calls'",
+        "Live tab loads",
+        "Chat tab shows 'Chat with Creator' with input",
+        "More menu shows Status, Support, Refer, Payment History, Notifications"
+      ]
+    }
+  },
+
+  "mocked_apis": {
+    "has_mocked_apis": true,
+    "mocked_apis_list": [
+      "WebRTC video calls - requires real camera/mic (not testable in automation)",
+      "WebSocket connections - tested for availability only, not full signaling flow"
+    ]
+  }
+}

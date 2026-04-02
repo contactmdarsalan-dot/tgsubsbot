@@ -29,6 +29,8 @@ from routes.analytics_exports import router as analytics_exports_router
 from routes.telegram_webhook import router as webhook_router
 from routes.miniapp_user import router as miniapp_user_router
 from routes.miniapp_admin import router as miniapp_admin_router
+from routes.miniapp_calls import router as miniapp_calls_router
+from routes.miniapp_chat import router as miniapp_chat_router
 from routes.tenant import router as tenant_router
 
 # Import background tasks
@@ -62,6 +64,8 @@ app.include_router(analytics_exports_router, prefix="/api")
 app.include_router(webhook_router, prefix="/api")
 app.include_router(miniapp_user_router, prefix="/api")
 app.include_router(miniapp_admin_router, prefix="/api")
+app.include_router(miniapp_calls_router, prefix="/api")
+app.include_router(miniapp_chat_router, prefix="/api")
 app.include_router(tenant_router, prefix="/api")
 
 # Mount static files for uploads

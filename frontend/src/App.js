@@ -40,6 +40,7 @@ import CreatorDashboard from "./pages/CreatorDashboard";
 import SaaSManagement from "./pages/SaaSManagement";
 import TenantProfile from "./pages/TenantProfile";
 import TeamManagement from "./pages/TeamManagement";
+import MiniAppManagement from "./pages/MiniAppManagement";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -174,6 +175,7 @@ function AppRouter() {
         <Route path="saas-management" element={<SaaSManagement />} />
         <Route path="tenant/:tenantId" element={<TenantProfile />} />
         <Route path="team" element={<TeamManagement />} />
+        <Route path="miniapp-manage" element={<MiniAppManagement />} />
       </Route>
     </Routes>
   );
