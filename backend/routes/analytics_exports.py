@@ -291,7 +291,8 @@ async def get_user_chat_history(user_id: str, user=Depends(get_current_user)):
 @router.get("/bot-activity")
 async def get_bot_activity(user=Depends(get_current_user), limit: int = 100, event_type: str = None):
     """Get bot activity logs"""
-    query = {}
+    tenant_id = get_user_tenant(user)
+    query = tq({}, tenant_id)
     if event_type:
         query["event_type"] = event_type
 
@@ -301,20 +302,21 @@ async def get_bot_activity(user=Depends(get_current_user), limit: int = 100, eve
 @router.get("/bot-activity/stats")
 async def get_bot_activity_stats(user=Depends(get_current_user)):
     """Get bot activity stats for last 24 hours"""
+    tenant_id = get_user_tenant(user)
     yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
 
-    total_24h = await db.bot_activity_logs.count_documents({"created_at": {"$gte": yesterday}})
+    total_24h = await db.bot_activity_logs.count_documents(tq({"created_at": {"$gte": yesterday}}, tenant_id))
 
     event_types = ["command", "payment_screenshot", "callback", "message", "payment_verified", "new_subscriber"]
     type_counts = {}
     for et in event_types:
-        type_counts[et] = await db.bot_activity_logs.count_documents({
+        type_counts[et] = await db.bot_activity_logs.count_documents(tq({
             "event_type": et,
             "created_at": {"$gte": yesterday}
-        })
+        }, tenant_id))
 
-    active_users_24h = len(await db.bot_activity_logs.distinct("telegram_user_id", {"created_at": {"$gte": yesterday}}))
-    total_all = await db.bot_activity_logs.count_documents({})
+    active_users_24h = len(await db.bot_activity_logs.distinct("telegram_user_id", tq({"created_at": {"$gte": yesterday}}, tenant_id)))
+    total_all = await db.bot_activity_logs.count_documents(tq({}, tenant_id))
 
     return {
         "total_24h": total_24h,

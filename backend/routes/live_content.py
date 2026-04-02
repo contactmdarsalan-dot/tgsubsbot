@@ -21,12 +21,14 @@ router = APIRouter()
 @router.get("/creators")
 async def get_creators(user=Depends(get_current_user)):
     """Get all creators"""
-    creators = await db.creators.find({}, {"_id": 0}).to_list(100)
+    tenant_id = get_user_tenant(user)
+    creators = await db.creators.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
     return creators
 
 @router.post("/creators")
 async def create_creator(data: dict, user=Depends(get_current_user)):
     """Create a new creator"""
+    tenant_id = get_user_tenant(user)
     creator = {
         "id": str(uuid.uuid4()),
         "name": data.get("name", ""),
@@ -38,6 +40,7 @@ async def create_creator(data: dict, user=Depends(get_current_user)):
         "revenue_share": float(data.get("revenue_share", 0)),
         "total_earnings": 0,
         "is_active": True,
+        "tenant_id": tenant_id,
         "created_by": user.get("email", ""),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -47,23 +50,26 @@ async def create_creator(data: dict, user=Depends(get_current_user)):
 @router.put("/creators/{creator_id}")
 async def update_creator(creator_id: str, data: dict, user=Depends(get_current_user)):
     """Update creator details"""
+    tenant_id = get_user_tenant(user)
     update_data = {}
     for field in ["name", "telegram_user_id", "telegram_username", "email", "permissions", "revenue_share", "is_active"]:
         if field in data:
             update_data[field] = data[field]
 
-    await db.creators.update_one({"id": creator_id}, {"$set": update_data})
+    await db.creators.update_one(tq({"id": creator_id}, tenant_id), {"$set": update_data})
     return {"message": "Creator updated"}
 
 @router.delete("/creators/{creator_id}")
 async def delete_creator(creator_id: str, user=Depends(get_current_user)):
     """Delete a creator"""
-    await db.creators.delete_one({"id": creator_id})
+    tenant_id = get_user_tenant(user)
+    await db.creators.delete_one(tq({"id": creator_id}, tenant_id))
     return {"message": "Creator deleted"}
 
 @router.post("/creators/link-telegram")
 async def link_creator_telegram(data: dict, user=Depends(get_current_user)):
     """Link Telegram account to creator"""
+    tenant_id = get_user_tenant(user)
     creator_id = data.get("creator_id")
     telegram_username = data.get("telegram_username", "").replace("@", "")
     telegram_user_id = data.get("telegram_user_id", "")
@@ -77,7 +83,7 @@ async def link_creator_telegram(data: dict, user=Depends(get_current_user)):
     if telegram_user_id:
         update_data["telegram_user_id"] = telegram_user_id
 
-    await db.creators.update_one({"id": creator_id}, {"$set": update_data})
+    await db.creators.update_one(tq({"id": creator_id}, tenant_id), {"$set": update_data})
     return {"message": "Telegram account linked"}
 
 
@@ -99,8 +105,7 @@ async def create_telegram_admin(data: dict, user=Depends(get_current_user)):
     role = data.get("role", "admin")
     permissions = data.get("permissions", ["manage_bot", "verify_payments", "broadcast", "live_manage"])
 
-    if not telegram_user_id and not telegram_username:
-        raise HTTPException(status_code=400, detail="Telegram User ID or Username required")
+    tenant_id = get_user_tenant(user)
 
     query_conditions = []
     if telegram_user_id:
@@ -108,7 +113,7 @@ async def create_telegram_admin(data: dict, user=Depends(get_current_user)):
     if telegram_username:
         query_conditions.append({"telegram_username": telegram_username})
 
-    existing = await db.telegram_admins.find_one({"$or": query_conditions})
+    existing = await db.telegram_admins.find_one(tq({"$or": query_conditions}, tenant_id))
     if existing:
         raise HTTPException(status_code=400, detail="This Telegram user is already an admin")
 
@@ -120,6 +125,7 @@ async def create_telegram_admin(data: dict, user=Depends(get_current_user)):
         "role": role,
         "permissions": permissions,
         "is_active": True,
+        "tenant_id": tenant_id,
         "created_by": user.get("email", ""),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -150,18 +156,20 @@ async def create_telegram_admin(data: dict, user=Depends(get_current_user)):
 @router.put("/telegram-admins/{admin_id}")
 async def update_telegram_admin(admin_id: str, data: dict, user=Depends(get_current_user)):
     """Update a Telegram admin"""
+    tenant_id = get_user_tenant(user)
     update_data = {}
     for field in ["name", "telegram_user_id", "telegram_username", "role", "permissions", "is_active"]:
         if field in data:
             update_data[field] = data[field]
 
-    await db.telegram_admins.update_one({"id": admin_id}, {"$set": update_data})
+    await db.telegram_admins.update_one(tq({"id": admin_id}, tenant_id), {"$set": update_data})
     return {"message": "Telegram admin updated"}
 
 @router.delete("/telegram-admins/{admin_id}")
 async def delete_telegram_admin(admin_id: str, user=Depends(get_current_user)):
     """Remove a Telegram admin"""
-    admin = await db.telegram_admins.find_one({"id": admin_id}, {"_id": 0})
+    tenant_id = get_user_tenant(user)
+    admin = await db.telegram_admins.find_one(tq({"id": admin_id}, tenant_id), {"_id": 0})
     await db.telegram_admins.delete_one({"id": admin_id})
 
     if admin:
@@ -186,6 +194,7 @@ async def get_live_sessions(user=Depends(get_current_user)):
 @router.post("/live/sessions")
 async def create_live_session(data: dict, user=Depends(get_current_user)):
     """Create a new live session"""
+    tenant_id = get_user_tenant(user)
     session = {
         "id": str(uuid.uuid4()),
         "title": data.get("title", ""),
@@ -201,6 +210,7 @@ async def create_live_session(data: dict, user=Depends(get_current_user)):
         "status": "scheduled",
         "tickets_sold": 0,
         "superchat_total": 0,
+        "tenant_id": tenant_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.live_sessions.insert_one(session)
@@ -210,7 +220,8 @@ async def create_live_session(data: dict, user=Depends(get_current_user)):
 @router.post("/live/sessions/{session_id}/announce")
 async def announce_live_session(session_id: str, user=Depends(get_current_user)):
     """Announce live session to channel/group"""
-    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    tenant_id = get_user_tenant(user)
+    session = await db.live_sessions.find_one(tq({"id": session_id}, tenant_id), {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -245,7 +256,8 @@ async def announce_live_session(session_id: str, user=Depends(get_current_user))
 @router.post("/live/sessions/{session_id}/go-live")
 async def go_live(session_id: str, data: dict, user=Depends(get_current_user)):
     """Start live session and notify ticket holders"""
-    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    tenant_id = get_user_tenant(user)
+    session = await db.live_sessions.find_one(tq({"id": session_id}, tenant_id), {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -293,7 +305,8 @@ async def go_live(session_id: str, data: dict, user=Depends(get_current_user)):
 @router.post("/live/sessions/{session_id}/start-countdown")
 async def start_countdown_timer(session_id: str, data: dict, user=Depends(get_current_user)):
     """Post countdown timer to group"""
-    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    tenant_id = get_user_tenant(user)
+    session = await db.live_sessions.find_one(tq({"id": session_id}, tenant_id), {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -339,7 +352,7 @@ async def update_countdown_timer(session_id: str, data: dict, user=Depends(get_c
     """Update countdown timer message"""
     from services.telegram import edit_telegram_message
 
-    session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+    session = await db.live_sessions.find_one(tq({"id": session_id}, get_user_tenant(user)), {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -395,24 +408,25 @@ async def update_countdown_timer(session_id: str, data: dict, user=Depends(get_c
 @router.put("/live/sessions/{session_id}")
 async def update_live_session(session_id: str, data: dict, user=Depends(get_current_user)):
     """Update a live session"""
+    tenant_id = get_user_tenant(user)
     update_data = {}
     for key in ["title", "description", "scheduled_date", "scheduled_time", "price", "max_viewers", "stream_link", "status"]:
         if key in data:
             update_data[key] = data[key]
 
     if update_data:
-        await db.live_sessions.update_one({"id": session_id}, {"$set": update_data})
+        await db.live_sessions.update_one(tq({"id": session_id}, tenant_id), {"$set": update_data})
 
         if data.get("status") == "live":
-            session = await db.live_sessions.find_one({"id": session_id}, {"_id": 0})
+            session = await db.live_sessions.find_one(tq({"id": session_id}, tenant_id), {"_id": 0})
             if session:
                 settings = await get_bot_settings()
                 bot_token = settings.get("telegram_bot_token", "")
 
-                approved_tickets = await db.live_tickets.find({
+                approved_tickets = await db.live_tickets.find(tq({
                     "session_id": session_id,
                     "status": "approved"
-                }, {"_id": 0}).to_list(1000)
+                }, tenant_id), {"_id": 0}).to_list(1000)
 
                 for ticket in approved_tickets:
                     msg = "<b>LIVE NOW!</b>\n\n"
@@ -429,14 +443,16 @@ async def update_live_session(session_id: str, data: dict, user=Depends(get_curr
 @router.delete("/live/sessions/{session_id}")
 async def delete_live_session(session_id: str, user=Depends(get_current_user)):
     """Delete a live session"""
-    await db.live_sessions.delete_one({"id": session_id})
-    await db.live_tickets.delete_many({"session_id": session_id})
+    tenant_id = get_user_tenant(user)
+    await db.live_sessions.delete_one(tq({"id": session_id}, tenant_id))
+    await db.live_tickets.delete_many(tq({"session_id": session_id}, tenant_id))
     return {"message": "Session deleted"}
 
 @router.get("/live/tickets")
 async def get_live_tickets(user=Depends(get_current_user)):
     """Get all live tickets"""
-    tickets = await db.live_tickets.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    tenant_id = get_user_tenant(user)
+    tickets = await db.live_tickets.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(1000)
     return tickets
 
 @router.post("/live/tickets/{ticket_id}/approve")
@@ -489,20 +505,23 @@ async def reject_live_ticket(ticket_id: str, user=Depends(get_current_user)):
 @router.get("/live/superchats")
 async def get_superchats(user=Depends(get_current_user)):
     """Get all super chats"""
-    chats = await db.live_superchats.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    tenant_id = get_user_tenant(user)
+    chats = await db.live_superchats.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(1000)
     return chats
 
 @router.post("/live/superchats/{chat_id}/approve")
 async def approve_superchat(chat_id: str, user=Depends(get_current_user)):
     """Approve a super chat"""
-    await db.live_superchats.update_one({"id": chat_id}, {"$set": {"status": "approved"}})
+    tenant_id = get_user_tenant(user)
+    await db.live_superchats.update_one(tq({"id": chat_id}, tenant_id), {"$set": {"status": "approved"}})
     return {"message": "Super chat approved"}
 
 @router.post("/live/superchats/{chat_id}/reject")
 async def reject_superchat(chat_id: str, user=Depends(get_current_user)):
     """Reject a super chat"""
-    chat = await db.live_superchats.find_one({"id": chat_id}, {"_id": 0})
-    await db.live_superchats.update_one({"id": chat_id}, {"$set": {"status": "rejected"}})
+    tenant_id = get_user_tenant(user)
+    chat = await db.live_superchats.find_one(tq({"id": chat_id}, tenant_id), {"_id": 0})
+    await db.live_superchats.update_one(tq({"id": chat_id}, tenant_id), {"$set": {"status": "rejected"}})
 
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
@@ -520,17 +539,19 @@ async def reject_superchat(chat_id: str, user=Depends(get_current_user)):
 @router.get("/paid-posts")
 async def get_paid_posts(user=Depends(get_current_user)):
     """Get all paid posts for admin dashboard"""
-    posts = await db.paid_posts.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    tenant_id = get_user_tenant(user)
+    posts = await db.paid_posts.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(100)
     return posts
 
 @router.get("/paid-posts/{post_id}")
 async def get_paid_post(post_id: str, user=Depends(get_current_user)):
     """Get single paid post details"""
-    post = await db.paid_posts.find_one({"id": post_id}, {"_id": 0})
+    tenant_id = get_user_tenant(user)
+    post = await db.paid_posts.find_one(tq({"id": post_id}, tenant_id), {"_id": 0})
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
 
-    unlocks = await db.paid_post_unlocks.find({"post_id": post_id}, {"_id": 0}).to_list(100)
+    unlocks = await db.paid_post_unlocks.find(tq({"post_id": post_id}, tenant_id), {"_id": 0}).to_list(100)
     post["unlocks"] = unlocks
 
     return post
@@ -538,8 +559,9 @@ async def get_paid_post(post_id: str, user=Depends(get_current_user)):
 @router.put("/paid-posts/{post_id}")
 async def update_paid_post(post_id: str, data: dict, user=Depends(get_current_user)):
     """Update paid post"""
+    tenant_id = get_user_tenant(user)
     await db.paid_posts.update_one(
-        {"id": post_id},
+        tq({"id": post_id}, tenant_id),
         {"$set": {
             "price": data.get("price", 0),
             "is_active": data.get("is_active", True),
@@ -551,13 +573,15 @@ async def update_paid_post(post_id: str, data: dict, user=Depends(get_current_us
 @router.delete("/paid-posts/{post_id}")
 async def delete_paid_post(post_id: str, user=Depends(get_current_user)):
     """Delete/deactivate a paid post"""
-    await db.paid_posts.update_one({"id": post_id}, {"$set": {"is_active": False}})
+    tenant_id = get_user_tenant(user)
+    await db.paid_posts.update_one(tq({"id": post_id}, tenant_id), {"$set": {"is_active": False}})
     return {"message": "Post deactivated"}
 
 @router.get("/unlock-requests")
 async def get_unlock_requests(user=Depends(get_current_user)):
     """Get all unlock requests"""
-    requests = await db.unlock_requests.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    tenant_id = get_user_tenant(user)
+    requests = await db.unlock_requests.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(500)
     return requests
 
 @router.post("/unlock-requests/{request_id}/approve")

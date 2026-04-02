@@ -24,33 +24,39 @@ router = APIRouter()
 
 @router.get("/templates")
 async def get_templates(user=Depends(get_current_user)):
-    templates = await db.templates.find({}, {"_id": 0}).to_list(100)
+    tenant_id = get_user_tenant(user)
+    templates = await db.templates.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
     return templates
 
 @router.post("/templates")
 async def create_template(template: MessageTemplate, user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
     doc = template.model_dump()
+    doc["tenant_id"] = tenant_id
     await db.templates.insert_one(doc)
     return {"message": "Template created", "id": template.id}
 
 @router.put("/templates/{template_id}")
 async def update_template(template_id: str, template: MessageTemplate, user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
     doc = template.model_dump()
-    await db.templates.update_one({"id": template_id}, {"$set": doc})
+    await db.templates.update_one(tq({"id": template_id}, tenant_id), {"$set": doc})
     return {"message": "Template updated"}
 
 @router.delete("/templates/{template_id}")
 async def delete_template(template_id: str, user=Depends(get_current_user)):
-    await db.templates.delete_one({"id": template_id})
+    tenant_id = get_user_tenant(user)
+    await db.templates.delete_one(tq({"id": template_id}, tenant_id))
     return {"message": "Template deleted"}
 
 @router.post("/promote-plan")
 async def promote_plan_to_group(data: dict, user=Depends(get_current_user)):
     """Promote a plan to Telegram group/channel"""
+    tenant_id = get_user_tenant(user)
     plan_id = data.get("plan_id")
     target = data.get("target", "channel")
 
-    plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+    plan = await db.plans.find_one(tq({"id": plan_id}, tenant_id), {"_id": 0})
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
@@ -140,6 +146,7 @@ async def send_broadcast(request: BroadcastRequest, background_tasks: Background
         "sent_count": 0,
         "failed_count": 0,
         "status": "in_progress",
+        "tenant_id": tenant_id,
         "created_by": user.get("email", "admin"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -187,13 +194,15 @@ async def send_broadcast_messages(broadcast_id: str, user_ids: list, message: st
 @router.get("/broadcasts")
 async def get_broadcasts(user=Depends(get_current_user)):
     """Get all broadcast history"""
-    broadcasts = await db.broadcasts.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    tenant_id = get_user_tenant(user)
+    broadcasts = await db.broadcasts.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(100)
     return broadcasts
 
 @router.get("/broadcasts/{broadcast_id}")
 async def get_broadcast(broadcast_id: str, user=Depends(get_current_user)):
     """Get single broadcast details"""
-    broadcast = await db.broadcasts.find_one({"id": broadcast_id}, {"_id": 0})
+    tenant_id = get_user_tenant(user)
+    broadcast = await db.broadcasts.find_one(tq({"id": broadcast_id}, tenant_id), {"_id": 0})
     if not broadcast:
         raise HTTPException(status_code=404, detail="Broadcast not found")
     return broadcast
@@ -204,7 +213,8 @@ async def get_broadcast(broadcast_id: str, user=Depends(get_current_user)):
 @router.post("/paid-posts/{post_id}/broadcast")
 async def broadcast_paid_post(post_id: str, data: dict, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     """Broadcast a paid post preview to all subscribers"""
-    post = await db.paid_posts.find_one({"id": post_id}, {"_id": 0})
+    tenant_id = get_user_tenant(user)
+    post = await db.paid_posts.find_one(tq({"id": post_id}, tenant_id), {"_id": 0})
     if not post:
         raise HTTPException(status_code=404, detail="Paid post not found")
 
@@ -213,7 +223,7 @@ async def broadcast_paid_post(post_id: str, data: dict, background_tasks: Backgr
     bot_username = await get_bot_username(bot_token)
 
     target = data.get("target", "all")
-    query = {}
+    query = tq({}, tenant_id)
     if target == "active":
         query["status"] = "active"
 
@@ -221,7 +231,7 @@ async def broadcast_paid_post(post_id: str, data: dict, background_tasks: Backgr
     user_ids = list(set(str(sub.get("telegram_user_id")) for sub in subscribers if sub.get("telegram_user_id")))
 
     if data.get("include_non_subscribers"):
-        all_users = await db.bot_users.find({}, {"_id": 0}).to_list(50000)
+        all_users = await db.bot_users.find(tq({}, tenant_id), {"_id": 0}).to_list(50000)
         for u in all_users:
             uid = str(u.get("telegram_user_id", ""))
             if uid and uid not in user_ids:
@@ -239,6 +249,7 @@ async def broadcast_paid_post(post_id: str, data: dict, background_tasks: Backgr
         "sent_count": 0,
         "failed_count": 0,
         "status": "in_progress",
+        "tenant_id": tenant_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.broadcasts.insert_one(broadcast_record)
@@ -315,12 +326,14 @@ async def send_paid_post_broadcast(broadcast_id: str, post_id: str, user_ids: li
 @router.get("/scheduled-broadcasts")
 async def get_scheduled_broadcasts(user=Depends(get_current_user)):
     """Get all scheduled broadcasts"""
-    broadcasts = await db.scheduled_broadcasts.find({}, {"_id": 0}).sort("scheduled_at", 1).to_list(1000)
+    tenant_id = get_user_tenant(user)
+    broadcasts = await db.scheduled_broadcasts.find(tq({}, tenant_id), {"_id": 0}).sort("scheduled_at", 1).to_list(1000)
     return broadcasts
 
 @router.post("/scheduled-broadcasts")
 async def create_scheduled_broadcast(data: dict, user=Depends(get_current_user)):
     """Create a scheduled broadcast"""
+    tenant_id = get_user_tenant(user)
     broadcast_data = {
         "id": str(uuid.uuid4()),
         "message": data.get("message", ""),
@@ -328,6 +341,7 @@ async def create_scheduled_broadcast(data: dict, user=Depends(get_current_user))
         "scheduled_at": data.get("scheduled_at"),
         "status": "pending",
         "sent_count": 0,
+        "tenant_id": tenant_id,
         "created_by": user.get("email", "admin"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -337,8 +351,9 @@ async def create_scheduled_broadcast(data: dict, user=Depends(get_current_user))
 @router.delete("/scheduled-broadcasts/{broadcast_id}")
 async def cancel_scheduled_broadcast(broadcast_id: str, user=Depends(get_current_user)):
     """Cancel a scheduled broadcast"""
+    tenant_id = get_user_tenant(user)
     await db.scheduled_broadcasts.update_one(
-        {"id": broadcast_id},
+        tq({"id": broadcast_id}, tenant_id),
         {"$set": {"status": "cancelled"}}
     )
     return {"message": "Broadcast cancelled"}
@@ -349,6 +364,7 @@ async def cancel_scheduled_broadcast(broadcast_id: str, user=Depends(get_current
 @router.post("/renewal-broadcast")
 async def send_renewal_broadcast(data: dict, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     """Send renewal reminder to expired/expiring subscribers"""
+    tenant_id = get_user_tenant(user)
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
 
@@ -365,7 +381,7 @@ async def send_renewal_broadcast(data: dict, background_tasks: BackgroundTasks, 
 
     if target in ["expired", "all"]:
         expired = await db.subscribers.find(
-            {"status": {"$in": ["expired", "cancelled"]}},
+            tq({"status": {"$in": ["expired", "cancelled"]}}, tenant_id),
             {"_id": 0}
         ).to_list(10000)
         for sub in expired:
@@ -375,7 +391,7 @@ async def send_renewal_broadcast(data: dict, background_tasks: BackgroundTasks, 
     if target in ["expiring_soon", "all"]:
         three_days_later = (now + timedelta(days=3)).isoformat()
         expiring = await db.subscribers.find(
-            {"status": "active", "end_time": {"$lte": three_days_later}},
+            tq({"status": "active", "end_time": {"$lte": three_days_later}}, tenant_id),
             {"_id": 0}
         ).to_list(10000)
         for sub in expiring:

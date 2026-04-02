@@ -44,6 +44,7 @@ async def create_coupon(coupon: dict, user=Depends(get_current_user)):
 @router.put("/coupons/{coupon_id}")
 async def update_coupon(coupon_id: str, coupon: dict, user=Depends(get_current_user)):
     """Update a coupon"""
+    tenant_id = get_user_tenant(user)
     update_data = {}
     for key in ["code", "discount_type", "discount_value", "min_purchase", "max_uses", "valid_from", "valid_until", "applicable_plans", "is_active"]:
         if key in coupon:
@@ -53,13 +54,14 @@ async def update_coupon(coupon_id: str, coupon: dict, user=Depends(get_current_u
     if "discount_value" in update_data:
         update_data["discount_value"] = float(update_data["discount_value"])
 
-    await db.coupons.update_one({"id": coupon_id}, {"$set": update_data})
+    await db.coupons.update_one(tq({"id": coupon_id}, tenant_id), {"$set": update_data})
     return {"message": "Coupon updated"}
 
 @router.delete("/coupons/{coupon_id}")
 async def delete_coupon(coupon_id: str, user=Depends(get_current_user)):
     """Delete a coupon"""
-    await db.coupons.delete_one({"id": coupon_id})
+    tenant_id = get_user_tenant(user)
+    await db.coupons.delete_one(tq({"id": coupon_id}, tenant_id))
     return {"message": "Coupon deleted"}
 
 @router.post("/coupons/validate")
@@ -105,16 +107,19 @@ async def validate_coupon(data: dict):
 
 @router.get("/users/{user_id}/notes")
 async def get_user_notes(user_id: str, user=Depends(get_current_user)):
-    notes = await db.user_notes.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    tenant_id = get_user_tenant(user)
+    notes = await db.user_notes.find(tq({"user_id": user_id}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(100)
     return notes
 
 @router.post("/users/{user_id}/notes")
 async def add_user_note(user_id: str, data: dict, user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
     note = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
         "note": data.get("note", ""),
         "added_by": user.get("email", "admin"),
+        "tenant_id": tenant_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.user_notes.insert_one(note)
@@ -122,7 +127,8 @@ async def add_user_note(user_id: str, data: dict, user=Depends(get_current_user)
 
 @router.delete("/users/{user_id}/notes/{note_id}")
 async def delete_user_note(user_id: str, note_id: str, user=Depends(get_current_user)):
-    await db.user_notes.delete_one({"id": note_id, "user_id": user_id})
+    tenant_id = get_user_tenant(user)
+    await db.user_notes.delete_one(tq({"id": note_id, "user_id": user_id}, tenant_id))
     return {"message": "Note deleted"}
 
 
@@ -130,15 +136,18 @@ async def delete_user_note(user_id: str, note_id: str, user=Depends(get_current_
 
 @router.get("/tags")
 async def get_tags(user=Depends(get_current_user)):
-    tags = await db.user_tags.find({}, {"_id": 0}).to_list(100)
+    tenant_id = get_user_tenant(user)
+    tags = await db.user_tags.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
     return tags
 
 @router.post("/tags")
 async def create_tag(data: dict, user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
     tag = {
         "id": str(uuid.uuid4()),
         "name": data.get("name", ""),
         "color": data.get("color", "blue"),
+        "tenant_id": tenant_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.user_tags.insert_one(tag)
@@ -146,23 +155,26 @@ async def create_tag(data: dict, user=Depends(get_current_user)):
 
 @router.delete("/tags/{tag_id}")
 async def delete_tag(tag_id: str, user=Depends(get_current_user)):
-    await db.user_tags.delete_one({"id": tag_id})
-    await db.subscribers.update_many({}, {"$pull": {"tags": tag_id}})
+    tenant_id = get_user_tenant(user)
+    await db.user_tags.delete_one(tq({"id": tag_id}, tenant_id))
+    await db.subscribers.update_many(tq({}, tenant_id), {"$pull": {"tags": tag_id}})
     return {"message": "Tag deleted"}
 
 @router.post("/users/{user_id}/tags")
 async def add_tag_to_user(user_id: str, data: dict, user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
     tag_id = data.get("tag_id")
     await db.subscribers.update_one(
-        {"telegram_user_id": user_id},
+        tq({"telegram_user_id": user_id}, tenant_id),
         {"$addToSet": {"tags": tag_id}}
     )
     return {"message": "Tag added to user"}
 
 @router.delete("/users/{user_id}/tags/{tag_id}")
 async def remove_tag_from_user(user_id: str, tag_id: str, user=Depends(get_current_user)):
+    tenant_id = get_user_tenant(user)
     await db.subscribers.update_one(
-        {"telegram_user_id": user_id},
+        tq({"telegram_user_id": user_id}, tenant_id),
         {"$pull": {"tags": tag_id}}
     )
     return {"message": "Tag removed from user"}
@@ -173,13 +185,15 @@ async def remove_tag_from_user(user_id: str, tag_id: str, user=Depends(get_curre
 @router.get("/blocked-users")
 async def get_blocked_users(user=Depends(get_current_user)):
     """Get all blocked users"""
-    blocked = await db.blocked_users.find({}, {"_id": 0}).sort("blocked_at", -1).to_list(1000)
+    tenant_id = get_user_tenant(user)
+    blocked = await db.blocked_users.find(tq({}, tenant_id), {"_id": 0}).sort("blocked_at", -1).to_list(1000)
     return blocked
 
 @router.post("/users/{user_id}/block")
 async def block_user(user_id: str, data: dict, user=Depends(get_current_user)):
     """Block a user"""
-    existing = await db.blocked_users.find_one({"telegram_user_id": user_id})
+    tenant_id = get_user_tenant(user)
+    existing = await db.blocked_users.find_one(tq({"telegram_user_id": user_id}, tenant_id))
     if existing:
         raise HTTPException(status_code=400, detail="User already blocked")
 
@@ -189,6 +203,7 @@ async def block_user(user_id: str, data: dict, user=Depends(get_current_user)):
         "telegram_username": data.get("telegram_username", ""),
         "reason": data.get("reason", ""),
         "blocked_by": user.get("email", "admin"),
+        "tenant_id": tenant_id,
         "blocked_at": datetime.now(timezone.utc).isoformat()
     }
     await db.blocked_users.insert_one(block_doc)
@@ -197,7 +212,8 @@ async def block_user(user_id: str, data: dict, user=Depends(get_current_user)):
 @router.delete("/users/{user_id}/block")
 async def unblock_user(user_id: str, user=Depends(get_current_user)):
     """Unblock a user"""
-    await db.blocked_users.delete_one({"telegram_user_id": user_id})
+    tenant_id = get_user_tenant(user)
+    await db.blocked_users.delete_one(tq({"telegram_user_id": user_id}, tenant_id))
     return {"message": "User unblocked"}
 
 
@@ -213,10 +229,12 @@ async def get_referrals(user=Depends(get_current_user)):
 @router.get("/referrals/settings")
 async def get_referral_settings(user=Depends(get_current_user)):
     """Get referral program settings"""
-    settings = await db.referral_settings.find_one({"id": "referral_settings"}, {"_id": 0})
+    tenant_id = get_user_tenant(user)
+    settings_id = f"referral_settings_{tenant_id}" if tenant_id else "referral_settings"
+    settings = await db.referral_settings.find_one({"id": settings_id}, {"_id": 0})
     if not settings:
         settings = {
-            "id": "referral_settings",
+            "id": settings_id,
             "enabled": True,
             "referrer_reward_type": "discount",
             "referrer_reward_value": 10,
@@ -229,8 +247,10 @@ async def get_referral_settings(user=Depends(get_current_user)):
 @router.put("/referrals/settings")
 async def update_referral_settings(data: dict, user=Depends(get_current_user)):
     """Update referral program settings"""
+    tenant_id = get_user_tenant(user)
+    settings_id = f"referral_settings_{tenant_id}" if tenant_id else "referral_settings"
     await db.referral_settings.update_one(
-        {"id": "referral_settings"},
+        {"id": settings_id},
         {"$set": {
             "enabled": data.get("enabled", True),
             "referrer_reward_type": data.get("referrer_reward_type", "discount"),
@@ -275,18 +295,21 @@ async def validate_referral(data: dict):
 @router.get("/faqs")
 async def get_faqs(user=Depends(get_current_user)):
     """Get all FAQs"""
-    faqs = await db.faqs.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    tenant_id = get_user_tenant(user)
+    faqs = await db.faqs.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(1000)
     return faqs
 
 @router.post("/faqs")
 async def create_faq(data: dict, user=Depends(get_current_user)):
     """Create a new FAQ"""
+    tenant_id = get_user_tenant(user)
     faq_data = {
         "id": str(uuid.uuid4()),
         "keywords": [k.strip().lower() for k in data.get("keywords", "").split(",") if k.strip()],
         "response": data.get("response", ""),
         "is_active": data.get("is_active", True),
         "usage_count": 0,
+        "tenant_id": tenant_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.faqs.insert_one(faq_data)
@@ -295,8 +318,9 @@ async def create_faq(data: dict, user=Depends(get_current_user)):
 @router.put("/faqs/{faq_id}")
 async def update_faq(faq_id: str, data: dict, user=Depends(get_current_user)):
     """Update a FAQ"""
+    tenant_id = get_user_tenant(user)
     await db.faqs.update_one(
-        {"id": faq_id},
+        tq({"id": faq_id}, tenant_id),
         {"$set": {
             "keywords": [k.strip().lower() for k in data.get("keywords", "").split(",") if k.strip()],
             "response": data.get("response", ""),
@@ -308,7 +332,8 @@ async def update_faq(faq_id: str, data: dict, user=Depends(get_current_user)):
 @router.delete("/faqs/{faq_id}")
 async def delete_faq(faq_id: str, user=Depends(get_current_user)):
     """Delete a FAQ"""
-    await db.faqs.delete_one({"id": faq_id})
+    tenant_id = get_user_tenant(user)
+    await db.faqs.delete_one(tq({"id": faq_id}, tenant_id))
     return {"message": "FAQ deleted"}
 
 
@@ -317,12 +342,14 @@ async def delete_faq(faq_id: str, user=Depends(get_current_user)):
 @router.get("/video-calls")
 async def get_video_call_bookings(user=Depends(get_current_user)):
     """Get all video call bookings"""
-    bookings = await db.video_call_bookings.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    tenant_id = get_user_tenant(user)
+    bookings = await db.video_call_bookings.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(1000)
     return bookings
 
 @router.put("/video-calls/{booking_id}")
 async def update_video_call_booking(booking_id: str, data: dict, user=Depends(get_current_user)):
     """Update a video call booking"""
+    tenant_id = get_user_tenant(user)
     update_data = {}
     if "status" in data:
         update_data["status"] = data["status"]
@@ -332,10 +359,10 @@ async def update_video_call_booking(booking_id: str, data: dict, user=Depends(ge
         update_data["notes"] = data["notes"]
 
     if update_data:
-        await db.video_call_bookings.update_one({"id": booking_id}, {"$set": update_data})
+        await db.video_call_bookings.update_one(tq({"id": booking_id}, tenant_id), {"$set": update_data})
 
         if data.get("status") == "confirmed":
-            booking = await db.video_call_bookings.find_one({"id": booking_id}, {"_id": 0})
+            booking = await db.video_call_bookings.find_one(tq({"id": booking_id}, tenant_id), {"_id": 0})
             if booking:
                 settings = await get_bot_settings()
                 bot_token = settings.get("telegram_bot_token", "")
@@ -355,19 +382,21 @@ async def update_video_call_booking(booking_id: str, data: dict, user=Depends(ge
 @router.delete("/video-calls/{booking_id}")
 async def delete_video_call_booking(booking_id: str, user=Depends(get_current_user)):
     """Delete a video call booking"""
-    await db.video_call_bookings.delete_one({"id": booking_id})
+    tenant_id = get_user_tenant(user)
+    await db.video_call_bookings.delete_one(tq({"id": booking_id}, tenant_id))
     return {"message": "Booking deleted"}
 
 @router.get("/video-calls/queue")
 async def get_video_call_queue(user=Depends(get_current_user)):
     """Get video call queue"""
+    tenant_id = get_user_tenant(user)
     queue = await db.video_call_bookings.find(
-        {"status": {"$in": ["pending", "paid", "waiting"]}},
+        tq({"status": {"$in": ["pending", "paid", "waiting"]}}, tenant_id),
         {"_id": 0}
     ).sort("created_at", 1).to_list(100)
 
     active_call = await db.video_call_bookings.find_one(
-        {"status": "in_progress"},
+        tq({"status": "in_progress"}, tenant_id),
         {"_id": 0}
     )
 
@@ -380,16 +409,17 @@ async def get_video_call_queue(user=Depends(get_current_user)):
 @router.post("/video-calls/{booking_id}/start")
 async def start_video_call(booking_id: str, user=Depends(get_current_user)):
     """Start a video call"""
-    booking = await db.video_call_bookings.find_one({"id": booking_id}, {"_id": 0})
+    tenant_id = get_user_tenant(user)
+    booking = await db.video_call_bookings.find_one(tq({"id": booking_id}, tenant_id), {"_id": 0})
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    active = await db.video_call_bookings.find_one({"status": "in_progress"}, {"_id": 0})
+    active = await db.video_call_bookings.find_one(tq({"status": "in_progress"}, tenant_id), {"_id": 0})
     if active:
         raise HTTPException(status_code=400, detail="Another call is already in progress")
 
     await db.video_call_bookings.update_one(
-        {"id": booking_id},
+        tq({"id": booking_id}, tenant_id),
         {"$set": {"status": "in_progress", "started_at": datetime.now(timezone.utc).isoformat()}}
     )
 
@@ -403,8 +433,9 @@ async def start_video_call(booking_id: str, user=Depends(get_current_user)):
 @router.post("/video-calls/{booking_id}/end")
 async def end_video_call(booking_id: str, user=Depends(get_current_user)):
     """End a video call and notify next in queue"""
+    tenant_id = get_user_tenant(user)
     await db.video_call_bookings.update_one(
-        {"id": booking_id},
+        tq({"id": booking_id}, tenant_id),
         {"$set": {"status": "completed", "ended_at": datetime.now(timezone.utc).isoformat()}}
     )
 
@@ -412,7 +443,7 @@ async def end_video_call(booking_id: str, user=Depends(get_current_user)):
     bot_token = settings.get("telegram_bot_token", "")
 
     next_in_queue = await db.video_call_bookings.find_one(
-        {"status": {"$in": ["pending", "paid", "waiting"]}},
+        tq({"status": {"$in": ["pending", "paid", "waiting"]}}, tenant_id),
         {"_id": 0},
         sort=[("created_at", 1)]
     )

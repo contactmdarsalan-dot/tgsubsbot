@@ -29,7 +29,8 @@ class AddChatGroupRequest(BaseModel):
 @router.get("/chat-groups")
 async def get_chat_groups(user=Depends(get_current_user)):
     """Get all chat groups in the pool"""
-    groups = await db.chat_groups_pool.find({}, {"_id": 0}).to_list(100)
+    tenant_id = get_user_tenant(user)
+    groups = await db.chat_groups_pool.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
     return groups
 
 
@@ -67,10 +68,11 @@ async def add_chat_group(request: AddChatGroupRequest, user=Depends(get_current_
         logger.error(f"Error verifying group: {e}")
         raise HTTPException(status_code=400, detail=f"Error verifying group: {str(e)}")
 
-    existing = await db.chat_groups_pool.find_one({"group_id": group_id})
+    existing = await db.chat_groups_pool.find_one(tq({"group_id": group_id}, get_user_tenant(user)))
     if existing:
         raise HTTPException(status_code=400, detail="Group already in pool")
 
+    tenant_id = get_user_tenant(user)
     group_doc = {
         "id": str(uuid.uuid4()),
         "group_id": group_id,
@@ -81,6 +83,7 @@ async def add_chat_group(request: AddChatGroupRequest, user=Depends(get_current_
         "plan_type": "",
         "session_start": None,
         "session_end": None,
+        "tenant_id": tenant_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.chat_groups_pool.insert_one(group_doc)
@@ -91,7 +94,8 @@ async def add_chat_group(request: AddChatGroupRequest, user=Depends(get_current_
 @router.delete("/chat-groups/{group_id}")
 async def remove_chat_group(group_id: str, user=Depends(get_current_user)):
     """Remove a group from the pool"""
-    result = await db.chat_groups_pool.delete_one({"group_id": group_id})
+    tenant_id = get_user_tenant(user)
+    result = await db.chat_groups_pool.delete_one(tq({"group_id": group_id}, tenant_id))
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Group not found in pool")
     return {"message": "Group removed from pool"}
@@ -100,7 +104,8 @@ async def remove_chat_group(group_id: str, user=Depends(get_current_user)):
 @router.get("/chat-sessions")
 async def get_chat_sessions(status: Optional[str] = None, user=Depends(get_current_user)):
     """Get all chat sessions"""
-    query = {}
+    tenant_id = get_user_tenant(user)
+    query = tq({}, tenant_id)
     if status:
         query["status"] = status
     sessions = await db.chat_sessions.find(query, {"_id": 0}).to_list(100)
@@ -110,7 +115,8 @@ async def get_chat_sessions(status: Optional[str] = None, user=Depends(get_curre
 @router.post("/chat-groups/{group_id}/release")
 async def force_release_group(group_id: str, user=Depends(get_current_user)):
     """Force release a group back to pool"""
-    group = await db.chat_groups_pool.find_one({"group_id": group_id}, {"_id": 0})
+    tenant_id = get_user_tenant(user)
+    group = await db.chat_groups_pool.find_one(tq({"group_id": group_id}, tenant_id), {"_id": 0})
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
 
@@ -123,7 +129,8 @@ async def force_release_group(group_id: str, user=Depends(get_current_user)):
 @router.get("/channels")
 async def get_channels(user=Depends(get_current_user)):
     """Get all managed Telegram channels"""
-    channels = await db.channels.find({}, {"_id": 0}).to_list(100)
+    tenant_id = get_user_tenant(user)
+    channels = await db.channels.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
     return channels
 
 
@@ -141,7 +148,7 @@ async def add_channel(data: dict, user=Depends(get_current_user)):
     if not channel_id.startswith("-"):
         channel_id = f"-{channel_id}"
 
-    existing = await db.channels.find_one({"channel_id": channel_id})
+    existing = await db.channels.find_one(tq({"channel_id": channel_id}, get_user_tenant(user)))
     if existing:
         raise HTTPException(status_code=400, detail="Channel already exists")
 
@@ -159,6 +166,7 @@ async def add_channel(data: dict, user=Depends(get_current_user)):
     except Exception as e:
         logger.warning(f"Could not fetch channel member count: {e}")
 
+    tenant_id = get_user_tenant(user)
     channel_doc = {
         "id": str(uuid.uuid4()),
         "channel_id": channel_id,
@@ -167,6 +175,7 @@ async def add_channel(data: dict, user=Depends(get_current_user)):
         "description": description,
         "member_count": member_count,
         "status": "active",
+        "tenant_id": tenant_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.channels.insert_one(channel_doc)
@@ -190,7 +199,7 @@ async def update_channel(channel_id: str, data: dict, user=Depends(get_current_u
     if not update_data:
         raise HTTPException(status_code=400, detail="No update data provided")
 
-    result = await db.channels.update_one({"channel_id": channel_id}, {"$set": update_data})
+    result = await db.channels.update_one(tq({"channel_id": channel_id}, get_user_tenant(user)), {"$set": update_data})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Channel not found")
     return {"message": "Channel updated"}
@@ -199,7 +208,8 @@ async def update_channel(channel_id: str, data: dict, user=Depends(get_current_u
 @router.post("/channels/{channel_id}/refresh")
 async def refresh_channel_info(channel_id: str, user=Depends(get_current_user)):
     """Refresh channel member count from Telegram"""
-    channel = await db.channels.find_one({"channel_id": channel_id}, {"_id": 0})
+    tenant_id = get_user_tenant(user)
+    channel = await db.channels.find_one(tq({"channel_id": channel_id}, tenant_id), {"_id": 0})
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
 
@@ -223,7 +233,7 @@ async def refresh_channel_info(channel_id: str, user=Depends(get_current_user)):
         logger.warning(f"Could not refresh channel info: {e}")
 
     await db.channels.update_one(
-        {"channel_id": channel_id},
+        tq({"channel_id": channel_id}, tenant_id),
         {"$set": {"member_count": member_count, "channel_name": channel_title, "last_refreshed": datetime.now(timezone.utc).isoformat()}}
     )
     return {"member_count": member_count, "channel_name": channel_title}
@@ -232,7 +242,8 @@ async def refresh_channel_info(channel_id: str, user=Depends(get_current_user)):
 @router.delete("/channels/{channel_id}")
 async def delete_channel(channel_id: str, user=Depends(get_current_user)):
     """Remove a channel"""
-    result = await db.channels.delete_one({"channel_id": channel_id})
+    tenant_id = get_user_tenant(user)
+    result = await db.channels.delete_one(tq({"channel_id": channel_id}, tenant_id))
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Channel not found")
     return {"message": "Channel removed"}
