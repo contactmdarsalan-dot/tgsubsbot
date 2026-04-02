@@ -42,6 +42,19 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 - **Data Migration API**: `/api/saas/migrate-to-tenant` for normalizing old data
 - Tested: Iteration 30 (ALL PASSED - 21 routes verified for new tenant = 0 data, original tenant correct)
 
+### Phase 13: MiniApp Admin/User Final Isolation (Complete - 2026-04-02)
+- **8 critical security fixes in `miniapp_admin.py`**:
+  - `/admin/payment-action`: Payment update, plan lookup, subscriber upsert now use `tenant_query()`
+  - `/admin/announce-live`: Session find + update now tenant-scoped
+  - `/admin/paid-post/{id}/toggle`: Post find + update now tenant-scoped
+  - `/admin/paid-post/{id}/blur`: Update now tenant-scoped
+  - `/admin/paid-post/{id}/broadcast`: Post find now tenant-scoped
+  - `/admin/live-session/{id}/go-live`: Session find + update now tenant-scoped
+  - DELETE `/admin/live-session/{id}`: Delete now tenant-scoped
+  - `/admin/live-session/{id}/end`: Update now tenant-scoped
+- **`miniapp_user.py` fixes**: upload-screenshot uses bot_user's tenant_id instead of hardcoded DEFAULT
+- Tested: Iteration 31 (ALL 24 TESTS PASSED - cross-tenant access fully blocked)
+
 ## Architecture
 ```
 /app/backend/
