@@ -354,25 +354,26 @@ async def export_revenue_pdf(user=Depends(get_current_user)):
     from fastapi.responses import StreamingResponse
 
     now = datetime.now(timezone.utc)
+    tenant_id = get_user_tenant(user)
 
-    total_subscribers = await db.subscribers.count_documents({})
-    active_subscribers = await db.subscribers.count_documents({"status": "active"})
-    expired_subscribers = await db.subscribers.count_documents({"status": "expired"})
+    total_subscribers = await db.subscribers.count_documents(tq({}, tenant_id))
+    active_subscribers = await db.subscribers.count_documents(tq({"status": "active"}, tenant_id))
+    expired_subscribers = await db.subscribers.count_documents(tq({"status": "expired"}, tenant_id))
 
-    verified_payments = await db.payments.find({"status": "verified"}, {"_id": 0}).to_list(10000)
+    verified_payments = await db.payments.find(tq({"status": "verified"}, tenant_id), {"_id": 0}).to_list(10000)
     total_revenue = sum(p.get("amount", 0) for p in verified_payments)
 
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     monthly_payments = [p for p in verified_payments if datetime.fromisoformat(p["created_at"]) >= month_start]
     monthly_revenue = sum(p.get("amount", 0) for p in monthly_payments)
 
-    plans = await db.plans.find({}, {"_id": 0}).to_list(100)
+    plans = await db.plans.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
     plan_stats = []
     for plan in plans:
-        count = await db.subscribers.count_documents({"plan_id": plan["id"], "status": "active"})
+        count = await db.subscribers.count_documents(tq({"plan_id": plan["id"], "status": "active"}, tenant_id))
         plan_stats.append({"name": plan["name"], "count": count, "price": plan["price"]})
 
-    recent = await db.payments.find({"status": "verified"}, {"_id": 0}).sort("created_at", -1).limit(20).to_list(20)
+    recent = await db.payments.find(tq({"status": "verified"}, tenant_id), {"_id": 0}).sort("created_at", -1).limit(20).to_list(20)
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=30, bottomMargin=30)

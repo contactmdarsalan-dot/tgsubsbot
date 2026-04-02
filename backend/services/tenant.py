@@ -80,8 +80,8 @@ async def get_tenant_settings(tenant_id: str) -> dict:
 
 
 def tenant_query(base_query: dict, tenant_id: str) -> dict:
-    """Add tenant_id filter to a query dict. Skips filter for 'default' 
-    to maintain backwards compatibility with untagged data."""
-    if tenant_id and tenant_id != DEFAULT_TENANT_ID:
+    """Add tenant_id filter to a query dict. ALWAYS filters by tenant_id
+    including 'default' to ensure proper multi-tenant isolation."""
+    if tenant_id:
         base_query["tenant_id"] = tenant_id
     return base_query

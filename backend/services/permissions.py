@@ -23,14 +23,20 @@ def is_any_admin(user: dict) -> bool:
 
 
 def get_user_tenant(user: dict) -> str:
-    """Get tenant_id from user. Super admins see all (returns empty string)."""
+    """Get tenant_id from user. Super admins see all (returns empty string).
+    Non-super-admins without a tenant_id get a dead value to prevent data leaks."""
     if is_super_admin(user):
         return ""  # No filter — sees everything
-    return user.get("tenant_id", "")
+    tenant_id = user.get("tenant_id", "")
+    if not tenant_id:
+        # SECURITY: Return impossible value so tq() adds a filter matching nothing
+        return "__no_tenant__"
+    return tenant_id
 
 
 def tq(base_query: dict, tenant_id: str) -> dict:
-    """Add tenant_id filter to query if tenant_id is present."""
+    """Add tenant_id filter to query. ALWAYS filters for non-empty tenant_id.
+    Empty tenant_id (super admin) means no filter = see all data."""
     if tenant_id:
         base_query["tenant_id"] = tenant_id
     return base_query

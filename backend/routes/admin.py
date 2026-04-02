@@ -1280,6 +1280,21 @@ async def activate_free_trial_self(user=Depends(get_current_user)):
 
     trial_end = datetime.now(timezone.utc) + timedelta(days=plan_duration)
 
+    # Auto-create tenant for user if they don't have one
+    user_tenant_id = user.get("tenant_id", "")
+    if not user_tenant_id:
+        user_tenant_id = f"tenant_{uuid.uuid4().hex[:12]}"
+        # Create tenant record
+        tenant_doc = {
+            "id": str(uuid.uuid4()),
+            "tenant_id": user_tenant_id,
+            "name": user.get("name", user.get("email", "New Tenant")),
+            "email": user.get("email", ""),
+            "status": "active",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.tenants.insert_one(tenant_doc)
+
     await db.users.update_one(
         {"id": user["id"]},
         {"$set": {
@@ -1288,6 +1303,8 @@ async def activate_free_trial_self(user=Depends(get_current_user)):
             "dashboard_subscription_end": trial_end.isoformat(),
             "trial_end_date": trial_end.isoformat(),
             "is_trial": True,
+            "role": "tenant_owner",
+            "tenant_id": user_tenant_id,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }}
     )

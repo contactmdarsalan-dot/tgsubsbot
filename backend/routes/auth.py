@@ -30,6 +30,22 @@ async def register(request: Request, user: UserCreate):
     if doc.get("dashboard_subscription_end"):
         doc["dashboard_subscription_end"] = doc["dashboard_subscription_end"].isoformat()
     
+    # Auto-create a unique tenant for every new user
+    tenant_id = f"tenant_{uuid.uuid4().hex[:12]}"
+    doc["tenant_id"] = tenant_id
+    doc["role"] = "tenant_owner"
+    
+    # Create tenant record
+    tenant_doc = {
+        "id": str(uuid.uuid4()),
+        "tenant_id": tenant_id,
+        "name": user.name or user.email,
+        "email": user.email,
+        "status": "active",
+        "created_at": doc["created_at"]
+    }
+    await db.tenants.insert_one(tenant_doc)
+    
     # Auto-activate trial if enabled
     trial_cfg = await db.trial_config.find_one({"id": "default_trial"}, {"_id": 0})
     if trial_cfg and trial_cfg.get("enabled") and trial_cfg.get("auto_activate_on_register"):
@@ -48,10 +64,12 @@ async def register(request: Request, user: UserCreate):
             "id": user_obj.id, 
             "email": user_obj.email, 
             "name": user_obj.name,
+            "role": "tenant_owner",
+            "tenant_id": tenant_id,
             "dashboard_subscription_status": doc.get("dashboard_subscription_status", "inactive"),
             "dashboard_plan": doc.get("dashboard_plan", ""),
             "dashboard_subscription_end": doc.get("dashboard_subscription_end"),
-            "is_admin": False
+            "is_admin": True
         }
     }
 
@@ -138,8 +156,21 @@ async def process_google_session(data: dict):
         sub_end = existing.get("dashboard_subscription_end")
         is_admin = existing.get("is_admin", False)
     else:
-        # Create new user
+        # Create new user with auto-tenant
         user_id = str(uuid.uuid4())
+        tenant_id = f"tenant_{uuid.uuid4().hex[:12]}"
+        
+        # Create tenant record
+        tenant_doc = {
+            "id": str(uuid.uuid4()),
+            "tenant_id": tenant_id,
+            "name": name,
+            "email": email,
+            "status": "active",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.tenants.insert_one(tenant_doc)
+        
         new_user = {
             "id": user_id,
             "email": email,
@@ -150,13 +181,15 @@ async def process_google_session(data: dict):
             "dashboard_plan": "",
             "dashboard_subscription_end": None,
             "dashboard_subscription_status": "inactive",
-            "is_admin": False,
+            "is_admin": True,
+            "role": "tenant_owner",
+            "tenant_id": tenant_id,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         await db.users.insert_one(new_user)
         sub_status = "inactive"
         sub_end = None
-        is_admin = False
+        is_admin = True
     
     # Create JWT token
     token = create_token(user_id)
@@ -307,10 +340,23 @@ async def verify_otp(data: dict):
         sub_end = existing.get("dashboard_subscription_end")
         is_admin = existing.get("is_admin", False)
     else:
-        # New user - register
+        # New user - register with auto-tenant
         user_id = str(uuid.uuid4())
         user_name = name or phone
         user_email = ""
+        tenant_id = f"tenant_{uuid.uuid4().hex[:12]}"
+        
+        # Create tenant record
+        tenant_doc = {
+            "id": str(uuid.uuid4()),
+            "tenant_id": tenant_id,
+            "name": user_name,
+            "email": "",
+            "phone": phone,
+            "status": "active",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.tenants.insert_one(tenant_doc)
         
         new_user = {
             "id": user_id,
@@ -320,13 +366,15 @@ async def verify_otp(data: dict):
             "dashboard_plan": "",
             "dashboard_subscription_end": None,
             "dashboard_subscription_status": "inactive",
-            "is_admin": False,
+            "is_admin": True,
+            "role": "tenant_owner",
+            "tenant_id": tenant_id,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         await db.users.insert_one(new_user)
         sub_status = "inactive"
         sub_end = None
-        is_admin = False
+        is_admin = True
     
     # Create JWT token
     token = create_token(user_id)
