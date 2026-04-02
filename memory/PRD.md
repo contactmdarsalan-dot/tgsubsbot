@@ -104,9 +104,19 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 │   ├── tenant.py (tenant_query(), DEFAULT_TENANT_ID)
 ```
 
+### Phase 16: Mini App CRUD Data Isolation (Complete - 2026-04-02)
+- **Complete separation of Plans/Subscribers/Payments between Bot and Mini App**
+- Backend: Added `source: {"$ne": "miniapp"}` filter to bot endpoints (`plans.py`, `subscribers.py`, `payments.py`)
+- Backend: Mini App endpoints in `miniapp_calls.py` use `source: "miniapp"` for all CRUD operations
+- Frontend: Created `MiniAppPlans.jsx` (full CRUD with Create/Edit/Delete), `MiniAppSubscribers.jsx` (with stats & search), `MiniAppPayments.jsx` (with filter tabs & approve/reject)
+- Frontend: Updated `Layout.jsx` sidebar — Mini App section now has Plans, Subscribers, Payments links
+- Frontend: Added routes in `App.js` for `/dashboard/miniapp-plans`, `/dashboard/miniapp-subscribers`, `/dashboard/miniapp-payments`
+- Tested: Iteration 34 (ALL PASSED - Backend 23/23, Frontend 100%)
+
 ## Prioritized Backlog
 
 ### P1 (Next)
+- [ ] Creator Availability Calendar for Video Calls
 - [ ] Implement Impersonation Mode (Super Admin -> Tenant Admin login)
 - [ ] Risk & Alerts System UI (Fraud detection, high refund alerts)
 
