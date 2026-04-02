@@ -266,7 +266,7 @@ export default function Login() {
             <Button
               type="button"
               variant={loginMethod === "email" ? "default" : "ghost"}
-              className={`flex-1 gap-2 rounded-xl transition-all duration-300 ${loginMethod === "email" ? "btn-romance shadow-lg" : "hover:bg-muted"}`}
+              className={`flex-1 gap-2 rounded-xl transition-all duration-300 ${loginMethod === "email" ? "btn-romance shadow-lg" : "hover:bg-muted text-white"}`}
               onClick={() => { setLoginMethod("email"); setOtpSent(false); }}
             >
               <Mail className="w-4 h-4" strokeWidth={1.5} />
@@ -275,7 +275,7 @@ export default function Login() {
             <Button
               type="button"
               variant={loginMethod === "phone" ? "default" : "ghost"}
-              className={`flex-1 gap-2 rounded-xl transition-all duration-300 ${loginMethod === "phone" ? "btn-romance shadow-lg" : "hover:bg-muted"}`}
+              className={`flex-1 gap-2 rounded-xl transition-all duration-300 ${loginMethod === "phone" ? "btn-romance shadow-lg" : "hover:bg-muted text-white"}`}
               onClick={() => { setLoginMethod("phone"); setOtpSent(false); }}
             >
               <Phone className="w-4 h-4" strokeWidth={1.5} />
@@ -285,12 +285,12 @@ export default function Login() {
 
           {/* Title */}
           <div className="text-center space-y-2">
-            <h2 className="font-serif text-3xl font-semibold tracking-tight">
+            <h2 className="font-serif text-3xl font-semibold tracking-tight text-white">
               {loginMethod === "phone" 
                 ? "Login with Phone" 
                 : isLogin ? "Welcome Back" : "Join Us"}
             </h2>
-            <p className="text-muted-foreground">
+            <p className="text-zinc-400">
               {loginMethod === "phone"
                 ? "Enter your phone number to receive OTP"
                 : isLogin
@@ -305,7 +305,7 @@ export default function Login() {
               {!otpSent ? (
                 <>
                   <div className="space-y-2">
-                    <Label htmlFor="phone" className="text-sm font-medium">Phone Number</Label>
+                    <Label htmlFor="phone" className="text-sm font-medium text-white">Phone Number</Label>
                     <div className="flex gap-2">
                       <div className="flex items-center px-4 bg-white/5 rounded-xl text-sm text-white/60 border border-white/10">
                         +91
@@ -323,7 +323,7 @@ export default function Login() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="name" className="text-sm font-medium">Name (Optional)</Label>
+                    <Label htmlFor="name" className="text-sm font-medium text-white">Name (Optional)</Label>
                     <Input
                       id="name"
                       type="text"
@@ -362,7 +362,7 @@ export default function Login() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="otp" className="text-sm font-medium">Enter OTP</Label>
+                    <Label htmlFor="otp" className="text-sm font-medium text-white">Enter OTP</Label>
                     <Input
                       id="otp"
                       type="text"
@@ -401,7 +401,7 @@ export default function Login() {
             <form onSubmit={handleSubmit} className="space-y-5">
               {!isLogin && (
                 <div className="space-y-2">
-                  <Label htmlFor="name" className="text-sm font-medium">Full Name</Label>
+                  <Label htmlFor="name" className="text-sm font-medium text-white">Full Name</Label>
                   <Input
                     id="name"
                     type="text"
@@ -416,7 +416,7 @@ export default function Login() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium">Email Address</Label>
+                <Label htmlFor="email" className="text-sm font-medium text-white">Email Address</Label>
                 <Input
                   id="email"
                   type="email"
@@ -430,7 +430,7 @@ export default function Login() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm font-medium">Password</Label>
+                <Label htmlFor="password" className="text-sm font-medium text-white">Password</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -536,8 +536,8 @@ export default function Login() {
             /* Forgot Password Flow */
             <>
               <div className="text-center space-y-2">
-                <h2 className="font-serif text-3xl font-semibold tracking-tight">Reset Password</h2>
-                <p className="text-muted-foreground">
+                <h2 className="font-serif text-3xl font-semibold tracking-tight text-white">Reset Password</h2>
+                <p className="text-zinc-400">
                   {resetStep === 1 ? "Enter your email to receive a reset code" : "Enter the code and your new password"}
                 </p>
               </div>
@@ -545,7 +545,7 @@ export default function Login() {
               {resetStep === 1 ? (
                 <div className="space-y-5">
                   <div className="space-y-2">
-                    <Label htmlFor="reset-email" className="text-sm font-medium">Email Address</Label>
+                    <Label htmlFor="reset-email" className="text-sm font-medium text-white">Email Address</Label>
                     <Input
                       id="reset-email"
                       type="email"
@@ -574,7 +574,7 @@ export default function Login() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="reset-otp" className="text-sm font-medium">Reset Code</Label>
+                    <Label htmlFor="reset-otp" className="text-sm font-medium text-white">Reset Code</Label>
                     <Input
                       id="reset-otp"
                       type="text"
@@ -588,7 +588,7 @@ export default function Login() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="reset-new-password" className="text-sm font-medium">New Password</Label>
+                    <Label htmlFor="reset-new-password" className="text-sm font-medium text-white">New Password</Label>
                     <Input
                       id="reset-new-password"
                       type="password"
