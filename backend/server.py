@@ -32,6 +32,8 @@ from routes.miniapp_admin import router as miniapp_admin_router
 from routes.miniapp_calls import router as miniapp_calls_router
 from routes.miniapp_chat import router as miniapp_chat_router
 from routes.tenant import router as tenant_router
+from routes.global_wallet import router as global_wallet_router
+from routes.global_app import router as global_app_router
 
 # Import background tasks
 from services.background_tasks import (
@@ -67,6 +69,8 @@ app.include_router(miniapp_admin_router, prefix="/api")
 app.include_router(miniapp_calls_router, prefix="/api")
 app.include_router(miniapp_chat_router, prefix="/api")
 app.include_router(tenant_router, prefix="/api")
+app.include_router(global_wallet_router, prefix="/api")
+app.include_router(global_app_router, prefix="/api")
 
 # Mount static files for uploads
 uploads_dir = os.path.join(os.path.dirname(__file__), "uploads")

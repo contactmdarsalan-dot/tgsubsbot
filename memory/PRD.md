@@ -113,6 +113,18 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 - Frontend: Added routes in `App.js` for `/dashboard/miniapp-plans`, `/dashboard/miniapp-subscribers`, `/dashboard/miniapp-payments`
 - Tested: Iteration 34 (ALL PASSED - Backend 23/23, Frontend 100%)
 
+### Phase 17: Global App API Layer for Mobile (Complete - 2026-04-03)
+- **55 new endpoints** built across 2 route files for consumer mobile app
+- **Wallet/Coin System**: Coin packages, wallet balance, purchase coins, admin approval, spend coins
+- **Creator Profiles**: Register as creator, listing requests, admin approval, public discovery
+- **Content System**: Create free/paid content, coin-based unlock, home feed, content discovery
+- **Creator Plans & Subscriptions**: Create plans, coin-based subscription purchase
+- **Live Sessions**: Creator live management, coin-based access, viewer tracking
+- **Follow System**: Follow/unfollow creators
+- **Revenue Share**: Configurable platform % (default 20%), automatic split on every transaction
+- **Notifications**: User notification system
+- Tested: Full flow verified (coin purchase → admin approve → unlock content → revenue share)
+
 ## Prioritized Backlog
 
 ### P1 (Next)

@@ -56,6 +56,25 @@ async def ensure_indexes():
         await db.audit_logs.create_index([("tenant_id", 1), ("created_at", -1)])
         await db.audit_logs.create_index("action")
 
+        # Global App indexes
+        for coll_name in ["wallets", "wallet_transactions", "coin_payments", "coin_packages",
+                          "creator_profiles", "global_content", "content_unlocks",
+                          "creator_plans", "global_subscriptions", "global_live_sessions",
+                          "global_follows", "global_notifications", "listing_requests",
+                          "platform_revenue"]:
+            coll = db[coll_name]
+            await coll.create_index("id", unique=True, sparse=True)
+
+        await db.wallets.create_index("user_id", unique=True)
+        await db.wallet_transactions.create_index([("user_id", 1), ("created_at", -1)])
+        await db.creator_profiles.create_index("user_id")
+        await db.creator_profiles.create_index([("is_listed", 1), ("listing_status", 1)])
+        await db.global_content.create_index([("creator_id", 1), ("created_at", -1)])
+        await db.content_unlocks.create_index([("user_id", 1), ("content_id", 1)])
+        await db.global_subscriptions.create_index([("user_id", 1), ("status", 1)])
+        await db.global_follows.create_index([("user_id", 1), ("creator_id", 1)])
+        await db.global_notifications.create_index([("user_id", 1), ("is_read", 1)])
+
         logger.info("MongoDB indexes created successfully")
     except Exception as e:
         logger.error(f"Error creating indexes: {e}")
