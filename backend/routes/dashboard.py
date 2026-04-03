@@ -1,6 +1,6 @@
 """Dashboard routes: Channels, Chat Groups, Settings, File Upload, Analytics, Branding, Bot Language"""
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
-from database import db
+from database import db, cache_delete
 from services.auth import get_current_user
 from services.telegram import get_bot_settings
 from services.tenant import DEFAULT_TENANT_ID
@@ -273,6 +273,15 @@ async def update_settings(settings: BotSettings, user=Depends(get_current_user))
     if tenant_id:
         doc["tenant_id"] = tenant_id
     await db.settings.update_one({"id": settings_id}, {"$set": doc}, upsert=True)
+    # Also update the default "bot_settings" doc so the webhook picks it up
+    # (webhook reads by bot_token match or falls back to "bot_settings")
+    if tenant_id:
+        default_doc = dict(doc)
+        default_doc["id"] = "bot_settings"
+        await db.settings.update_one({"id": "bot_settings"}, {"$set": default_doc}, upsert=True)
+    # Clear ALL cached settings so bot picks up changes immediately
+    await cache_delete("bot_settings")
+    await cache_delete(settings_id)
     return {"message": "Settings updated"}
 
 
