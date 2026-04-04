@@ -168,3 +168,11 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
   - HTML entity escaping for plan names
   - Same URL button fix applied to `chat_member_update` welcome handler
 - Tested: All commands return `ok:true`, correct logging confirms fix
+
+### Phase 19: Razorpay Bot Payment Integration (Complete - 2026-04-04)
+- **Feature**: Razorpay Payment Links integrated into Telegram Bot payment flow
+- **Flow**: User selects plan → Razorpay payment link created → "Pay with Razorpay" button appears above QR → user pays → auto-verified via callback → subscription activated → Telegram confirmation
+- **New files**: `/app/backend/routes/razorpay_webhook.py`
+- **Modified**: `telegram_webhook.py` (buy_ callback + /start buy_ deep link), `server.py` (route registration)
+- **Config**: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, optional `RAZORPAY_CALLBACK_URL`
+- **DB**: New `razorpay_bot_orders` collection for payment tracking

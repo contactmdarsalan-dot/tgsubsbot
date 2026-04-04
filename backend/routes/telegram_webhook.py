@@ -15,7 +15,7 @@ from services.payment import detect_payment_screenshot, create_blurred_image, an
 from services.chat_pool import get_available_chat_group, assign_chat_group
 from services.bot_activity import log_bot_activity
 from services.tenant import DEFAULT_TENANT_ID, tenant_query
-from config import logger, TELEGRAM_CHANNEL_ID, EMERGENT_LLM_KEY
+from config import logger, TELEGRAM_CHANNEL_ID, EMERGENT_LLM_KEY, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, razorpay_client
 from rate_limiter import limiter
 from datetime import datetime, timezone, timedelta
 import uuid
@@ -415,7 +415,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 
                 if plan:
                     # Check if plan has discount
-                    original_price = int(plan['price'])
+                    original_price = int(plan.get('price', 0))
                     discount_pct = plan.get('discount_percentage', 0)
                     if discount_pct > 0:
                         discounted_price = int(original_price * (100 - discount_pct) / 100)
@@ -429,9 +429,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     qr_code_url = settings.get("qr_code_url", "")
                     
                     payment_msg = f"🔥 <b>EXCLUSIVE OFFER!</b> 🔥\n\n"
-                    payment_msg += f"<b>📦 {plan['name']}</b>\n\n"
+                    payment_msg += f"<b>📦 {plan.get('name', 'Plan')}</b>\n\n"
                     payment_msg += f"💰 Price: {price_display}\n"
-                    payment_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
+                    payment_msg += f"⏱ Duration: <b>{plan.get('duration_days', 30)} days</b>\n\n"
                     
                     if plan.get('features'):
                         payment_msg += "<b>Features:</b>\n"
@@ -439,18 +439,91 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             payment_msg += f"✅ {feat}\n"
                         payment_msg += "\n"
                     
-                    payment_msg += "⏰ <b>Offer expires in 60 seconds!</b>\n"
                     payment_msg += "━━━━━━━━━━━━━━━\n"
                     payment_msg += "<b>💳 Payment Options:</b>\n\n"
-                    payment_msg += "1️⃣ <b>UPI/QR Code:</b>\n"
-                    payment_msg += "   Pay via any UPI app\n\n"
-                    payment_msg += "2️⃣ After payment, send screenshot to admin\n\n"
-                    payment_msg += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>\n"
-                    payment_msg += "(Share this with admin after payment)"
                     
                     buttons = []
+                    
+                    # Try to create Razorpay Payment Link
+                    razorpay_link = None
+                    if razorpay_client:
+                        try:
+                            # Get callback URL from environment
+                            callback_base = os.environ.get("RAZORPAY_CALLBACK_URL", "")
+                            if not callback_base:
+                                # Try to build from settings
+                                website_link = settings.get("website_link", "")
+                                if website_link and website_link.startswith("http"):
+                                    callback_base = website_link.rstrip("/")
+                            
+                            link_data = {
+                                "amount": final_price * 100,  # Razorpay uses paise
+                                "currency": "INR",
+                                "accept_partial": False,
+                                "description": f"{plan.get('name', 'Plan')} - {plan.get('duration_days', 30)} days",
+                                "customer": {
+                                    "name": username or f"User_{chat_id}",
+                                },
+                                "notify": {
+                                    "sms": False,
+                                    "email": False
+                                },
+                                "reminder_enable": False,
+                                "notes": {
+                                    "chat_id": str(chat_id),
+                                    "plan_id": plan_id,
+                                    "username": username or "",
+                                    "tenant_id": bot_tenant_id,
+                                },
+                                "expire_by": int((datetime.now(timezone.utc) + timedelta(hours=24)).timestamp()),
+                            }
+                            
+                            if callback_base:
+                                link_data["callback_url"] = f"{callback_base}/api/razorpay/callback"
+                                link_data["callback_method"] = "get"
+                            
+                            result = razorpay_client.payment_link.create(link_data)
+                            razorpay_link = result.get("short_url", "")
+                            payment_link_id = result.get("id", "")
+                            
+                            if razorpay_link:
+                                # Save order in DB for callback verification
+                                await db.razorpay_bot_orders.update_one(
+                                    {"chat_id": str(chat_id), "plan_id": plan_id, "status": "created"},
+                                    {"$set": {
+                                        "chat_id": str(chat_id),
+                                        "username": username or "",
+                                        "plan_id": plan_id,
+                                        "plan_name": plan.get('name', 'Plan'),
+                                        "duration_days": plan.get('duration_days', 30),
+                                        "amount": final_price,
+                                        "payment_link_id": payment_link_id,
+                                        "payment_link_url": razorpay_link,
+                                        "status": "created",
+                                        "tenant_id": bot_tenant_id,
+                                        "created_at": datetime.now(timezone.utc).isoformat()
+                                    }},
+                                    upsert=True
+                                )
+                                logger.info(f"Razorpay payment link created for {chat_id}: {razorpay_link}")
+                        except Exception as rp_err:
+                            logger.error(f"Razorpay payment link creation failed: {rp_err}")
+                            razorpay_link = None
+                    
+                    # Add Razorpay button first (if available)
+                    if razorpay_link:
+                        payment_msg += "1️⃣ <b>Razorpay (Cards/UPI/NetBanking):</b>\n"
+                        payment_msg += "   Click below to pay instantly!\n\n"
+                        buttons.append([{"text": "💳 Pay with Razorpay", "url": razorpay_link}])
+                    
+                    # Add QR Code button
                     if qr_code_url:
+                        payment_msg += f"{'2️⃣' if razorpay_link else '1️⃣'} <b>UPI/QR Code:</b>\n"
+                        payment_msg += "   Pay via any UPI app\n\n"
                         buttons.append([{"text": "📱 Show QR Code", "callback_data": f"qr_{plan_id}"}])
+                    
+                    payment_msg += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"
+                    
                     buttons.append([{"text": "✅ I've Paid - Contact Admin", "callback_data": f"paid_{plan_id}"}])
                     buttons.append([{"text": "◀️ Back to Plans", "callback_data": "back_plans"}])
                     
@@ -3238,10 +3311,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 plan_id = text.replace("/start buy_", "").strip()
                 plan = await db.plans.find_one({"id": plan_id, "is_active": True}, {"_id": 0})
                 if plan:
-                    # Simulate buy callback
                     settings = await get_bot_settings()
                     bot_token = settings.get("telegram_bot_token", "")
-                    original_price = int(plan['price'])
+                    original_price = int(plan.get('price', 0))
                     discount_pct = plan.get('discount_percentage', 0)
                     if discount_pct > 0:
                         discounted_price = int(original_price * (100 - discount_pct) / 100)
@@ -3254,23 +3326,73 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     qr_code_url = settings.get("qr_code_url", "")
                     
                     payment_msg = f"🔥 <b>EXCLUSIVE OFFER!</b> 🔥\n\n"
-                    payment_msg += f"<b>📦 {plan['name']}</b>\n\n"
+                    payment_msg += f"<b>📦 {plan.get('name', 'Plan')}</b>\n\n"
                     payment_msg += f"💰 Price: {price_display}\n"
-                    payment_msg += f"⏱ Duration: <b>{plan['duration_days']} days</b>\n\n"
+                    payment_msg += f"⏱ Duration: <b>{plan.get('duration_days', 30)} days</b>\n\n"
                     
                     if plan.get('features'):
                         for feat in plan['features']:
                             payment_msg += f"✅ {feat}\n"
                         payment_msg += "\n"
                     
-                    payment_msg += "⏰ <b>Offer expires in 60 seconds!</b>\n"
                     payment_msg += "━━━━━━━━━━━━━━━\n"
                     payment_msg += "<b>💳 Pay now to get instant access!</b>\n\n"
-                    payment_msg += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"
                     
                     buttons = []
+                    
+                    # Create Razorpay Payment Link
+                    if razorpay_client:
+                        try:
+                            callback_base = os.environ.get("RAZORPAY_CALLBACK_URL", "")
+                            if not callback_base:
+                                website_link = settings.get("website_link", "")
+                                if website_link and website_link.startswith("http"):
+                                    callback_base = website_link.rstrip("/")
+                            
+                            link_data = {
+                                "amount": final_price * 100,
+                                "currency": "INR",
+                                "accept_partial": False,
+                                "description": f"{plan.get('name', 'Plan')} - {plan.get('duration_days', 30)} days",
+                                "customer": {"name": username or f"User_{chat_id}"},
+                                "notify": {"sms": False, "email": False},
+                                "reminder_enable": False,
+                                "notes": {
+                                    "chat_id": str(chat_id),
+                                    "plan_id": plan_id,
+                                    "username": username or "",
+                                    "tenant_id": bot_tenant_id,
+                                },
+                                "expire_by": int((datetime.now(timezone.utc) + timedelta(hours=24)).timestamp()),
+                            }
+                            if callback_base:
+                                link_data["callback_url"] = f"{callback_base}/api/razorpay/callback"
+                                link_data["callback_method"] = "get"
+                            
+                            rp_result = razorpay_client.payment_link.create(link_data)
+                            rp_link = rp_result.get("short_url", "")
+                            if rp_link:
+                                await db.razorpay_bot_orders.update_one(
+                                    {"chat_id": str(chat_id), "plan_id": plan_id, "status": "created"},
+                                    {"$set": {
+                                        "chat_id": str(chat_id), "username": username or "",
+                                        "plan_id": plan_id, "plan_name": plan.get('name', 'Plan'),
+                                        "duration_days": plan.get('duration_days', 30),
+                                        "amount": final_price, "payment_link_id": rp_result.get("id", ""),
+                                        "payment_link_url": rp_link, "status": "created",
+                                        "tenant_id": bot_tenant_id,
+                                        "created_at": datetime.now(timezone.utc).isoformat()
+                                    }}, upsert=True
+                                )
+                                buttons.append([{"text": "💳 Pay with Razorpay", "url": rp_link}])
+                        except Exception as rp_err:
+                            logger.error(f"Razorpay link creation failed in deep link: {rp_err}")
+                    
                     if qr_code_url:
                         buttons.append([{"text": "📱 Show QR Code", "callback_data": f"qr_{plan_id}"}])
+                    
+                    payment_msg += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"
+                    
                     buttons.append([{"text": "✅ I've Paid - Contact Admin", "callback_data": f"paid_{plan_id}"}])
                     buttons.append([{"text": "◀️ Back to Plans", "callback_data": "back_plans"}])
                     
