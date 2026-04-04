@@ -352,11 +352,12 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     # Get plans and settings
                     plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
                     settings = await get_bot_settings()
-                    website_link = settings.get("website_link", "https://miraclecouplee.syke.club")
+                    website_link = settings.get("website_link", "") or ""
                     
                     welcome_msg = f"🎉 <b>Welcome {first_name}!</b>\n\n"
                     welcome_msg += "Thanks for joining our channel! 💕\n\n"
-                    welcome_msg += f"🌐 <b>Visit:</b> {website_link}\n\n"
+                    if website_link and website_link.startswith("http"):
+                        welcome_msg += f"🌐 <b>Visit:</b> {website_link}\n\n"
                     welcome_msg += "🔥 <b>Get Exclusive Content!</b>\n"
                     welcome_msg += "Subscribe now for premium access!\n\n"
                     welcome_msg += "━━━━━━━━━━━━━━━\n"
@@ -364,11 +365,16 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     
                     buttons = []
                     for plan in plans:
-                        plan_price = int(plan['price'])
-                        welcome_msg += f"📦 <b>{plan['name']}</b> - ₹{plan_price}\n"
-                        buttons.append([{"text": f"📦 {plan['name']} - ₹{plan_price}", "callback_data": f"buy_{plan['id']}"}])
+                        plan_price = int(plan.get('price', 0))
+                        plan_name = plan.get('name', 'Plan')
+                        plan_id = plan.get('id', '')
+                        if not plan_id:
+                            continue
+                        welcome_msg += f"📦 <b>{plan_name}</b> - ₹{plan_price}\n"
+                        buttons.append([{"text": f"📦 {plan_name} - ₹{plan_price}", "callback_data": f"buy_{plan_id}"}])
                     
-                    buttons.append([{"text": "🌐 Visit Website", "url": website_link}])
+                    if website_link and website_link.startswith("http"):
+                        buttons.append([{"text": "🌐 Visit Website", "url": website_link}])
                     buttons.append([{"text": "🎁 Special Discount!", "callback_data": "special_discount"}])
                     
                     try:
@@ -645,10 +651,15 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 welcome_msg = "🎯 <b>Choose Your Plan</b>\n\n"
                 buttons = []
                 for plan in plans:
-                    plan_price = int(plan['price'])
-                    welcome_msg += f"📦 <b>{plan['name']}</b>\n"
-                    welcome_msg += f"   💰 ₹{plan_price} • ⏱ {plan['duration_days']} days\n\n"
-                    buttons.append([{"text": f"📦 {plan['name']} - ₹{plan_price}", "callback_data": f"buy_{plan['id']}"}])
+                    plan_price = int(plan.get('price', 0))
+                    plan_name = plan.get('name', 'Plan')
+                    plan_days = plan.get('duration_days', 30)
+                    plan_id = plan.get('id', '')
+                    if not plan_id:
+                        continue
+                    welcome_msg += f"📦 <b>{plan_name}</b>\n"
+                    welcome_msg += f"   💰 ₹{plan_price} • ⏱ {plan_days} days\n\n"
+                    buttons.append([{"text": f"📦 {plan_name} - ₹{plan_price}", "callback_data": f"buy_{plan_id}"}])
                 
                 buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
                 await send_telegram_message_with_buttons(chat_id, welcome_msg, buttons, bot_token)
@@ -3277,11 +3288,12 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
                 
                 settings = await get_bot_settings()
-                website_link = settings.get("website_link", "https://miraclecouplee.syke.club")
+                website_link = settings.get("website_link", "") or ""
                 
                 welcome_msg = "🎉 <b>Welcome!</b>\n\n"
                 welcome_msg += "🔥 <b>Exclusive Content Awaits!</b>\n\n"
-                welcome_msg += f"🌐 <b>Visit:</b> {website_link}\n\n"
+                if website_link and website_link.startswith("http"):
+                    welcome_msg += f"🌐 <b>Visit:</b> {website_link}\n\n"
                 welcome_msg += "━━━━━━━━━━━━━━━\n"
                 welcome_msg += "🎯 <b>Choose Your Plan:</b>\n\n"
                 
@@ -3293,20 +3305,27 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     plan_id = plan.get('id', '')
                     if not plan_id:
                         continue
-                    welcome_msg += f"📦 <b>{plan_name}</b>\n"
+                    # Escape HTML special chars in plan name
+                    safe_name = str(plan_name).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    welcome_msg += f"📦 <b>{safe_name}</b>\n"
                     welcome_msg += f"   💰 ₹{int(plan_price)} • ⏱ {plan_days} days\n\n"
                     buttons.append([{"text": f"📦 {plan_name} - ₹{int(plan_price)}", "callback_data": f"buy_{plan_id}"}])
                 
                 if not plans:
                     welcome_msg += "No plans available at the moment.\n"
                 
-                buttons.append([{"text": "🌐 Visit Website", "url": website_link}])
+                # Only add URL button if website_link is a valid URL
+                if website_link and website_link.startswith("http"):
+                    buttons.append([{"text": "🌐 Visit Website", "url": website_link}])
                 buttons.append([{"text": "🎁 Special Discount For You!", "callback_data": "special_discount"}])
                 buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
                 
+                logger.info(f"/start sending welcome to {chat_id} with {len(plans)} plans, {len(buttons)} button rows, website_link='{website_link[:50] if website_link else 'EMPTY'}'")
                 result = await send_telegram_message_with_buttons(chat_id, welcome_msg, buttons, bot_token)
                 if not result:
                     logger.error(f"/start failed to send welcome message to {chat_id}, bot_token present: {bool(bot_token)}")
+                    # Try sending without buttons as last resort
+                    await send_telegram_message(chat_id, welcome_msg, bot_token)
             except Exception as start_err:
                 logger.error(f"/start handler error for {chat_id}: {start_err}")
                 import traceback

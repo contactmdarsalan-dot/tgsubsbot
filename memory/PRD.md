@@ -157,10 +157,14 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 - Production env vars need user injection
 
 ### Phase 18: Telegram Bot Command Fix (Complete - 2026-04-04)
-- **Root Cause**: `/start` command and 13+ other bot commands (`/status`, `/help`, `/admin`, `/stats`, `/pending`, `/broadcast`, `/users`, `/share`) were NOT passing `bot_token` to `send_telegram_message*` functions
-- **Fix**: All `send_telegram_message` and `send_telegram_message_with_buttons` calls now explicitly pass `bot_token` 
-- **Additional fixes in /start handler**:
+- **Root Cause**: `/start` command had a URL button `{"url": website_link}` that was ALWAYS added even when `website_link` was empty. Telegram API rejects messages with invalid/empty URL buttons (`BUTTON_URL_INVALID`). Other commands (`/status`, `/help`) had no URL buttons so they worked fine.
+- **Fix**: URL button now only added when `website_link` is a valid HTTP URL
+- **Additional fixes**:
+  - All `send_telegram_message*` calls now explicitly pass `bot_token` (13+ commands fixed)
   - Safe `.get()` access for plan fields (prevents `KeyError` on malformed plans)
   - Tenant-isolated plans query (`tenant_id: bot_tenant_id`) with fallback
-  - try/except error handling with logging and fallback message
-- Tested: All commands return `ok:true`, Telegram API called with correct token
+  - Error response body logging in `send_telegram_message_with_buttons`
+  - Fallback: sends plain message if button message fails
+  - HTML entity escaping for plan names
+  - Same URL button fix applied to `chat_member_update` welcome handler
+- Tested: All commands return `ok:true`, correct logging confirms fix

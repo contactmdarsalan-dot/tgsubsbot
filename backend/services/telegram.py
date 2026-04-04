@@ -129,6 +129,7 @@ async def send_telegram_message_with_buttons(chat_id: str, message: str, buttons
                     logger.warning(f"Rate limited, waiting {retry_after}s")
                     await asyncio.sleep(retry_after)
                 else:
+                    logger.error(f"Telegram sendMessage failed ({response.status_code}): {response.text}")
                     return False
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
