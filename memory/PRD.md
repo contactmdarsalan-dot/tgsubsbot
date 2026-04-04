@@ -155,3 +155,12 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 ## Known Issues
 - Resend email OTP: Domain verification pending
 - Production env vars need user injection
+
+### Phase 18: Telegram Bot Command Fix (Complete - 2026-04-04)
+- **Root Cause**: `/start` command and 13+ other bot commands (`/status`, `/help`, `/admin`, `/stats`, `/pending`, `/broadcast`, `/users`, `/share`) were NOT passing `bot_token` to `send_telegram_message*` functions
+- **Fix**: All `send_telegram_message` and `send_telegram_message_with_buttons` calls now explicitly pass `bot_token` 
+- **Additional fixes in /start handler**:
+  - Safe `.get()` access for plan fields (prevents `KeyError` on malformed plans)
+  - Tenant-isolated plans query (`tenant_id: bot_tenant_id`) with fallback
+  - try/except error handling with logging and fallback message
+- Tested: All commands return `ok:true`, Telegram API called with correct token

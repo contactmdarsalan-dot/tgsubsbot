@@ -3269,33 +3269,49 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     return {"ok": True}
             
             # Show plans directly - fetch from database dynamically
-            plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
-            settings = await get_bot_settings()
-            website_link = settings.get("website_link", "https://miraclecouplee.syke.club")
-            
-            welcome_msg = "🎉 <b>Welcome!</b>\n\n"
-            welcome_msg += "🔥 <b>Exclusive Content Awaits!</b>\n\n"
-            welcome_msg += f"🌐 <b>Visit:</b> {website_link}\n\n"
-            welcome_msg += "━━━━━━━━━━━━━━━\n"
-            welcome_msg += "🎯 <b>Choose Your Plan:</b>\n\n"
-            
-            buttons = []
-            for plan in plans:
-                # Show actual price from database (no inflation)
-                plan_price = plan['price']
-                welcome_msg += f"📦 <b>{plan['name']}</b>\n"
-                welcome_msg += f"   💰 ₹{int(plan_price)} • ⏱ {plan['duration_days']} days\n\n"
-                buttons.append([{"text": f"📦 {plan['name']} - ₹{int(plan_price)}", "callback_data": f"buy_{plan['id']}"}])
-            
-            if not plans:
-                welcome_msg += "No plans available at the moment.\n"
-            
-            # Add website link button, Special Discount and Status
-            buttons.append([{"text": "🌐 Visit Website", "url": website_link}])
-            buttons.append([{"text": "🎁 Special Discount For You!", "callback_data": "special_discount"}])
-            buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
-            
-            await send_telegram_message_with_buttons(chat_id, welcome_msg, buttons)
+            try:
+                plans_query = {"is_active": True, "tenant_id": bot_tenant_id}
+                plans = await db.plans.find(plans_query, {"_id": 0}).to_list(10)
+                # Fallback: if no tenant-specific plans, try without tenant filter
+                if not plans:
+                    plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+                
+                settings = await get_bot_settings()
+                website_link = settings.get("website_link", "https://miraclecouplee.syke.club")
+                
+                welcome_msg = "🎉 <b>Welcome!</b>\n\n"
+                welcome_msg += "🔥 <b>Exclusive Content Awaits!</b>\n\n"
+                welcome_msg += f"🌐 <b>Visit:</b> {website_link}\n\n"
+                welcome_msg += "━━━━━━━━━━━━━━━\n"
+                welcome_msg += "🎯 <b>Choose Your Plan:</b>\n\n"
+                
+                buttons = []
+                for plan in plans:
+                    plan_price = plan.get('price', 0)
+                    plan_name = plan.get('name', 'Plan')
+                    plan_days = plan.get('duration_days', 30)
+                    plan_id = plan.get('id', '')
+                    if not plan_id:
+                        continue
+                    welcome_msg += f"📦 <b>{plan_name}</b>\n"
+                    welcome_msg += f"   💰 ₹{int(plan_price)} • ⏱ {plan_days} days\n\n"
+                    buttons.append([{"text": f"📦 {plan_name} - ₹{int(plan_price)}", "callback_data": f"buy_{plan_id}"}])
+                
+                if not plans:
+                    welcome_msg += "No plans available at the moment.\n"
+                
+                buttons.append([{"text": "🌐 Visit Website", "url": website_link}])
+                buttons.append([{"text": "🎁 Special Discount For You!", "callback_data": "special_discount"}])
+                buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
+                
+                result = await send_telegram_message_with_buttons(chat_id, welcome_msg, buttons, bot_token)
+                if not result:
+                    logger.error(f"/start failed to send welcome message to {chat_id}, bot_token present: {bool(bot_token)}")
+            except Exception as start_err:
+                logger.error(f"/start handler error for {chat_id}: {start_err}")
+                import traceback
+                logger.error(traceback.format_exc())
+                await send_telegram_message(chat_id, "🎉 Welcome! Use /plans to see available plans.", bot_token)
         
         elif text == "/status":
             subscriber = await db.subscribers.find_one({"telegram_user_id": chat_id}, {"_id": 0})
@@ -3313,7 +3329,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 status_msg = "❌ You don't have an active subscription.\n\nUse /start to see available plans!"
             
             buttons = [[{"text": "📦 View Plans", "callback_data": "back_plans"}]]
-            await send_telegram_message_with_buttons(chat_id, status_msg, buttons)
+            await send_telegram_message_with_buttons(chat_id, status_msg, buttons, bot_token)
         
         elif text == "/help":
             help_msg = "🤖 <b>Bot Commands</b>\n\n"
@@ -3325,14 +3341,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             help_msg += "/share - Get shareable message\n"
             help_msg += "/help - Show this help message\n\n"
             help_msg += "💬 You can also ask me any questions!"
-            await send_telegram_message(chat_id, help_msg)
+            await send_telegram_message(chat_id, help_msg, bot_token)
         
         # Handle /admin command - show admin panel for authorized users
         elif text == "/admin":
             is_admin = await is_admin_or_creator(chat_id, username)
             
             if not is_admin:
-                await send_telegram_message(chat_id, "❌ You don't have admin access. Contact the bot owner to get admin permissions.")
+                await send_telegram_message(chat_id, "❌ You don't have admin access. Contact the bot owner to get admin permissions.", bot_token)
                 return {"ok": True}
             
             # Get admin's permissions
@@ -3403,7 +3419,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         elif text == "/stats":
             is_admin = await is_admin_or_creator(chat_id, username)
             if not is_admin:
-                await send_telegram_message(chat_id, "❌ Admin access required.")
+                await send_telegram_message(chat_id, "❌ Admin access required.", bot_token)
                 return {"ok": True}
             
             total_subs = await db.subscribers.count_documents({})
@@ -3429,19 +3445,19 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             stats_msg += f"💰 <b>Revenue: ₹{int(total_revenue):,}</b>\n"
             stats_msg += f"📦 <b>Active Plans: {total_plans}</b>"
             
-            await send_telegram_message(chat_id, stats_msg)
+            await send_telegram_message(chat_id, stats_msg, bot_token)
         
         # Handle /pending command for admins
         elif text == "/pending":
             is_admin = await is_admin_or_creator(chat_id, username)
             if not is_admin:
-                await send_telegram_message(chat_id, "❌ Admin access required.")
+                await send_telegram_message(chat_id, "❌ Admin access required.", bot_token)
                 return {"ok": True}
             
             pending = await db.payments.find({"status": "pending"}, {"_id": 0}).sort("created_at", -1).limit(10).to_list(10)
             
             if not pending:
-                await send_telegram_message(chat_id, "✅ No pending payments!")
+                await send_telegram_message(chat_id, "✅ No pending payments!", bot_token)
                 return {"ok": True}
             
             msg = f"💳 <b>Pending Payments ({len(pending)})</b>\n━━━━━━━━━━━━━━━\n\n"
@@ -3458,12 +3474,12 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         elif text and text.startswith("/broadcast "):
             is_admin = await is_admin_or_creator(chat_id, username)
             if not is_admin:
-                await send_telegram_message(chat_id, "❌ Admin access required.")
+                await send_telegram_message(chat_id, "❌ Admin access required.", bot_token)
                 return {"ok": True}
             
             broadcast_text = text.replace("/broadcast ", "", 1).strip()
             if not broadcast_text:
-                await send_telegram_message(chat_id, "Usage: /broadcast Your message here")
+                await send_telegram_message(chat_id, "Usage: /broadcast Your message here", bot_token)
                 return {"ok": True}
             
             # Get all bot users
@@ -3492,13 +3508,13 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         elif text == "/users":
             is_admin = await is_admin_or_creator(chat_id, username)
             if not is_admin:
-                await send_telegram_message(chat_id, "❌ Admin access required.")
+                await send_telegram_message(chat_id, "❌ Admin access required.", bot_token)
                 return {"ok": True}
             
             recent_users = await db.bot_users.find({}, {"_id": 0}).sort("last_seen", -1).limit(10).to_list(10)
             
             if not recent_users:
-                await send_telegram_message(chat_id, "No users found.")
+                await send_telegram_message(chat_id, "No users found.", bot_token)
                 return {"ok": True}
             
             msg = f"👥 <b>Recent Users ({len(recent_users)})</b>\n━━━━━━━━━━━━━━━\n\n"
@@ -3508,7 +3524,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     msg += f" - {u['first_name']}"
                 msg += "\n"
             
-            await send_telegram_message(chat_id, msg)
+            await send_telegram_message(chat_id, msg, bot_token)
         
         # Handle /plan command - share specific plan
         elif text.startswith("/plan"):
@@ -3602,7 +3618,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 buttons.append([{"text": "🚀 Subscribe Now", "url": f"https://t.me/{bot_username}?start=subscribe"}])
             buttons.append([{"text": "📞 Contact Admin", "url": f"https://t.me/{bot_username}"}])
             
-            await send_telegram_message_with_buttons(chat_id, share_msg, buttons)
+            await send_telegram_message_with_buttons(chat_id, share_msg, buttons, bot_token)
             
             # Also send instruction
             await send_telegram_message(chat_id, "👆 Forward this message to your groups!\n\nThe buttons will work for everyone.", bot_token)
