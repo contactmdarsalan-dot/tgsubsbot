@@ -269,16 +269,31 @@ async def update_settings(settings: BotSettings, user=Depends(get_current_user))
     settings_id = f"bot_settings_{tenant_id}" if tenant_id else "bot_settings"
     doc = settings.model_dump()
     doc["id"] = settings_id
-    # Ensure tenant_id is stored so webhook can resolve the correct tenant
     if tenant_id:
         doc["tenant_id"] = tenant_id
+
+    # Preserve critical fields if new value is empty (don't accidentally wipe bot token)
+    critical_fields = ["telegram_bot_token", "telegram_channel_id"]
+    existing = await db.settings.find_one({"id": settings_id}, {"_id": 0})
+    if existing:
+        for field in critical_fields:
+            if not doc.get(field) and existing.get(field):
+                doc[field] = existing[field]
+
     await db.settings.update_one({"id": settings_id}, {"$set": doc}, upsert=True)
-    # Also update the default "bot_settings" doc so the webhook picks it up
-    # (webhook reads by bot_token match or falls back to "bot_settings")
+
+    # Also sync to default "bot_settings" doc so webhook picks it up
     if tenant_id:
         default_doc = dict(doc)
         default_doc["id"] = "bot_settings"
+        # Preserve critical fields from the default doc too
+        existing_default = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0})
+        if existing_default:
+            for field in critical_fields:
+                if not default_doc.get(field) and existing_default.get(field):
+                    default_doc[field] = existing_default[field]
         await db.settings.update_one({"id": "bot_settings"}, {"$set": default_doc}, upsert=True)
+
     # Clear ALL cached settings so bot picks up changes immediately
     await cache_delete("bot_settings")
     await cache_delete(settings_id)
