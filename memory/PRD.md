@@ -176,3 +176,14 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 - **Modified**: `telegram_webhook.py` (buy_ callback + /start buy_ deep link), `server.py` (route registration)
 - **Config**: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, optional `RAZORPAY_CALLBACK_URL`
 - **DB**: New `razorpay_bot_orders` collection for payment tracking
+
+### Phase 20: Enhanced Tenant Management (Complete - 2026-04-05)
+- **Feature**: Complete CRUD for Tenant Management with professional-grade admin tools
+- **Changes**:
+  - Email input replaced with searchable user dropdown (37 registered users)
+  - Change Owner dialog with user select
+  - Permanent Delete with confirmation text safety
+  - Reactivate inactive tenants
+  - Data Isolation Report tab with summary cards + per-tenant data breakdown
+- **New APIs**: `GET /api/saas/all-users-dropdown`, `PUT /api/saas/tenants/{id}/change-owner`, `DELETE /api/saas/tenants/{id}/permanent`, `PUT /api/saas/tenants/{id}/reactivate`, `GET /api/saas/tenant-isolation-report`
+- **Tested**: 23/23 backend tests passed, all frontend features verified (Iteration 35)
