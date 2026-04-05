@@ -129,7 +129,7 @@ export default function SaaSManagement() {
   const reactivateTenant = async (id) => { try { await axios.put(`${API}/saas/tenants/${id}/reactivate`, {}, getAuth()); toast.success("Tenant reactivated!"); fetchTenants(); } catch (e) { toast.error(e.response?.data?.detail || "Failed"); } };
   const openDeleteDialog = (t) => { setDeleteTenantData(t); setDeleteConfirmText(""); setDeleteDialog(true); };
   const permanentlyDeleteTenant = async () => {
-    if (deleteConfirmText !== deleteTenant?.name) { toast.error("Type the exact tenant name to confirm"); return; }
+    if (deleteConfirmText !== deleteTenant?.email) { toast.error("Type the exact tenant email to confirm"); return; }
     try { await axios.delete(`${API}/saas/tenants/${deleteTenant.tenant_id}/permanent`, getAuth()); toast.success("Tenant permanently deleted"); setDeleteDialog(false); fetchTenants(); } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
   };
   const openChangeOwnerDialog = (t) => {
@@ -305,6 +305,7 @@ export default function SaaSManagement() {
                     <TableCell>
                       <p className="font-medium text-white">{t.name || t.tenant_id}</p>
                       <p className="text-xs text-muted-foreground">{t.email}</p>
+                      <p className="text-[10px] text-muted-foreground/60 font-mono">{t.tenant_id}</p>
                     </TableCell>
                     <TableCell className="text-sm text-white">{t.bot_username ? `@${t.bot_username}` : "-"}</TableCell>
                     <TableCell className="text-white">{t.stats?.total_users || 0}</TableCell>
@@ -1011,7 +1012,8 @@ export default function SaaSManagement() {
           <div className="space-y-4">
             <div className="p-3 rounded-lg bg-muted/50 border">
               <p className="text-sm font-medium text-white">{changeOwnerTenant?.name}</p>
-              <p className="text-xs text-muted-foreground">Current Owner: {changeOwnerTenant?.email || "None"}</p>
+              <p className="text-xs text-muted-foreground">Current Owner: <span className="text-white">{changeOwnerTenant?.email || "None"}</span></p>
+              <p className="text-[10px] text-muted-foreground/60 font-mono">ID: {changeOwnerTenant?.tenant_id}</p>
             </div>
             <div>
               <Label>New Owner (Select User)</Label>
@@ -1043,19 +1045,24 @@ export default function SaaSManagement() {
           <div className="space-y-4">
             <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30">
               <p className="text-sm font-medium text-destructive">WARNING: This action is irreversible!</p>
-              <p className="text-xs text-muted-foreground mt-1">All data including users, payments, plans, broadcasts, and settings for <strong className="text-white">{deleteTenant?.name}</strong> will be permanently deleted.</p>
+              <p className="text-xs text-muted-foreground mt-1">All data including users, payments, plans, broadcasts, and settings for this tenant will be permanently deleted.</p>
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-white"><strong>Name:</strong> {deleteTenant?.name}</p>
+                <p className="text-xs text-white"><strong>Email:</strong> {deleteTenant?.email}</p>
+                <p className="text-xs text-muted-foreground"><strong>Tenant ID:</strong> {deleteTenant?.tenant_id}</p>
+              </div>
             </div>
             <div>
-              <Label>Type <strong className="text-destructive">"{deleteTenant?.name}"</strong> to confirm</Label>
+              <Label>Type <strong className="text-destructive">"{deleteTenant?.email}"</strong> to confirm</Label>
               <Input
                 value={deleteConfirmText}
                 onChange={e => setDeleteConfirmText(e.target.value)}
-                placeholder={deleteTenant?.name}
+                placeholder={deleteTenant?.email}
                 className="mt-1"
                 data-testid="delete-confirm-input"
               />
             </div>
-            <Button variant="destructive" className="w-full" onClick={permanentlyDeleteTenant} disabled={deleteConfirmText !== deleteTenant?.name} data-testid="confirm-delete-tenant-btn">
+            <Button variant="destructive" className="w-full" onClick={permanentlyDeleteTenant} disabled={deleteConfirmText !== deleteTenant?.email} data-testid="confirm-delete-tenant-btn">
               <Trash2 className="w-4 h-4 mr-1" /> Delete Permanently
             </Button>
           </div>
