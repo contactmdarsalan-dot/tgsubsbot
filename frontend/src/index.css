@@ -29,7 +29,8 @@ code {
 
 /* Neon Lime + Deep Black Theme - Inspired by Prism Scripts */
 @layer base {
-    :root {
+    :root, .dark {
+        color-scheme: dark;
         --background: 0 0% 2%;
         --foreground: 0 0% 100%;
         --card: 0 0% 5%;
