@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Switch } from "../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Users, Package, Shield, Crown, Plus, Edit, Trash2, CheckCircle, XCircle, UserPlus, ArrowRightLeft, Loader2, CreditCard, Check, X, Clock, RefreshCw, Zap, Settings, Eye, EyeOff, KeyRound } from "lucide-react";
+import { Users, Package, Shield, Crown, Plus, Edit, Trash2, CheckCircle, XCircle, UserPlus, ArrowRightLeft, Loader2, CreditCard, Check, X, Clock, RefreshCw, Zap, Settings, Eye, EyeOff, KeyRound, AlertTriangle, FileText, RotateCcw, UserCog } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const getAuth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
@@ -76,6 +76,24 @@ export default function SaaSManagement() {
 
   const [migrating, setMigrating] = useState(false);
 
+  // All users for dropdown
+  const [allUsers, setAllUsers] = useState([]);
+  const [userSearchTerm, setUserSearchTerm] = useState("");
+
+  // Change owner dialog
+  const [changeOwnerDialog, setChangeOwnerDialog] = useState(false);
+  const [changeOwnerTenant, setChangeOwnerTenant] = useState(null);
+  const [changeOwnerForm, setChangeOwnerForm] = useState({ email: "", name: "", owner_telegram_id: "" });
+
+  // Delete confirmation dialog
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [deleteTenant, setDeleteTenantData] = useState(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
+  // Isolation report
+  const [isolationReport, setIsolationReport] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+
   // ===== FETCHERS =====
   const fetchTenants = useCallback(async () => { try { const { data } = await axios.get(`${API}/saas/tenants`, getAuth()); setTenants(data); } catch (e) { console.error(e); } }, []);
   const fetchPlans = useCallback(async () => { try { const { data } = await axios.get(`${API}/saas/bot-plans`, getAuth()); setPlans(data); } catch (e) { console.error(e); } }, []);
@@ -84,10 +102,11 @@ export default function SaaSManagement() {
   const fetchDashPlans = useCallback(async () => { try { const { data } = await axios.get(`${API}/admin/dashboard-plans`, getAuth()); setDashPlans(data); } catch (e) { console.error(e); } }, []);
   const fetchTrialConfig = useCallback(async () => { try { const { data } = await axios.get(`${API}/trial/config`, getAuth()); setTrialConfig(data); setTrialForm(data); } catch (e) { console.error(e); } }, []);
   const fetchTrialAccounts = useCallback(async () => { try { const { data } = await axios.get(`${API}/trial/accounts`, getAuth()); setTrialAccounts(data); } catch (e) { console.error(e); } }, []);
+  const fetchAllUsers = useCallback(async () => { try { const { data } = await axios.get(`${API}/saas/all-users-dropdown`, getAuth()); setAllUsers(data); } catch (e) { console.error(e); } }, []);
 
   useEffect(() => {
-    Promise.all([fetchTenants(), fetchPlans(), fetchTenantAdmins(), fetchSubscriptions(), fetchDashPlans(), fetchTrialConfig(), fetchTrialAccounts()]).finally(() => setLoading(false));
-  }, [fetchTenants, fetchPlans, fetchTenantAdmins, fetchSubscriptions, fetchDashPlans, fetchTrialConfig, fetchTrialAccounts]);
+    Promise.all([fetchTenants(), fetchPlans(), fetchTenantAdmins(), fetchSubscriptions(), fetchDashPlans(), fetchTrialConfig(), fetchTrialAccounts(), fetchAllUsers()]).finally(() => setLoading(false));
+  }, [fetchTenants, fetchPlans, fetchTenantAdmins, fetchSubscriptions, fetchDashPlans, fetchTrialConfig, fetchTrialAccounts, fetchAllUsers]);
 
   // ===== PLAN CRUD =====
   const openPlanDialog = (plan = null) => {
@@ -107,6 +126,25 @@ export default function SaaSManagement() {
   };
   const saveTenant = async () => { try { if (editingTenant) { await axios.put(`${API}/saas/tenants/${editingTenant.tenant_id}`, tenantForm, getAuth()); toast.success("Tenant updated"); } else { await axios.post(`${API}/saas/tenants`, tenantForm, getAuth()); toast.success("Tenant created"); } fetchTenants(); setTenantDialog(false); } catch (e) { toast.error(e.response?.data?.detail || "Failed"); } };
   const deactivateTenant = async (id) => { if (!window.confirm("Deactivate?")) return; try { await axios.delete(`${API}/saas/tenants/${id}`, getAuth()); toast.success("Deactivated"); fetchTenants(); } catch (e) { toast.error("Failed"); } };
+  const reactivateTenant = async (id) => { try { await axios.put(`${API}/saas/tenants/${id}/reactivate`, {}, getAuth()); toast.success("Tenant reactivated!"); fetchTenants(); } catch (e) { toast.error(e.response?.data?.detail || "Failed"); } };
+  const openDeleteDialog = (t) => { setDeleteTenantData(t); setDeleteConfirmText(""); setDeleteDialog(true); };
+  const permanentlyDeleteTenant = async () => {
+    if (deleteConfirmText !== deleteTenant?.name) { toast.error("Type the exact tenant name to confirm"); return; }
+    try { await axios.delete(`${API}/saas/tenants/${deleteTenant.tenant_id}/permanent`, getAuth()); toast.success("Tenant permanently deleted"); setDeleteDialog(false); fetchTenants(); } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
+  };
+  const openChangeOwnerDialog = (t) => {
+    setChangeOwnerTenant(t);
+    setChangeOwnerForm({ email: t.email || "", name: t.name || "", owner_telegram_id: t.owner_telegram_id || "" });
+    setChangeOwnerDialog(true);
+  };
+  const changeOwner = async () => {
+    try { await axios.put(`${API}/saas/tenants/${changeOwnerTenant.tenant_id}/change-owner`, changeOwnerForm, getAuth()); toast.success("Owner changed!"); setChangeOwnerDialog(false); fetchTenants(); } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
+  };
+  const fetchIsolationReport = async () => {
+    setReportLoading(true);
+    try { const { data } = await axios.get(`${API}/saas/tenant-isolation-report`, getAuth()); setIsolationReport(data); } catch (e) { toast.error("Failed to fetch report"); }
+    finally { setReportLoading(false); }
+  };
   const migrateData = async (t) => { if (!window.confirm(`Migrate ALL unmapped data to "${t.name}"?`)) return; setMigrating(true); try { const { data } = await axios.post(`${API}/saas/migrate-to-tenant`, { target_tenant_id: t.tenant_id, target_tenant_name: t.name }, getAuth()); toast.success(`${data.total_migrated} docs migrated`); fetchTenants(); } catch (e) { toast.error(e.response?.data?.detail || "Failed"); } finally { setMigrating(false); } };
 
   // ===== TENANT ADMIN CRUD =====
@@ -233,12 +271,13 @@ export default function SaaSManagement() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList data-testid="saas-tabs" className="grid grid-cols-5 w-full max-w-3xl">
+        <TabsList data-testid="saas-tabs" className="grid grid-cols-6 w-full max-w-4xl">
           <TabsTrigger value="tenants" data-testid="saas-tab-tenants"><Users className="w-4 h-4 mr-1" /> Tenants</TabsTrigger>
           <TabsTrigger value="admins" data-testid="saas-tab-admins"><Shield className="w-4 h-4 mr-1" /> Admins</TabsTrigger>
           <TabsTrigger value="subscriptions" data-testid="saas-tab-subs"><CreditCard className="w-4 h-4 mr-1" /> Subs</TabsTrigger>
           <TabsTrigger value="trials" data-testid="saas-tab-trials"><Clock className="w-4 h-4 mr-1" /> Trials</TabsTrigger>
           <TabsTrigger value="plans" data-testid="saas-tab-plans"><Package className="w-4 h-4 mr-1" /> Plans</TabsTrigger>
+          <TabsTrigger value="isolation" data-testid="saas-tab-isolation" onClick={() => { if (!isolationReport) fetchIsolationReport(); }}><FileText className="w-4 h-4 mr-1" /> Isolation</TabsTrigger>
         </TabsList>
 
         {/* ===== TENANTS TAB ===== */}
@@ -276,8 +315,14 @@ export default function SaaSManagement() {
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openBotAdminDialog(t)} title="Bot Admins"><UserPlus className="w-4 h-4 text-blue-400" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => openTenantDialog(t)} title="Edit"><Edit className="w-4 h-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => migrateData(t)} disabled={migrating} title="Migrate"><ArrowRightLeft className="w-4 h-4 text-amber-500" /></Button>
-                        {t.status !== "inactive" && <Button variant="ghost" size="icon" onClick={() => deactivateTenant(t.tenant_id)} title="Deactivate"><XCircle className="w-4 h-4 text-destructive" /></Button>}
+                        <Button variant="ghost" size="icon" onClick={() => openChangeOwnerDialog(t)} title="Change Owner"><UserCog className="w-4 h-4 text-amber-400" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => migrateData(t)} disabled={migrating} title="Migrate"><ArrowRightLeft className="w-4 h-4 text-cyan-500" /></Button>
+                        {t.status === "inactive" ? (
+                          <Button variant="ghost" size="icon" onClick={() => reactivateTenant(t.tenant_id)} title="Reactivate"><RotateCcw className="w-4 h-4 text-emerald-500" /></Button>
+                        ) : (
+                          <Button variant="ghost" size="icon" onClick={() => deactivateTenant(t.tenant_id)} title="Deactivate"><XCircle className="w-4 h-4 text-amber-500" /></Button>
+                        )}
+                        <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(t)} title="Delete Permanently"><Trash2 className="w-4 h-4 text-destructive" /></Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -535,6 +580,109 @@ export default function SaaSManagement() {
             </div>
           )}
         </TabsContent>
+
+        {/* ===== DATA ISOLATION REPORT TAB ===== */}
+        <TabsContent value="isolation" className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg font-semibold text-white">Tenant Data Isolation Report</h2>
+            <Button onClick={fetchIsolationReport} disabled={reportLoading} variant="outline" data-testid="refresh-report-btn">
+              {reportLoading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />} Refresh Report
+            </Button>
+          </div>
+
+          {reportLoading && !isolationReport && (
+            <div className="flex items-center justify-center h-32"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+          )}
+
+          {isolationReport && (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-4 gap-4">
+                <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-white">{isolationReport.total_tenants}</p><p className="text-xs text-muted-foreground">Total Tenants</p></CardContent></Card>
+                <Card><CardContent className="p-4 text-center">
+                  <p className={`text-2xl font-bold ${isolationReport.summary?.isolation_status === "CLEAN" ? "text-emerald-500" : "text-destructive"}`}>
+                    {isolationReport.summary?.isolation_status === "CLEAN" ? "CLEAN" : "ISSUES"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Isolation Status</p>
+                </CardContent></Card>
+                <Card><CardContent className="p-4 text-center"><p className={`text-2xl font-bold ${isolationReport.summary?.total_orphaned_records > 0 ? "text-amber-500" : "text-emerald-500"}`}>{isolationReport.summary?.total_orphaned_records || 0}</p><p className="text-xs text-muted-foreground">Orphaned Records</p></CardContent></Card>
+                <Card><CardContent className="p-4 text-center"><p className={`text-2xl font-bold ${isolationReport.summary?.total_cross_tenant_issues > 0 ? "text-destructive" : "text-emerald-500"}`}>{isolationReport.summary?.total_cross_tenant_issues || 0}</p><p className="text-xs text-muted-foreground">Cross-Tenant Issues</p></CardContent></Card>
+              </div>
+
+              {/* Orphaned Data Warning */}
+              {Object.keys(isolationReport.orphaned_data || {}).length > 0 && (
+                <Card className="border-amber-500/30">
+                  <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-amber-500"><AlertTriangle className="w-4 h-4" /> Orphaned Data Found</CardTitle></CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-2">
+                      {Object.entries(isolationReport.orphaned_data).map(([coll, count]) => (
+                        <div key={coll} className="flex justify-between items-center p-2 rounded bg-muted/50">
+                          <span className="text-sm text-white">{coll.replace(/_/g, " ")}</span>
+                          <Badge variant="secondary">{count} records</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Cross-Tenant Issues */}
+              {(isolationReport.cross_tenant_issues || []).length > 0 && (
+                <Card className="border-destructive/30">
+                  <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-destructive"><AlertTriangle className="w-4 h-4" /> Cross-Tenant Issues</CardTitle></CardHeader>
+                  <CardContent>
+                    {isolationReport.cross_tenant_issues.map((issue, i) => (
+                      <div key={i} className="p-2 rounded bg-muted/50 mb-2">
+                        <p className="text-sm text-white">{issue.description}</p>
+                        <Badge variant="destructive" className="mt-1">{issue.count} affected</Badge>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Per-Tenant Data Breakdown */}
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Per-Tenant Data Breakdown</CardTitle></CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tenant</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Users</TableHead>
+                        <TableHead>Subs</TableHead>
+                        <TableHead>Payments</TableHead>
+                        <TableHead>Plans</TableHead>
+                        <TableHead>Admins</TableHead>
+                        <TableHead>Posts</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(isolationReport.tenants || []).map(t => (
+                        <TableRow key={t.tenant_id} data-testid={`isolation-row-${t.tenant_id}`}>
+                          <TableCell>
+                            <p className="font-medium text-white text-sm">{t.name || t.tenant_id}</p>
+                            <p className="text-[10px] text-muted-foreground">{t.email}</p>
+                          </TableCell>
+                          <TableCell><Badge variant={t.status === "active" ? "default" : "destructive"} className="text-xs">{t.status}</Badge></TableCell>
+                          <TableCell className="text-white text-sm">{t.data_counts?.bot_users || 0}</TableCell>
+                          <TableCell className="text-white text-sm">{t.data_counts?.subscribers || 0}</TableCell>
+                          <TableCell className="text-white text-sm">{t.data_counts?.payments || 0}</TableCell>
+                          <TableCell className="text-white text-sm">{t.data_counts?.plans || 0}</TableCell>
+                          <TableCell className="text-white text-sm">{t.data_counts?.dashboard_admins || 0}</TableCell>
+                          <TableCell className="text-white text-sm">{t.data_counts?.paid_posts || 0}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+
+              <p className="text-xs text-muted-foreground text-right">Report generated: {isolationReport.generated_at ? new Date(isolationReport.generated_at).toLocaleString() : "-"}</p>
+            </>
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* ===== PLAN DIALOG ===== */}
@@ -573,7 +721,41 @@ export default function SaaSManagement() {
           <DialogHeader><DialogTitle>{editingTenant ? "Edit Tenant" : "New Tenant"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Creator Name</Label><Input value={tenantForm.name} onChange={e => setTenantForm(p => ({ ...p, name: e.target.value }))} placeholder="Creator name" /></div>
-            <div><Label>Email</Label><Input value={tenantForm.email} onChange={e => setTenantForm(p => ({ ...p, email: e.target.value }))} placeholder="creator@email.com" /></div>
+            <div>
+              <Label>Select User (Email)</Label>
+              <div className="relative">
+                <Input
+                  value={userSearchTerm || tenantForm.email}
+                  onChange={e => { setUserSearchTerm(e.target.value); setTenantForm(p => ({ ...p, email: e.target.value })); }}
+                  placeholder="Search users by email..."
+                  data-testid="tenant-email-search"
+                />
+                {userSearchTerm && (
+                  <div className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto border rounded-lg bg-popover shadow-lg">
+                    {allUsers
+                      .filter(u => u.email && u.email.toLowerCase().includes(userSearchTerm.toLowerCase()))
+                      .slice(0, 10)
+                      .map(u => (
+                        <button
+                          key={u.id || u.email}
+                          className="w-full text-left px-3 py-2 hover:bg-muted/50 border-b border-border/50 last:border-0"
+                          onClick={() => {
+                            setTenantForm(p => ({ ...p, email: u.email, name: p.name || u.name || "" }));
+                            setUserSearchTerm("");
+                          }}
+                          data-testid={`user-option-${u.email}`}
+                        >
+                          <p className="text-sm text-white font-medium">{u.name || "No name"}</p>
+                          <p className="text-xs text-muted-foreground">{u.email} <span className="text-[10px] ml-1 px-1 py-0.5 rounded bg-muted">{u.role || "user"}</span></p>
+                        </button>
+                      ))}
+                    {allUsers.filter(u => u.email && u.email.toLowerCase().includes(userSearchTerm.toLowerCase())).length === 0 && (
+                      <p className="text-xs text-muted-foreground p-3 text-center">No users found</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
             <div><Label>Owner Telegram ID</Label><Input value={tenantForm.owner_telegram_id} onChange={e => setTenantForm(p => ({ ...p, owner_telegram_id: e.target.value }))} placeholder="123456789" /></div>
             <div><Label>Bot Token</Label><Input value={tenantForm.bot_token} onChange={e => setTenantForm(p => ({ ...p, bot_token: e.target.value }))} placeholder="Bot token" /></div>
             <div><Label>Bot Username</Label><Input value={tenantForm.bot_username} onChange={e => setTenantForm(p => ({ ...p, bot_username: e.target.value }))} placeholder="@botusername" /></div>
@@ -817,6 +999,64 @@ export default function SaaSManagement() {
             <div><Label>Duration (days)</Label><Input type="number" value={convertForm.duration_days} onChange={e => setConvertForm(p => ({ ...p, duration_days: parseInt(e.target.value) || 30 }))} /></div>
             <Button className="w-full" onClick={convertTrial} disabled={!convertForm.plan_id}>
               <Zap className="w-4 h-4 mr-1" /> Convert to Paid
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== CHANGE OWNER DIALOG ===== */}
+      <Dialog open={changeOwnerDialog} onOpenChange={setChangeOwnerDialog}>
+        <DialogContent className="max-w-md" data-testid="change-owner-dialog">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><UserCog className="w-5 h-5 text-amber-400" /> Change Tenant Owner</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="p-3 rounded-lg bg-muted/50 border">
+              <p className="text-sm font-medium text-white">{changeOwnerTenant?.name}</p>
+              <p className="text-xs text-muted-foreground">Current Owner: {changeOwnerTenant?.email || "None"}</p>
+            </div>
+            <div>
+              <Label>New Owner (Select User)</Label>
+              <Select value={changeOwnerForm.email} onValueChange={v => {
+                const u = allUsers.find(u => u.email === v);
+                setChangeOwnerForm(p => ({ ...p, email: v, name: u?.name || p.name }));
+              }}>
+                <SelectTrigger data-testid="change-owner-select"><SelectValue placeholder="Select new owner..." /></SelectTrigger>
+                <SelectContent>
+                  {allUsers.filter(u => u.email).map(u => (
+                    <SelectItem key={u.id || u.email} value={u.email}>{u.name || u.email} - {u.email}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label>Owner Name</Label><Input value={changeOwnerForm.name} onChange={e => setChangeOwnerForm(p => ({ ...p, name: e.target.value }))} placeholder="New owner name" /></div>
+            <div><Label>Owner Telegram ID</Label><Input value={changeOwnerForm.owner_telegram_id} onChange={e => setChangeOwnerForm(p => ({ ...p, owner_telegram_id: e.target.value }))} placeholder="Telegram ID" /></div>
+            <Button className="w-full" onClick={changeOwner} disabled={!changeOwnerForm.email.trim()} data-testid="confirm-change-owner-btn">
+              <UserCog className="w-4 h-4 mr-1" /> Change Owner
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== PERMANENT DELETE DIALOG ===== */}
+      <Dialog open={deleteDialog} onOpenChange={setDeleteDialog}>
+        <DialogContent className="max-w-md" data-testid="delete-tenant-dialog">
+          <DialogHeader><DialogTitle className="flex items-center gap-2 text-destructive"><AlertTriangle className="w-5 h-5" /> Permanently Delete Tenant</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30">
+              <p className="text-sm font-medium text-destructive">WARNING: This action is irreversible!</p>
+              <p className="text-xs text-muted-foreground mt-1">All data including users, payments, plans, broadcasts, and settings for <strong className="text-white">{deleteTenant?.name}</strong> will be permanently deleted.</p>
+            </div>
+            <div>
+              <Label>Type <strong className="text-destructive">"{deleteTenant?.name}"</strong> to confirm</Label>
+              <Input
+                value={deleteConfirmText}
+                onChange={e => setDeleteConfirmText(e.target.value)}
+                placeholder={deleteTenant?.name}
+                className="mt-1"
+                data-testid="delete-confirm-input"
+              />
+            </div>
+            <Button variant="destructive" className="w-full" onClick={permanentlyDeleteTenant} disabled={deleteConfirmText !== deleteTenant?.name} data-testid="confirm-delete-tenant-btn">
+              <Trash2 className="w-4 h-4 mr-1" /> Delete Permanently
             </Button>
           </div>
         </DialogContent>

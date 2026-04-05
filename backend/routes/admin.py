@@ -1466,7 +1466,7 @@ async def update_tenant_admin(tenant_id: str, data: dict, user: dict = Depends(g
     await verify_super_admin(user)
 
     allowed = ["name", "email", "bot_token", "bot_username", "upi_id",
-               "channel_id", "razorpay_key_id", "status"]
+               "channel_id", "razorpay_key_id", "razorpay_key_secret", "status", "owner_telegram_id"]
     update_fields = {k: data[k] for k in allowed if k in data}
 
     if update_fields:
@@ -1755,3 +1755,207 @@ async def migrate_data_to_tenant(data: dict, user: dict = Depends(get_current_us
         "details": results,
         "post_migration_stats": stats
     }
+
+
+
+# ============== ENHANCED TENANT MANAGEMENT ==============
+
+@router.get("/saas/all-users-dropdown")
+async def get_all_users_for_dropdown(user: dict = Depends(get_current_user)):
+    """Get all registered users for dropdown selection. Super Admin only."""
+    await verify_super_admin(user)
+    users = await db.users.find(
+        {},
+        {"_id": 0, "id": 1, "email": 1, "name": 1, "role": 1, "tenant_id": 1}
+    ).sort("email", 1).to_list(500)
+    return users
+
+
+@router.put("/saas/tenants/{tenant_id}/change-owner")
+async def change_tenant_owner(tenant_id: str, data: dict, user: dict = Depends(get_current_user)):
+    """Change the owner of a tenant. Super Admin only."""
+    await verify_super_admin(user)
+
+    new_owner_email = data.get("email", "").strip().lower()
+    new_owner_name = data.get("name", "").strip()
+    new_owner_telegram_id = data.get("owner_telegram_id", "").strip()
+
+    if not new_owner_email:
+        raise HTTPException(status_code=400, detail="New owner email is required")
+
+    tenant = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0})
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    old_owner_email = tenant.get("email", "")
+
+    update_fields = {
+        "email": new_owner_email,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if new_owner_name:
+        update_fields["name"] = new_owner_name
+    if new_owner_telegram_id:
+        update_fields["owner_telegram_id"] = new_owner_telegram_id
+
+    await db.tenants.update_one({"tenant_id": tenant_id}, {"$set": update_fields})
+
+    # Update the new owner's user record to be tenant_admin for this tenant
+    new_owner_user = await db.users.find_one({"email": new_owner_email}, {"_id": 0})
+    if new_owner_user:
+        await db.users.update_one(
+            {"email": new_owner_email},
+            {"$set": {"tenant_id": tenant_id, "role": "tenant_admin", "is_admin": True}}
+        )
+
+    await log_action("platform", user["id"], user.get("email", ""), "change_owner",
+                      "tenant", tenant_id,
+                      {"old_owner": old_owner_email, "new_owner": new_owner_email})
+
+    updated = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0})
+    return updated
+
+
+@router.put("/saas/tenants/{tenant_id}/reactivate")
+async def reactivate_tenant(tenant_id: str, user: dict = Depends(get_current_user)):
+    """Reactivate a deactivated tenant. Super Admin only."""
+    await verify_super_admin(user)
+
+    tenant = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0})
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    await db.tenants.update_one(
+        {"tenant_id": tenant_id},
+        {"$set": {"status": "active", "reactivated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+
+    await log_action("platform", user["id"], user.get("email", ""), "reactivate",
+                      "tenant", tenant_id, {})
+
+    return {"success": True, "message": f"Tenant '{tenant.get('name', tenant_id)}' reactivated"}
+
+
+@router.delete("/saas/tenants/{tenant_id}/permanent")
+async def permanently_delete_tenant(tenant_id: str, user: dict = Depends(get_current_user)):
+    """Permanently delete a tenant and ALL its data. Super Admin only. DESTRUCTIVE."""
+    await verify_super_admin(user)
+
+    tenant = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0})
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    deleted_counts = {}
+    collections_to_clean = [
+        "bot_users", "subscribers", "payments", "plans",
+        "paid_posts", "coupons", "referrals", "broadcasts",
+        "faqs", "live_sessions", "pending_screenshots",
+        "telegram_admins", "video_call_sessions"
+    ]
+
+    for coll_name in collections_to_clean:
+        coll = db[coll_name]
+        result = await coll.delete_many({"tenant_id": tenant_id})
+        deleted_counts[coll_name] = result.deleted_count
+
+    # Delete settings documents
+    await db.settings.delete_many({"id": {"$regex": f".*{tenant_id}.*"}})
+    deleted_counts["settings"] = "cleaned"
+
+    # Remove tenant admins from users collection
+    admin_result = await db.users.update_many(
+        {"tenant_id": tenant_id},
+        {"$set": {"tenant_id": None, "role": "user", "is_admin": False}}
+    )
+    deleted_counts["users_unlinked"] = admin_result.modified_count
+
+    # Delete the tenant itself
+    await db.tenants.delete_one({"tenant_id": tenant_id})
+
+    await log_action("platform", user["id"], user.get("email", ""), "permanent_delete",
+                      "tenant", tenant_id, {"deleted": deleted_counts, "tenant_name": tenant.get("name", "")})
+
+    return {
+        "success": True,
+        "message": f"Tenant '{tenant.get('name', tenant_id)}' permanently deleted",
+        "deleted_data": deleted_counts
+    }
+
+
+@router.get("/saas/tenant-isolation-report")
+async def get_tenant_isolation_report(user: dict = Depends(get_current_user)):
+    """Generate a comprehensive tenant data isolation report. Super Admin only."""
+    await verify_super_admin(user)
+
+    tenants = await db.tenants.find({}, {"_id": 0}).to_list(200)
+    report = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "total_tenants": len(tenants),
+        "tenants": [],
+        "orphaned_data": {},
+        "cross_tenant_issues": [],
+    }
+
+    all_tenant_ids = [t.get("tenant_id", "") for t in tenants]
+    collections_to_check = [
+        "bot_users", "subscribers", "payments", "plans",
+        "paid_posts", "coupons", "referrals", "broadcasts",
+        "telegram_admins", "pending_screenshots",
+    ]
+
+    for t in tenants:
+        tid = t.get("tenant_id", "")
+        tenant_report = {
+            "tenant_id": tid,
+            "name": t.get("name", ""),
+            "email": t.get("email", ""),
+            "status": t.get("status", "active"),
+            "owner_telegram_id": t.get("owner_telegram_id", ""),
+            "data_counts": {},
+        }
+
+        for coll_name in collections_to_check:
+            coll = db[coll_name]
+            count = await coll.count_documents({"tenant_id": tid})
+            tenant_report["data_counts"][coll_name] = count
+
+        # Check dashboard admins
+        admin_count = await db.users.count_documents({"tenant_id": tid, "role": "tenant_admin"})
+        tenant_report["data_counts"]["dashboard_admins"] = admin_count
+
+        report["tenants"].append(tenant_report)
+
+    # Check for orphaned data (records with no valid tenant_id)
+    for coll_name in collections_to_check:
+        coll = db[coll_name]
+        orphaned = await coll.count_documents({
+            "$or": [
+                {"tenant_id": {"$exists": False}},
+                {"tenant_id": None},
+                {"tenant_id": ""},
+                {"tenant_id": {"$nin": all_tenant_ids + ["default"]}}
+            ]
+        })
+        if orphaned > 0:
+            report["orphaned_data"][coll_name] = orphaned
+
+    # Check for users linked to non-existent tenants
+    user_cross = await db.users.count_documents({
+        "tenant_id": {"$nin": all_tenant_ids + [None, "", "default"]},
+        "role": "tenant_admin"
+    })
+    if user_cross > 0:
+        report["cross_tenant_issues"].append({
+            "type": "orphaned_admins",
+            "count": user_cross,
+            "description": f"{user_cross} admin users linked to non-existent tenants"
+        })
+
+    # Summary stats
+    report["summary"] = {
+        "total_orphaned_records": sum(report["orphaned_data"].values()),
+        "total_cross_tenant_issues": len(report["cross_tenant_issues"]),
+        "isolation_status": "CLEAN" if sum(report["orphaned_data"].values()) == 0 and len(report["cross_tenant_issues"]) == 0 else "ISSUES_FOUND",
+    }
+
+    return report
