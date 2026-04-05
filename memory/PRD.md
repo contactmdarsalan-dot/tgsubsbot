@@ -177,6 +177,15 @@ Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product
 - **Config**: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, optional `RAZORPAY_CALLBACK_URL`
 - **DB**: New `razorpay_bot_orders` collection for payment tracking
 
+### Phase 21: Critical Multi-Tenant Data Isolation Fix (Complete - 2026-04-05)
+- **Issue**: Telegram webhook and Mini App had 50+ unfiltered DB queries showing ALL tenants' data
+- **Root Cause**: `db.plans.find()`, `db.subscribers.find()`, `db.payments.find()`, `db.bot_users.find()`, `db.pending_screenshots`, `db.paid_posts` queries missing `tenant_id: bot_tenant_id` filter
+- **Fix**: Added `tenant_id` filter to ALL find/count/update/delete queries across:
+  - `telegram_webhook.py`: 50+ queries fixed (plans, subscribers, payments, bot_users, pending_screenshots, paid_posts, paid_post_unlocks, unlock_requests, video_call_bookings, chat_messages, live_superchats)
+  - `miniapp_user.py`: Removed fallback queries that leaked cross-tenant data
+  - All INSERT operations now include `tenant_id: bot_tenant_id`
+- **Impact**: Complete tenant data isolation — each bot only sees its own tenant's data
+
 ### Phase 20: Enhanced Tenant Management (Complete - 2026-04-05)
 - **Feature**: Complete CRUD for Tenant Management with professional-grade admin tools
 - **Changes**:

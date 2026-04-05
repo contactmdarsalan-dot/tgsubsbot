@@ -143,7 +143,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         settings = await get_bot_settings()
                         post_price = settings.get("default_paid_post_price", 0)
                         if post_price <= 0:
-                            plans = await db.plans.find({"is_active": True}, {"_id": 0}).sort("price", 1).to_list(1)
+                            plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).sort("price", 1).to_list(1)
                             if plans:
                                 post_price = plans[0].get("price", 99)
                             else:
@@ -194,7 +194,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         logger.info(f"Send photo result: {result}")
                         if result and result.get("ok") and result.get("result"):
                             blurred_message_id = result["result"].get("message_id", 0)
-                            await db.paid_posts.update_one({"id": paid_post_id}, {"$set": {"blurred_message_id": blurred_message_id}})
+                            await db.paid_posts.update_one({"id": paid_post_id, "tenant_id": bot_tenant_id}, {"$set": {"blurred_message_id": blurred_message_id}})
                             logger.info(f"Posted blurred image with message_id: {blurred_message_id}")
                             blurred_posted = True
                         else:
@@ -237,7 +237,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                         result = await send_telegram_photo(post_chat_id, blurred_thumb, video_caption, bot_token, unlock_button)
                                         if result and result.get("ok"):
                                             blurred_message_id = result.get("result", {}).get("message_id", 0)
-                                            await db.paid_posts.update_one({"id": paid_post_id}, {"$set": {"blurred_message_id": blurred_message_id}})
+                                            await db.paid_posts.update_one({"id": paid_post_id, "tenant_id": bot_tenant_id}, {"$set": {"blurred_message_id": blurred_message_id}})
                                             blurred_posted = True
                                             logger.info(f"Posted blurred video thumbnail with message_id: {blurred_message_id}")
                         
@@ -350,7 +350,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 # Send welcome message with plans directly to user's private chat
                 if user_id and not user.get("is_bot"):
                     # Get plans and settings
-                    plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+                    plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).to_list(10)
                     settings = await get_bot_settings()
                     website_link = settings.get("website_link", "") or ""
                     
@@ -411,7 +411,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             
             if callback_data.startswith("buy_"):
                 plan_id = callback_data.replace("buy_", "")
-                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+                plan = await db.plans.find_one({"id": plan_id, "tenant_id": bot_tenant_id}, {"_id": 0})
                 
                 if plan:
                     # Check if plan has discount
@@ -539,7 +539,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             elif callback_data.startswith("qr_"):
                 # Send QR code image and wait for screenshot
                 plan_id = callback_data.replace("qr_", "")
-                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+                plan = await db.plans.find_one({"id": plan_id, "tenant_id": bot_tenant_id}, {"_id": 0})
                 qr_url = settings.get("qr_code_url", "")
                 
                 logger.info(f"QR Request - plan_id: {plan_id}, plan: {plan}, qr_url: {qr_url[:50] if qr_url else 'EMPTY'}...")
@@ -556,7 +556,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 
                 # Save that we're waiting for screenshot from this user
                 await db.pending_screenshots.update_one(
-                    {"telegram_user_id": chat_id},
+                    {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
                     {"$set": {
                         "telegram_user_id": chat_id,
                         "telegram_username": username,
@@ -610,7 +610,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             elif callback_data.startswith("razorpay_"):
                 # Create Razorpay payment link
                 plan_id = callback_data.replace("razorpay_", "")
-                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+                plan = await db.plans.find_one({"id": plan_id, "tenant_id": bot_tenant_id}, {"_id": 0})
                 
                 if plan and razorpay_client:
                     try:
@@ -638,6 +638,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             "plan_name": plan["name"],
                             "amount": plan["price"],
                             "status": "created",
+                            "tenant_id": bot_tenant_id,
                             "created_at": datetime.now(timezone.utc).isoformat()
                         }
                         await db.bot_orders.insert_one(order_obj)
@@ -669,14 +670,15 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             
             elif callback_data.startswith("paid_"):
                 plan_id = callback_data.replace("paid_", "")
-                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+                plan = await db.plans.find_one({"id": plan_id, "tenant_id": bot_tenant_id}, {"_id": 0})
                 
                 if plan:
                     # Check if already has pending payment for this plan
                     existing = await db.payments.find_one({
                         "telegram_user_id": chat_id,
                         "plan_id": plan_id,
-                        "status": "pending"
+                        "status": "pending",
+                        "tenant_id": bot_tenant_id
                     })
                     
                     if not existing:
@@ -719,7 +721,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             
             elif callback_data == "back_plans":
                 # Show plans again
-                plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+                plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).to_list(10)
                 
                 welcome_msg = "🎯 <b>Choose Your Plan</b>\n\n"
                 buttons = []
@@ -739,7 +741,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             
             elif callback_data == "cancel_payment":
                 # Cancel pending screenshot/payment
-                await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                await db.pending_screenshots.delete_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id})
                 
                 msg = "❌ <b>Cancelled!</b>\n\n"
                 msg += "Payment process cancel ho gaya.\n\n"
@@ -750,7 +752,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             
             elif callback_data == "special_discount":
                 # Show plan-specific discounted prices
-                plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+                plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).to_list(10)
                 
                 msg = "🎁 <b>Special Discount Unlocked!</b>\n\n"
                 msg += "🔥 <b>Sirf aapke liye special prices:</b>\n\n"
@@ -784,8 +786,8 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             elif callback_data.startswith("confirm_ss_"):
                 # User confirmed it's a payment screenshot - VERIFY
                 plan_id = callback_data.replace("confirm_ss_", "")
-                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
-                pending = await db.pending_screenshots.find_one({"telegram_user_id": chat_id}, {"_id": 0})
+                plan = await db.plans.find_one({"id": plan_id, "tenant_id": bot_tenant_id}, {"_id": 0})
+                pending = await db.pending_screenshots.find_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id}, {"_id": 0})
                 
                 if plan and pending:
                     photo_file_id = pending.get("photo_file_id")
@@ -810,7 +812,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     await db.payments.insert_one(payment_obj)
                     
                     # Delete pending screenshot record
-                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id})
                     
                     # Check if this is a Chat plan (5 Min or 30 Min)
                     plan_name_lower = plan['name'].lower()
@@ -917,7 +919,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             elif callback_data == "wrong_ss":
                 # User sent wrong image - decline and ask for correct one
                 await db.pending_screenshots.update_one(
-                    {"telegram_user_id": chat_id},
+                    {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
                     {"$set": {"status": "waiting"}}  # Reset to waiting
                 )
                 
@@ -935,7 +937,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             elif callback_data.startswith("discount_"):
                 # Show discounted price
                 plan_id = callback_data.replace("discount_", "")
-                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+                plan = await db.plans.find_one({"id": plan_id, "tenant_id": bot_tenant_id}, {"_id": 0})
                 
                 if plan:
                     original_price = plan["price"]
@@ -950,7 +952,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     
                     # Update pending screenshot with discounted price
                     await db.pending_screenshots.update_one(
-                        {"telegram_user_id": chat_id},
+                        {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
                         {"$set": {"discounted_price": discounted_price, "discount_applied": True}}
                     )
                     
@@ -972,9 +974,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     
                     # Find matching plan
                     if plan_type == "5min":
-                        plan = await db.plans.find_one({"name": {"$regex": "5.*min.*chat", "$options": "i"}}, {"_id": 0})
+                        plan = await db.plans.find_one({"name": {"$regex": "5.*min.*chat", "$options": "i"}, "tenant_id": bot_tenant_id}, {"_id": 0})
                     else:
-                        plan = await db.plans.find_one({"name": {"$regex": "30.*min.*chat", "$options": "i"}}, {"_id": 0})
+                        plan = await db.plans.find_one({"name": {"$regex": "30.*min.*chat", "$options": "i"}, "tenant_id": bot_tenant_id}, {"_id": 0})
                     
                     if plan:
                         qr_code_url = settings.get("qr_code_url", "")
@@ -1034,7 +1036,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             elif callback_data.startswith("renew_"):
                 # Handle renewal - go directly to payment for the same plan
                 plan_id = callback_data.replace("renew_", "")
-                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+                plan = await db.plans.find_one({"id": plan_id, "tenant_id": bot_tenant_id}, {"_id": 0})
                 
                 if plan:
                     # Show payment options directly
@@ -1060,7 +1062,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 else:
                     # Plan not found, show all plans
                     await send_telegram_message(chat_id, "Plan not found. Please choose from available plans:", bot_token)
-                    plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+                    plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).to_list(10)
                     buttons = []
                     for p in plans:
                         buttons.append([{"text": f"📦 {p['name']} - ₹{p['price']}", "callback_data": f"buy_{p['id']}"}])
@@ -1153,6 +1155,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     "duration_minutes": duration,
                     "price": price,
                     "status": "pending_payment",
+                    "tenant_id": bot_tenant_id,
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 await db.video_call_bookings.insert_one(booking)
@@ -1212,7 +1215,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 if not is_admin:
                     await send_telegram_message(chat_id, "❌ Only admins can approve payments.", bot_token)
                 else:
-                    payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+                    payment = await db.payments.find_one({"id": payment_id, "tenant_id": bot_tenant_id}, {"_id": 0})
                     
                     if not payment:
                         await send_telegram_message(chat_id, "❌ Payment not found.", bot_token)
@@ -1221,7 +1224,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     else:
                         # Update payment status to verified
                         await db.payments.update_one(
-                            {"id": payment_id},
+                            {"id": payment_id, "tenant_id": bot_tenant_id},
                             {"$set": {
                                 "status": "verified",
                                 "admin_verified": True,
@@ -1232,7 +1235,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         
                         user_tg_id = payment.get("telegram_user_id", "")
                         plan_id = payment.get("plan_id", "")
-                        plan = await db.plans.find_one({"id": plan_id}, {"_id": 0}) if plan_id else None
+                        plan = await db.plans.find_one({"id": plan_id, "tenant_id": bot_tenant_id}, {"_id": 0}) if plan_id else None
                         
                         if plan:
                             # Create subscriber
@@ -1311,7 +1314,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 if not is_admin:
                     await send_telegram_message(chat_id, "❌ Only admins can reject payments.", bot_token)
                 else:
-                    payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+                    payment = await db.payments.find_one({"id": payment_id, "tenant_id": bot_tenant_id}, {"_id": 0})
                     
                     if not payment:
                         await send_telegram_message(chat_id, "❌ Payment not found.", bot_token)
@@ -1322,7 +1325,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         
                         # Update payment status to rejected
                         await db.payments.update_one(
-                            {"id": payment_id},
+                            {"id": payment_id, "tenant_id": bot_tenant_id},
                             {"$set": {
                                 "status": "rejected",
                                 "rejected_by": chat_id,
@@ -1335,11 +1338,11 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         # If was verified, also deactivate subscriber and remove from channel
                         if was_verified:
                             await db.subscribers.update_one(
-                                {"payment_id": payment_id},
+                                {"payment_id": payment_id, "tenant_id": bot_tenant_id},
                                 {"$set": {"status": "expired"}}
                             )
                             plan_id = payment.get("plan_id", "")
-                            plan = await db.plans.find_one({"id": plan_id}, {"_id": 0}) if plan_id else None
+                            plan = await db.plans.find_one({"id": plan_id, "tenant_id": bot_tenant_id}, {"_id": 0}) if plan_id else None
                             if plan:
                                 plan_channel = plan.get("channel_id", "")
                                 await remove_from_channel(user_tg_id, plan_channel, plan['name'])
@@ -1381,7 +1384,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         logger.info(f"Admin {chat_id} rejected payment {payment_id}")
             
             elif callback_data == "check_status":
-                subscriber = await db.subscribers.find_one({"telegram_user_id": chat_id}, {"_id": 0})
+                subscriber = await db.subscribers.find_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id}, {"_id": 0})
                 if subscriber:
                     end_date = datetime.fromisoformat(subscriber["end_date"]) if isinstance(subscriber["end_date"], str) else subscriber["end_date"]
                     days_left = (end_date - datetime.now(timezone.utc)).days
@@ -1403,7 +1406,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             elif callback_data.startswith("unlock_qr_"):
                 # Show QR code for paid post unlock
                 post_id = callback_data.replace("unlock_qr_", "")
-                paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True}, {"_id": 0})
+                paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0})
                 
                 logger.info(f"unlock_qr_ - post_id: {post_id}, paid_post: {paid_post}")
                 
@@ -1417,7 +1420,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     if qr_code_url:
                         # Save pending unlock request so bot knows to expect screenshot
                         await db.pending_screenshots.update_one(
-                            {"telegram_user_id": chat_id},
+                            {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
                             {"$set": {
                                 "telegram_user_id": chat_id,
                                 "telegram_username": username,
@@ -1456,14 +1459,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             elif callback_data.startswith("unlock_paid_"):
                 # User claims to have paid for unlock
                 post_id = callback_data.replace("unlock_paid_", "")
-                paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True}, {"_id": 0})
+                paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0})
                 
                 if paid_post:
                     post_price = paid_post.get("price", 99)
                     
                     # Save pending unlock payment
                     await db.pending_screenshots.update_one(
-                        {"telegram_user_id": chat_id},
+                        {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
                         {"$set": {
                             "telegram_user_id": chat_id,
                             "telegram_username": username,
@@ -1540,7 +1543,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         else:
                             # Paid session - save pending and show QR
                             await db.pending_screenshots.update_one(
-                                {"telegram_user_id": chat_id},
+                                {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
                                 {"$set": {
                                     "telegram_user_id": chat_id,
                                     "telegram_username": username,
@@ -2049,10 +2052,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 if not is_admin:
                     return {"ok": True}
                 
-                active_subs = await db.subscribers.count_documents({"status": "active"})
-                total_subs = await db.subscribers.count_documents({})
-                pending_payments = await db.payments.count_documents({"status": "pending"})
-                payments = await db.payments.find({"status": "verified"}, {"_id": 0, "amount": 1}).to_list(100000)
+                active_subs = await db.subscribers.count_documents({"status": "active", "tenant_id": bot_tenant_id})
+                total_subs = await db.subscribers.count_documents({"tenant_id": bot_tenant_id})
+                pending_payments = await db.payments.count_documents({"status": "pending", "tenant_id": bot_tenant_id})
+                payments = await db.payments.find({"status": "verified", "tenant_id": bot_tenant_id}, {"_id": 0, "amount": 1}).to_list(100000)
                 total_revenue = sum(p.get("amount", 0) for p in payments)
                 
                 stats_msg = "📊 <b>Quick Stats</b>\n━━━━━━━━━━━━━━━\n"
@@ -2067,7 +2070,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 if not is_admin:
                     return {"ok": True}
                 
-                pending = await db.payments.find({"status": "pending"}, {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
+                pending = await db.payments.find({"status": "pending", "tenant_id": bot_tenant_id}, {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
                 if not pending:
                     await send_telegram_message(chat_id, "✅ No pending payments!", bot_token)
                 else:
@@ -2097,7 +2100,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 if session:
                     # Ask for amount and message
                     await db.pending_screenshots.update_one(
-                        {"telegram_user_id": chat_id},
+                        {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
                         {"$set": {
                             "telegram_user_id": chat_id,
                             "telegram_username": username,
@@ -2127,12 +2130,12 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             # Super chat amount selection
             elif callback_data.startswith("superchat_amount_"):
                 amount = int(callback_data.replace("superchat_amount_", ""))
-                pending = await db.pending_screenshots.find_one({"telegram_user_id": chat_id}, {"_id": 0})
+                pending = await db.pending_screenshots.find_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id}, {"_id": 0})
                 
                 if pending and pending.get("superchat_session_id"):
                     # Update with amount and ask for message
                     await db.pending_screenshots.update_one(
-                        {"telegram_user_id": chat_id},
+                        {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
                         {"$set": {
                             "superchat_amount": amount,
                             "status": "waiting_superchat_message"
@@ -2182,7 +2185,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         # Track bot user (upsert)
         if chat_type == "private" and chat_id:
             await db.bot_users.update_one(
-                {"user_id": str(chat_id)},
+                {"user_id": str(chat_id), "tenant_id": bot_tenant_id},
                 {"$set": {
                     "user_id": str(chat_id),
                     "username": username or "",
@@ -2233,6 +2236,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "group_name": group_name,
                         "message_text": text[:500] if text else f"[{msg_type}]",  # Limit text length
                         "message_type": msg_type,
+                        "tenant_id": bot_tenant_id,
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
                     await db.chat_messages.insert_one(chat_record)
@@ -2309,7 +2313,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     if post_price <= 0:
                         post_price = settings.get("default_paid_post_price", 0)
                         if post_price <= 0:
-                            plans = await db.plans.find({"is_active": True}, {"_id": 0}).sort("price", 1).to_list(1)
+                            plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).sort("price", 1).to_list(1)
                             if plans:
                                 post_price = plans[0].get("price", 99)
                             else:
@@ -2378,7 +2382,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     
                     if result and result.get("ok"):
                         blurred_message_id = result.get("result", {}).get("message_id", 0)
-                        await db.paid_posts.update_one({"id": paid_post_id}, {"$set": {"blurred_message_id": blurred_message_id}})
+                        await db.paid_posts.update_one({"id": paid_post_id, "tenant_id": bot_tenant_id}, {"$set": {"blurred_message_id": blurred_message_id}})
                         
                         # Confirm to admin
                         success_msg = f"✅ <b>Paid Post Created!</b>\n\n"
@@ -2404,14 +2408,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         if photo and bot_token:
             # Check if we're waiting for screenshot from this user (for subscription OR unlock OR live ticket OR superchat)
             pending = await db.pending_screenshots.find_one({
-                "telegram_user_id": chat_id, 
+                "telegram_user_id": chat_id, "tenant_id": bot_tenant_id,
                 "status": {"$in": ["waiting", "waiting_unlock", "waiting_live_ticket", "waiting_superchat_payment"]}
             }, {"_id": 0})
             
             # Handle PAID POST UNLOCK screenshot
             if pending and pending.get("status") == "waiting_unlock":
                 post_id = pending.get("unlock_post_id")
-                paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True}, {"_id": 0})
+                paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0})
                 
                 if paid_post:
                     logger.info(f"Processing unlock screenshot for post {post_id} from user {chat_id}")
@@ -2460,15 +2464,16 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 "payment_id": "auto_verified",
                                 "screenshot_file_id": photo_file_id,
                                 "ai_result": ai_result,
+                                "tenant_id": bot_tenant_id,
                                 "unlocked_at": datetime.now(timezone.utc).isoformat()
                             }
                             await db.paid_post_unlocks.insert_one(unlock_record)
                             
                             # Update unlock count
-                            await db.paid_posts.update_one({"id": post_id}, {"$inc": {"unlock_count": 1}})
+                            await db.paid_posts.update_one({"id": post_id, "tenant_id": bot_tenant_id}, {"$inc": {"unlock_count": 1}})
                             
                             # Remove pending status
-                            await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                            await db.pending_screenshots.delete_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id})
                             
                             # Send unlocked content
                             success_msg = "✅ <b>Payment Verified!</b>\n\n🔓 Unlocking your content..."
@@ -2500,10 +2505,11 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 "status": "pending_admin",
                                 "ocr_result": ocr_result,
                                 "ai_result": ai_result if ai_result.get("ai_enabled") else None,
+                                "tenant_id": bot_tenant_id,
                                 "created_at": datetime.now(timezone.utc).isoformat()
                             }
                             await db.unlock_requests.insert_one(unlock_request)
-                            await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                            await db.pending_screenshots.delete_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id})
                             
                             await send_telegram_message(chat_id, pending_msg, bot_token)
                             return {"ok": True}
@@ -2571,7 +2577,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     return {"ok": True}
                 else:
                     await send_telegram_message(chat_id, "❌ Post not found or expired.", bot_token)
-                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id})
                     return {"ok": True}
             
             # Handle LIVE TICKET screenshot
@@ -2619,7 +2625,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     await db.live_tickets.insert_one(ticket)
                     
                     # Clear pending
-                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id})
                     
                     if ticket_status == "approved":
                         # Auto-approved by AI
@@ -2663,7 +2669,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     return {"ok": True}
                 else:
                     await send_telegram_message(chat_id, "❌ Session not found or ended.", bot_token)
-                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id})
                     return {"ok": True}
             
             # Handle SUPER CHAT screenshot
@@ -2685,12 +2691,13 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         "message": pending.get("superchat_message", ""),
                         "screenshot_file_id": photo_file_id,
                         "status": "pending",
+                        "tenant_id": bot_tenant_id,
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
                     await db.live_superchats.insert_one(superchat)
                     
                     # Clear pending
-                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id})
                     
                     msg = "💬 <b>Super Chat Submitted!</b>\n\n"
                     msg += f"💰 Amount: ₹{pending.get('superchat_amount', 0)}\n"
@@ -2700,13 +2707,13 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     return {"ok": True}
                 else:
                     await send_telegram_message(chat_id, "❌ Live session ended.", bot_token)
-                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                    await db.pending_screenshots.delete_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id})
                     return {"ok": True}
             
             # Handle REGULAR SUBSCRIPTION screenshot
             if pending and pending.get("status") == "waiting":
                 plan_id = pending.get("plan_id")
-                plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+                plan = await db.plans.find_one({"id": plan_id, "tenant_id": bot_tenant_id}, {"_id": 0})
                 
                 if plan:
                     # Get the photo file_id (largest size)
@@ -2768,7 +2775,8 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             # Check if user already has active subscription
                             existing_sub = await db.subscribers.find_one({
                                 "telegram_user_id": chat_id,
-                                "status": "active"
+                                "status": "active",
+                                "tenant_id": bot_tenant_id
                             }, {"_id": 0})
                             
                             # Get discounted price if available
@@ -2781,7 +2789,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 new_end = current_end + timedelta(days=plan['duration_days'])
                                 
                                 await db.subscribers.update_one(
-                                    {"telegram_user_id": chat_id},
+                                    {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
                                     {"$set": {
                                         "end_date": new_end.isoformat(),
                                         "plan_id": plan_id,
@@ -2830,7 +2838,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             await db.payments.insert_one(payment_record)
                             
                             # Delete pending screenshot record
-                            await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                            await db.pending_screenshots.delete_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id})
                             
                             # Check if this is a Chat plan (5 Min or 30 Min)
                             plan_name_lower = plan['name'].lower()
@@ -3027,7 +3035,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                     reject_msg += "😅 Valid payment screenshot bhejo bhai!"
                                 
                                 # Delete pending record
-                                await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+                                await db.pending_screenshots.delete_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id})
                                 
                                 await send_telegram_message(chat_id, reject_msg, bot_token)
                             
@@ -3077,7 +3085,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 
                                 # Save photo file_id and AI analysis for admin review
                                 await db.pending_screenshots.update_one(
-                                    {"telegram_user_id": chat_id},
+                                    {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
                                     {"$set": {
                                         "status": "confirming",
                                         "photo_file_id": photo_file_id,
@@ -3183,7 +3191,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             logger.info(f"User {chat_id} trying to unlock paid post: {post_id}")
             
             # Find the paid post
-            paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True}, {"_id": 0})
+            paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0})
             
             if not paid_post:
                 await send_telegram_message(chat_id, "❌ <b>Post not found!</b>\n\nThis paid content may have been removed or expired.", bot_token)
@@ -3192,7 +3200,8 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             # Check if user already unlocked this post
             existing_unlock = await db.paid_post_unlocks.find_one({
                 "post_id": post_id,
-                "telegram_user_id": chat_id
+                "telegram_user_id": chat_id,
+                "tenant_id": bot_tenant_id
             }, {"_id": 0})
             
             if existing_unlock:
@@ -3218,7 +3227,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             
             # If no specific price, use default from plans
             if post_price <= 0:
-                plans = await db.plans.find({"is_active": True}, {"_id": 0}).sort("price", 1).to_list(1)
+                plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).sort("price", 1).to_list(1)
                 if plans:
                     post_price = plans[0].get("price", 99)
                 else:
@@ -3243,7 +3252,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             
             # Save pending unlock request
             await db.pending_screenshots.update_one(
-                {"telegram_user_id": chat_id},
+                {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
                 {"$set": {
                     "telegram_user_id": chat_id,
                     "telegram_username": username,
@@ -3309,7 +3318,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             # Check for /start buy_{plan_id} deep link (from promote button)
             if text and text.startswith("/start buy_"):
                 plan_id = text.replace("/start buy_", "").strip()
-                plan = await db.plans.find_one({"id": plan_id, "is_active": True}, {"_id": 0})
+                plan = await db.plans.find_one({"id": plan_id, "is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0})
                 if plan:
                     settings = await get_bot_settings()
                     bot_token = settings.get("telegram_bot_token", "")
@@ -3407,7 +3416,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 plans = await db.plans.find(plans_query, {"_id": 0}).to_list(10)
                 # Fallback: if no tenant-specific plans, try without tenant filter
                 if not plans:
-                    plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+                    plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).to_list(10)
                 
                 settings = await get_bot_settings()
                 website_link = settings.get("website_link", "") or ""
@@ -3455,7 +3464,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 await send_telegram_message(chat_id, "🎉 Welcome! Use /plans to see available plans.", bot_token)
         
         elif text == "/status":
-            subscriber = await db.subscribers.find_one({"telegram_user_id": chat_id}, {"_id": 0})
+            subscriber = await db.subscribers.find_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id}, {"_id": 0})
             if subscriber:
                 end_date = datetime.fromisoformat(subscriber["end_date"]) if isinstance(subscriber["end_date"], str) else subscriber["end_date"]
                 days_left = (end_date - datetime.now(timezone.utc)).days
@@ -3509,10 +3518,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 role = "Super Admin"
             
             # Get quick stats
-            active_subs = await db.subscribers.count_documents({"status": "active"})
-            pending_payments = await db.payments.count_documents({"status": "pending"})
+            active_subs = await db.subscribers.count_documents({"status": "active", "tenant_id": bot_tenant_id})
+            pending_payments = await db.payments.count_documents({"status": "pending", "tenant_id": bot_tenant_id})
             total_revenue = 0
-            payments = await db.payments.find({"status": "verified"}, {"_id": 0, "amount": 1}).to_list(100000)
+            payments = await db.payments.find({"status": "verified", "tenant_id": bot_tenant_id}, {"_id": 0, "amount": 1}).to_list(100000)
             total_revenue = sum(p.get("amount", 0) for p in payments)
             
             admin_msg = f"👑 <b>Admin Panel</b>\n"
@@ -3563,15 +3572,15 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 await send_telegram_message(chat_id, "❌ Admin access required.", bot_token)
                 return {"ok": True}
             
-            total_subs = await db.subscribers.count_documents({})
-            active_subs = await db.subscribers.count_documents({"status": "active"})
-            expired_subs = await db.subscribers.count_documents({"status": "expired"})
-            grace_subs = await db.subscribers.count_documents({"status": "grace"})
-            pending_payments = await db.payments.count_documents({"status": "pending"})
-            verified_payments = await db.payments.count_documents({"status": "verified"})
-            payments = await db.payments.find({"status": "verified"}, {"_id": 0, "amount": 1}).to_list(100000)
+            total_subs = await db.subscribers.count_documents({"tenant_id": bot_tenant_id})
+            active_subs = await db.subscribers.count_documents({"status": "active", "tenant_id": bot_tenant_id})
+            expired_subs = await db.subscribers.count_documents({"status": "expired", "tenant_id": bot_tenant_id})
+            grace_subs = await db.subscribers.count_documents({"status": "grace", "tenant_id": bot_tenant_id})
+            pending_payments = await db.payments.count_documents({"status": "pending", "tenant_id": bot_tenant_id})
+            verified_payments = await db.payments.count_documents({"status": "verified", "tenant_id": bot_tenant_id})
+            payments = await db.payments.find({"status": "verified", "tenant_id": bot_tenant_id}, {"_id": 0, "amount": 1}).to_list(100000)
             total_revenue = sum(p.get("amount", 0) for p in payments)
-            total_plans = await db.plans.count_documents({"is_active": True})
+            total_plans = await db.plans.count_documents({"is_active": True, "tenant_id": bot_tenant_id})
             
             stats_msg = "📊 <b>Bot Statistics</b>\n"
             stats_msg += "━━━━━━━━━━━━━━━\n\n"
@@ -3595,7 +3604,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 await send_telegram_message(chat_id, "❌ Admin access required.", bot_token)
                 return {"ok": True}
             
-            pending = await db.payments.find({"status": "pending"}, {"_id": 0}).sort("created_at", -1).limit(10).to_list(10)
+            pending = await db.payments.find({"status": "pending", "tenant_id": bot_tenant_id}, {"_id": 0}).sort("created_at", -1).limit(10).to_list(10)
             
             if not pending:
                 await send_telegram_message(chat_id, "✅ No pending payments!", bot_token)
@@ -3624,7 +3633,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 return {"ok": True}
             
             # Get all bot users
-            bot_users = await db.bot_users.find({}, {"_id": 0, "user_id": 1}).to_list(100000)
+            bot_users = await db.bot_users.find({"tenant_id": bot_tenant_id}, {"_id": 0, "user_id": 1}).to_list(100000)
             user_ids = [u.get("user_id", "") for u in bot_users if u.get("user_id")]
             
             settings = await get_bot_settings()
@@ -3652,7 +3661,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 await send_telegram_message(chat_id, "❌ Admin access required.", bot_token)
                 return {"ok": True}
             
-            recent_users = await db.bot_users.find({}, {"_id": 0}).sort("last_seen", -1).limit(10).to_list(10)
+            recent_users = await db.bot_users.find({"tenant_id": bot_tenant_id}, {"_id": 0}).sort("last_seen", -1).limit(10).to_list(10)
             
             if not recent_users:
                 await send_telegram_message(chat_id, "No users found.", bot_token)
@@ -3676,7 +3685,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             # Extract plan name from command (e.g., /plan monthly, /plan-monthly, /plan_weekly)
             plan_query = text.replace("/plan", "").replace("-", " ").replace("_", " ").strip().lower()
             
-            plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(20)
+            plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).to_list(20)
             
             if not plan_query:
                 # Show list of available plans to share
@@ -3736,7 +3745,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             except Exception:
                 pass
             
-            plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+            plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).to_list(10)
             
             share_msg = "🔥 <b>Premium Subscription Service</b> 🔥\n\n"
             share_msg += "━━━━━━━━━━━━━━━━━━━\n"
@@ -4180,14 +4189,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             
             # Check if waiting for superchat message
             pending = await db.pending_screenshots.find_one({
-                "telegram_user_id": chat_id,
+                "telegram_user_id": chat_id, "tenant_id": bot_tenant_id,
                 "status": "waiting_superchat_message"
             }, {"_id": 0})
             
             if pending:
                 # Got the superchat message, now ask for payment screenshot
                 await db.pending_screenshots.update_one(
-                    {"telegram_user_id": chat_id},
+                    {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
                     {"$set": {
                         "superchat_message": text,
                         "status": "waiting_superchat_payment"
@@ -4234,12 +4243,13 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 # Find user's pending payment and update with screenshot
                                 pending_payment = await db.payments.find_one({
                                     "telegram_user_id": chat_id,
-                                    "status": "pending"
+                                    "status": "pending",
+                                    "tenant_id": bot_tenant_id
                                 }, sort=[("created_at", -1)])
                                 
                                 if pending_payment:
                                     await db.payments.update_one(
-                                        {"id": pending_payment["id"]},
+                                        {"id": pending_payment["id"], "tenant_id": bot_tenant_id},
                                         {"$set": {"screenshot_url": screenshot_url, "screenshot_file_id": file_id}}
                                     )
                                     
@@ -4290,7 +4300,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 # No FAQ match - use AI to respond
                 try:
                     # Get context about the bot/business
-                    plans = await db.plans.find({"is_active": True}, {"_id": 0}).to_list(10)
+                    plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).to_list(10)
                     plan_info = "\n".join([f"- {p['name']}: ₹{p['price']} for {p['duration_days']} days" for p in plans])
                     
                     system_prompt = f"""You are a helpful customer support assistant for a subscription-based Telegram service.
