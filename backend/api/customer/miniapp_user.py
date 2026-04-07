@@ -139,7 +139,8 @@ def _generate_upi_qr(upi_id: str, upi_name: str = "") -> str:
     qr.add_data(upi_url)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
-    uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+    # Always use /app/backend/uploads/ regardless of where this file lives
+    uploads_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads")
     os.makedirs(uploads_path, exist_ok=True)
     filename = f"qr_auto_{upi_id.replace('@','_')}.png"
     filepath = os.path.join(uploads_path, filename)

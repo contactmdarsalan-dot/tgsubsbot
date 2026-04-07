@@ -51,7 +51,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                     final_price = original_price
                 
                 # Show payment options
-                qr_code_url = settings.get("qr_code_url", "")
+                qr_code_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
                 
                 payment_msg = f"🔥 <b>EXCLUSIVE OFFER!</b> 🔥\n\n"
                 payment_msg += f"<b>📦 {plan.get('name', 'Plan')}</b>\n\n"
@@ -165,7 +165,18 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
             # Send QR code image and wait for screenshot
             plan_id = callback_data.replace("qr_", "")
             plan = await db.plans.find_one({"id": plan_id, "tenant_id": bot_tenant_id}, {"_id": 0})
-            qr_url = settings.get("qr_code_url", "")
+            qr_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
+            upi_id = settings.get("upi_id", "") or settings.get("payment_upi_id", "")
+            
+            # Auto-generate QR from UPI ID if URL is external/broken
+            if upi_id and (not qr_url or qr_url.startswith("http")):
+                try:
+                    from api.customer.miniapp_user import _generate_upi_qr
+                    upi_name = settings.get("upi_name", "")
+                    qr_url = _generate_upi_qr(upi_id, upi_name)
+                    logger.info(f"Auto-generated QR for UPI {upi_id} -> {qr_url}")
+                except Exception as gen_err:
+                    logger.error(f"QR generation failed: {gen_err}")
             
             logger.info(f"QR Request - plan_id: {plan_id}, plan: {plan}, qr_url: {qr_url[:50] if qr_url else 'EMPTY'}...")
             
@@ -200,26 +211,42 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
             if qr_url:
                 try:
                     logger.info(f"Sending QR to {chat_id}...")
-                    # For large payments (₹500+), show UPI ID along with QR
-                    upi_id = settings.get("upi_id", "") or settings.get("payment_upi_id", "")
                     
                     caption_text = f"📱 <b>Scan & Pay {price_display}</b>\n\n"
                     caption_text += f"📦 Plan: <b>{plan['name'] if plan else ''}</b>\n\n"
                     
-                    if final_price >= 500 and upi_id:
-                        caption_text += f"💳 <b>UPI ID:</b> <code>{upi_id}</code>\n"
-                        caption_text += f"<i>(Large amount? Pay directly to UPI ID)</i>\n\n"
+                    if upi_id:
+                        caption_text += f"💳 <b>UPI ID:</b> <code>{upi_id}</code>\n\n"
                     
                     caption_text += f"⚠️ <b>Payment ke baad turant screenshot bhejo!</b>\n\n"
                     caption_text += f"⏳ Waiting for your screenshot..."
                     
                     # Use send_telegram_photo which handles local files properly
-                    await send_telegram_photo(chat_id, qr_url, caption_text, bot_token)
+                    result = await send_telegram_photo(chat_id, qr_url, caption_text, bot_token)
+                    if not result:
+                        # Photo send failed - send UPI ID as text fallback
+                        fallback = f"📱 <b>Pay {price_display}</b>\n\n"
+                        fallback += f"📦 Plan: <b>{plan['name'] if plan else ''}</b>\n\n"
+                        if upi_id:
+                            fallback += f"💳 <b>UPI ID:</b> <code>{upi_id}</code>\n\n"
+                        fallback += f"⚠️ Screenshot bhejo payment ka!"
+                        await send_telegram_message(chat_id, fallback, bot_token)
                 except Exception as e:
                     logger.error(f"Failed to send QR: {e}")
-                    await send_telegram_message(chat_id, f"📸 Screenshot bhejo payment ka!", bot_token)
+                    fallback = f"📱 <b>Pay {price_display}</b>\n\n"
+                    if upi_id:
+                        fallback += f"💳 <b>UPI ID:</b> <code>{upi_id}</code>\n\n"
+                    fallback += f"⚠️ Screenshot bhejo payment ka!"
+                    await send_telegram_message(chat_id, fallback, bot_token)
             else:
-                logger.warning(f"QR URL is empty! Cannot send QR code.")
+                logger.warning(f"QR URL is empty! Sending UPI ID as text.")
+                fallback = f"📱 <b>Pay {price_display}</b>\n\n"
+                if upi_id:
+                    fallback += f"💳 <b>UPI ID:</b> <code>{upi_id}</code>\n\n"
+                else:
+                    fallback += "❌ QR Code not configured. Contact admin.\n\n"
+                fallback += f"⚠️ Screenshot bhejo payment ka!"
+                await send_telegram_message(chat_id, fallback, bot_token)
             
             # Send reminder message
             reminder_msg = f"👆 @{username if username else 'User'}\n\n"
@@ -604,7 +631,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                     plan = await db.plans.find_one({"name": {"$regex": "30.*min.*chat", "$options": "i"}, "tenant_id": bot_tenant_id}, {"_id": 0})
                 
                 if plan:
-                    qr_code_url = settings.get("qr_code_url", "")
+                    qr_code_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
                     
                     renew_msg = f"🔄 <b>Renew Chat Session</b>\n\n"
                     renew_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
@@ -665,7 +692,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
             
             if plan:
                 # Show payment options directly
-                qr_code_url = settings.get("qr_code_url", "")
+                qr_code_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
                 
                 renew_msg = f"🔄 <b>Renew Subscription</b>\n\n"
                 renew_msg += f"📦 Plan: <b>{plan['name']}</b>\n"
@@ -768,7 +795,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
             settings = await get_bot_settings()
             price = settings.get("video_call_price", 500)
             duration = settings.get("video_call_duration", 30)
-            qr_code_url = settings.get("qr_code_url", "")
+            qr_code_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
             
             # Create booking record
             booking = {
@@ -807,7 +834,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
         elif callback_data.startswith("vc_qr_"):
             # Show QR code for video call payment
             booking_id = callback_data.replace("vc_qr_", "")
-            qr_code_url = settings.get("qr_code_url", "")
+            qr_code_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
             
             if qr_code_url:
                 await send_telegram_photo(chat_id, qr_code_url, "📱 Scan this QR code to pay\n\nAfter payment, send screenshot here.", bot_token)
@@ -1037,7 +1064,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
             
             if paid_post:
                 settings = await get_bot_settings()
-                qr_code_url = settings.get("qr_code_url", "")
+                qr_code_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
                 post_price = paid_post.get("price", 99)
                 
                 logger.info(f"unlock_qr_ - qr_code_url: {qr_code_url[:50] if qr_code_url else 'EMPTY'}...")
@@ -1137,7 +1164,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                     await send_telegram_message(chat_id, msg, bot_token)
                 else:
                     # Show QR and ask for payment
-                    qr_url = settings.get("qr_code_url", "")
+                    qr_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
                     price = session.get("price", 0)
                     
                     if price <= 0:

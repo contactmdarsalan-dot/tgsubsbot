@@ -1088,7 +1088,7 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
         # Show payment options
         post_price = paid_post.get("price", 0)
         settings = await get_bot_settings()
-        qr_code_url = settings.get("qr_code_url", "")
+        qr_code_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
         
         # If no specific price, use default from plans
         if post_price <= 0:
@@ -1197,7 +1197,7 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                     price_display = f"<b>₹{original_price}</b>"
                     final_price = original_price
                 
-                qr_code_url = settings.get("qr_code_url", "")
+                qr_code_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
                 
                 payment_msg = f"🔥 <b>EXCLUSIVE OFFER!</b> 🔥\n\n"
                 payment_msg += f"<b>📦 {plan.get('name', 'Plan')}</b>\n\n"
@@ -2068,7 +2068,7 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                 }}
             )
             
-            qr_url = settings.get("qr_code_url", "")
+            qr_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
             amount = pending.get("superchat_amount", 0)
             
             if qr_url:
