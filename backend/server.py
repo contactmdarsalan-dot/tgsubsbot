@@ -38,12 +38,8 @@ from routes.global_wallet import router as global_wallet_router
 from routes.global_app import router as global_app_router
 from routes.razorpay_webhook import router as razorpay_router
 
-# Import background tasks
-from services.background_tasks import (
-    check_subscriptions, send_followups, send_daily_reminders,
-    check_upcoming_live_sessions
-)
-from services.chat_pool import check_expired_chat_sessions
+# Import worker scheduler
+from workers.scheduler import create_scheduler
 
 
 # ============== REQUEST CONTEXT MIDDLEWARE ==============
@@ -66,8 +62,8 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Add RequestContext middleware
 app.add_middleware(RequestContextMiddleware)
 
-# Scheduler
-scheduler = AsyncIOScheduler()
+# Scheduler — cleanly separated in workers module
+scheduler = create_scheduler()
 
 # Include all route modules under /api prefix
 app.include_router(auth_router, prefix="/api")
@@ -132,15 +128,9 @@ async def startup():
     # Bootstrap super admin roles
     await bootstrap_super_admins()
     
-    scheduler.add_job(check_subscriptions, 'interval', hours=6)
-    scheduler.add_job(send_followups, 'cron', day_of_week='mon,thu', hour=10)
-    scheduler.add_job(check_expired_chat_sessions, 'interval', seconds=30)
-    scheduler.add_job(send_daily_reminders, 'cron', hour=9, minute=0)
-    scheduler.add_job(send_daily_reminders, 'cron', hour=14, minute=30)
-    scheduler.add_job(send_daily_reminders, 'cron', hour=20, minute=0)
-    scheduler.add_job(check_upcoming_live_sessions, 'interval', minutes=5)
+    # Start scheduler (all jobs defined in workers/scheduler.py)
     scheduler.start()
-    logger.info("Scheduler started with daily reminders")
+    logger.info("Scheduler started — all jobs have distributed locking")
 
 
 @app.on_event("shutdown")
