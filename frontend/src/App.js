@@ -44,6 +44,7 @@ import MiniAppManagement from "./pages/MiniAppManagement";
 import MiniAppPlans from "./pages/MiniAppPlans";
 import MiniAppSubscribers from "./pages/MiniAppSubscribers";
 import MiniAppPayments from "./pages/MiniAppPayments";
+import RiskAlerts from "./pages/RiskAlerts";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -149,39 +150,40 @@ function AppRouter() {
         }
       >
         <Route index element={<Dashboard />} />
-        <Route path="plans" element={<Plans />} />
-        <Route path="subscribers" element={<Subscribers />} />
-        <Route path="payments" element={<Payments />} />
-        <Route path="chat-groups" element={<ChatGroups />} />
-        <Route path="broadcast" element={<Broadcast />} />
-        <Route path="automation" element={<Automation />} />
-        <Route path="settings" element={<Settings />} />
-        <Route path="admin-subs" element={<AdminSubscriptions />} />
-        <Route path="super-admin" element={<SuperAdminDashboard />} />
+        <Route path="plans" element={<TenantRoute><Plans /></TenantRoute>} />
+        <Route path="subscribers" element={<TenantRoute><Subscribers /></TenantRoute>} />
+        <Route path="payments" element={<TenantRoute><Payments /></TenantRoute>} />
+        <Route path="chat-groups" element={<TenantRoute><ChatGroups /></TenantRoute>} />
+        <Route path="broadcast" element={<TenantRoute><Broadcast /></TenantRoute>} />
+        <Route path="automation" element={<TenantRoute><Automation /></TenantRoute>} />
+        <Route path="settings" element={<TenantRoute><Settings /></TenantRoute>} />
+        <Route path="admin-subs" element={<SuperAdminRoute><AdminSubscriptions /></SuperAdminRoute>} />
+        <Route path="super-admin" element={<SuperAdminRoute><SuperAdminDashboard /></SuperAdminRoute>} />
         <Route path="support" element={<SupportPage />} />
-        <Route path="coupons" element={<Coupons />} />
-        <Route path="referrals" element={<Referrals />} />
-        <Route path="faqs" element={<FAQs />} />
+        <Route path="coupons" element={<TenantRoute><Coupons /></TenantRoute>} />
+        <Route path="referrals" element={<TenantRoute><Referrals /></TenantRoute>} />
+        <Route path="faqs" element={<TenantRoute><FAQs /></TenantRoute>} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="revenue" element={<RevenueDashboard />} />
-        <Route path="telegram-admins" element={<TelegramAdmins />} />
-        <Route path="bot-activity" element={<BotActivityLogs />} />
-        <Route path="video-calls" element={<VideoCalls />} />
-        <Route path="live-stream" element={<LiveStream />} />
-        <Route path="paid-posts" element={<PaidPosts />} />
-        <Route path="user-management" element={<UserManagement />} />
-        <Route path="creators" element={<Creators />} />
-        <Route path="branding" element={<Branding />} />
-        <Route path="bot-language" element={<BotLanguage />} />
+        <Route path="telegram-admins" element={<TenantRoute><TelegramAdmins /></TenantRoute>} />
+        <Route path="bot-activity" element={<TenantRoute><BotActivityLogs /></TenantRoute>} />
+        <Route path="video-calls" element={<TenantRoute><VideoCalls /></TenantRoute>} />
+        <Route path="live-stream" element={<TenantRoute><LiveStream /></TenantRoute>} />
+        <Route path="paid-posts" element={<TenantRoute><PaidPosts /></TenantRoute>} />
+        <Route path="user-management" element={<SuperAdminRoute><UserManagement /></SuperAdminRoute>} />
+        <Route path="creators" element={<TenantRoute><Creators /></TenantRoute>} />
+        <Route path="branding" element={<SuperAdminRoute><Branding /></SuperAdminRoute>} />
+        <Route path="bot-language" element={<TenantRoute><BotLanguage /></TenantRoute>} />
         <Route path="miniapp-users" element={<MiniAppUsers />} />
         <Route path="profile" element={<Profile />} />
-        <Route path="saas-management" element={<SaaSManagement />} />
-        <Route path="tenant/:tenantId" element={<TenantProfile />} />
-        <Route path="team" element={<TeamManagement />} />
-        <Route path="miniapp-manage" element={<MiniAppManagement />} />
-        <Route path="miniapp-plans" element={<MiniAppPlans />} />
-        <Route path="miniapp-subscribers" element={<MiniAppSubscribers />} />
-        <Route path="miniapp-payments" element={<MiniAppPayments />} />
+        <Route path="saas-management" element={<SuperAdminRoute><SaaSManagement /></SuperAdminRoute>} />
+        <Route path="tenant/:tenantId" element={<SuperAdminRoute><TenantProfile /></SuperAdminRoute>} />
+        <Route path="team" element={<TenantRoute><TeamManagement /></TenantRoute>} />
+        <Route path="miniapp-manage" element={<TenantRoute><MiniAppManagement /></TenantRoute>} />
+        <Route path="miniapp-plans" element={<TenantRoute><MiniAppPlans /></TenantRoute>} />
+        <Route path="miniapp-subscribers" element={<TenantRoute><MiniAppSubscribers /></TenantRoute>} />
+        <Route path="miniapp-payments" element={<TenantRoute><MiniAppPayments /></TenantRoute>} />
+        <Route path="risk-alerts" element={<SuperAdminRoute><RiskAlerts /></SuperAdminRoute>} />
       </Route>
     </Routes>
   );
@@ -195,47 +197,43 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
   
-  // Check if user has active subscription
   const subStatus = user.dashboard_subscription_status;
   const subEnd = user.dashboard_subscription_end;
   const isAdmin = user.isAdmin || localStorage.getItem("isFirstUser") === "true";
   const isSuperAdmin = user.role === "super_admin";
-  const isTenantAdmin = user.role === "tenant_admin";
+  const isTenantAdmin = user.role === "tenant_admin" || user.role === "tenant_owner";
   
-  // Super Admin gets free access - no subscription needed
-  if (isSuperAdmin) {
-    return children;
-  }
+  if (isSuperAdmin || isTenantAdmin || isAdmin) return children;
   
-  // Tenant Admin always gets dashboard access
-  if (isTenantAdmin) {
-    return children;
-  }
+  if (subStatus === "expired") return <Navigate to="/renew" replace />;
   
-  // Admin gets free access
-  if (isAdmin) {
-    return children;
-  }
-  
-  // Expired subscription - show renewal page
-  if (subStatus === "expired") {
-    return <Navigate to="/renew" replace />;
-  }
-  
-  // Check if subscription expired by date
   if (subStatus === "active" && subEnd) {
     const endDate = new Date(subEnd);
-    if (new Date() > endDate) {
-      return <Navigate to="/renew" replace />;
-    }
+    if (new Date() > endDate) return <Navigate to="/renew" replace />;
     return children;
   }
   
-  // No subscription - show pricing
-  if (subStatus !== "active") {
-    return <Navigate to="/pricing" replace />;
-  }
+  if (subStatus !== "active") return <Navigate to="/pricing" replace />;
   
+  return children;
+};
+
+// Role-based route guard — Super Admin only pages
+const SuperAdminRoute = ({ children }) => {
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  if (user.role !== "super_admin") {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return children;
+};
+
+// Role-based route guard — Tenant Admin/Owner only pages
+const TenantRoute = ({ children }) => {
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const allowed = ["super_admin", "tenant_admin", "tenant_owner", "admin"];
+  if (!allowed.includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
   return children;
 };
 

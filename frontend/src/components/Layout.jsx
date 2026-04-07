@@ -14,6 +14,7 @@ import { Button } from "./ui/button";
 const superAdminNav = [
   { path: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { path: "/dashboard/saas-management", label: "Tenants", icon: Building2 },
+  { path: "/dashboard/risk-alerts", label: "Risk & Alerts", icon: AlertTriangle },
   { path: "/dashboard/revenue", label: "Revenue", icon: IndianRupee },
   { path: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { path: "/dashboard/admin-subs", label: "Subscriptions", icon: Crown },
@@ -85,6 +86,7 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isImpersonating, setIsImpersonating] = useState(false);
   const [branding, setBranding] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const location = useLocation();
@@ -93,12 +95,13 @@ export default function Layout() {
   const profileRef = useRef(null);
 
   const API = process.env.REACT_APP_BACKEND_URL + "/api";
-  const SUPER_ADMIN_EMAILS = ["gamerxboys8958@gmail.com", "contactmdarsalan@gmail.com"];
 
   useEffect(() => {
     const role = user.role || "";
-    setIsSuperAdmin(role === "super_admin" || SUPER_ADMIN_EMAILS.includes(user.email));
-  }, [user.email, user.role]);
+    setIsSuperAdmin(role === "super_admin");
+    // Check if currently impersonating
+    setIsImpersonating(!!localStorage.getItem("original_token"));
+  }, [user.role]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -120,7 +123,22 @@ export default function Layout() {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     localStorage.removeItem("isFirstUser");
+    localStorage.removeItem("original_token");
+    localStorage.removeItem("original_user");
     navigate("/login");
+  };
+
+  const exitImpersonation = () => {
+    const origToken = localStorage.getItem("original_token");
+    const origUser = localStorage.getItem("original_user");
+    if (origToken && origUser) {
+      localStorage.setItem("token", origToken);
+      localStorage.setItem("user", origUser);
+      localStorage.removeItem("original_token");
+      localStorage.removeItem("original_user");
+      setIsImpersonating(false);
+      window.location.href = "/dashboard/saas-management";
+    }
   };
 
   const allNav = isSuperAdmin ? superAdminNav : tenantOnlyNav;
@@ -215,6 +233,26 @@ export default function Layout() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+        {/* Impersonation Banner */}
+        {isImpersonating && (
+          <div className="bg-amber-500/20 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between flex-shrink-0" data-testid="impersonation-banner">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-amber-400" />
+              <span className="text-sm text-amber-200 font-medium">
+                Impersonating: <span className="text-white font-bold">{user.name || user.email}</span>
+                {user.tenant_id && <span className="text-amber-400/70 ml-1">({user.tenant_id})</span>}
+              </span>
+            </div>
+            <button
+              onClick={exitImpersonation}
+              className="px-3 py-1 text-xs font-bold bg-amber-500/30 hover:bg-amber-500/50 text-amber-100 rounded-lg transition-colors"
+              data-testid="exit-impersonation-btn"
+            >
+              Exit Impersonation
+            </button>
+          </div>
+        )}
+
         {/* Top Bar */}
         <header className="sticky top-0 z-30 border-b border-white/6 flex-shrink-0" style={{ background: "hsla(0,0%,2%,0.85)", backdropFilter: "blur(20px)" }}>
           <div className="flex items-center justify-between px-4 md:px-6 py-3">

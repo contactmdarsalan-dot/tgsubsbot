@@ -225,6 +225,242 @@ async def verify_super_admin(user: dict):
     """Verify user is a REAL super admin. Strict check — role-based only."""
     ensure_super_admin(user)
 
+
+# ============== IMPERSONATION MODE ==============
+
+@router.post("/saas/impersonate/{tenant_id}")
+async def impersonate_tenant(tenant_id: str, user: dict = Depends(get_current_user)):
+    """Super Admin impersonates a Tenant Admin. Returns a token scoped to that tenant."""
+    ensure_super_admin(user)
+    
+    # Verify tenant exists
+    tenant = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0})
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    # Find the tenant owner/admin user
+    tenant_user = await db.users.find_one(
+        {"tenant_id": tenant_id, "role": {"$in": ["tenant_owner", "tenant_admin"]}},
+        {"_id": 0}
+    )
+    if not tenant_user:
+        raise HTTPException(status_code=404, detail="No admin user found for this tenant")
+    
+    # Create impersonation token — includes the real admin's ID for audit
+    from services.auth import create_token
+    token = create_token(
+        user_id=tenant_user["id"],
+        role=tenant_user.get("role", "tenant_admin"),
+        tenant_id=tenant_id
+    )
+    
+    # Audit log
+    await log_action(
+        tenant_id="platform",
+        actor_id=user["id"],
+        actor_email=user["email"],
+        action="impersonate_tenant",
+        entity_type="tenant",
+        entity_id=tenant_id,
+        metadata={
+            "impersonated_user_id": tenant_user["id"],
+            "impersonated_email": tenant_user.get("email", ""),
+            "tenant_name": tenant.get("name", "")
+        }
+    )
+    
+    return {
+        "token": token,
+        "user": {
+            "id": tenant_user["id"],
+            "email": tenant_user.get("email", ""),
+            "name": tenant_user.get("name", ""),
+            "role": tenant_user.get("role", "tenant_admin"),
+            "tenant_id": tenant_id,
+            "is_admin": True,
+            "dashboard_subscription_status": "active",
+            "dashboard_subscription_end": None,
+            "impersonated_by": user["id"],
+            "impersonated_by_email": user["email"]
+        },
+        "original_token": None  # Frontend stores its own original token
+    }
+
+@router.get("/saas/impersonation-log")
+async def get_impersonation_log(user: dict = Depends(get_current_user)):
+    """Get recent impersonation audit log entries (super admin only)."""
+    ensure_super_admin(user)
+    logs = await db.audit_logs.find(
+        {"action": "impersonate_tenant"},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    return logs
+
+
+# ============== RISK & ALERTS SYSTEM ==============
+
+@router.get("/saas/risk-alerts")
+async def get_risk_alerts(user: dict = Depends(get_current_user)):
+    """Get risk alerts for the platform — fraud detection, unusual patterns."""
+    ensure_super_admin(user)
+    
+    alerts = []
+    now = datetime.now(timezone.utc)
+    week_ago = (now - timedelta(days=7)).isoformat()
+    month_ago = (now - timedelta(days=30)).isoformat()
+    
+    # 1. High refund rate per tenant (>20% of payments rejected/refunded in last 30 days)
+    pipeline_refunds = [
+        {"$match": {"created_at": {"$gte": month_ago}}},
+        {"$group": {
+            "_id": "$tenant_id",
+            "total": {"$sum": 1},
+            "rejected": {"$sum": {"$cond": [{"$in": ["$status", ["rejected", "refunded"]]}, 1, 0]}},
+        }},
+        {"$addFields": {
+            "refund_rate": {"$cond": [{"$gt": ["$total", 0]}, {"$divide": ["$rejected", "$total"]}, 0]}
+        }},
+        {"$match": {"refund_rate": {"$gt": 0.2}, "total": {"$gte": 5}}},
+        {"$sort": {"refund_rate": -1}}
+    ]
+    refund_data = await db.payments.aggregate(pipeline_refunds).to_list(50)
+    for r in refund_data:
+        tenant = await db.tenants.find_one({"tenant_id": r["_id"]}, {"_id": 0, "name": 1, "tenant_id": 1})
+        alerts.append({
+            "id": f"refund_{r['_id']}",
+            "type": "high_refund_rate",
+            "severity": "critical" if r["refund_rate"] > 0.5 else "warning",
+            "tenant_id": r["_id"],
+            "tenant_name": tenant.get("name", "Unknown") if tenant else "Unknown",
+            "message": f"Refund rate {r['refund_rate']*100:.0f}% ({r['rejected']}/{r['total']} payments) in last 30 days",
+            "data": {"refund_rate": round(r["refund_rate"], 2), "total": r["total"], "rejected": r["rejected"]},
+            "created_at": now.isoformat()
+        })
+    
+    # 2. Failed payments spike (>10 failed in last 7 days per tenant)
+    pipeline_failed = [
+        {"$match": {"created_at": {"$gte": week_ago}, "status": {"$in": ["failed", "rejected"]}}},
+        {"$group": {"_id": "$tenant_id", "count": {"$sum": 1}}},
+        {"$match": {"count": {"$gte": 10}}},
+        {"$sort": {"count": -1}}
+    ]
+    failed_data = await db.payments.aggregate(pipeline_failed).to_list(50)
+    for f in failed_data:
+        tenant = await db.tenants.find_one({"tenant_id": f["_id"]}, {"_id": 0, "name": 1})
+        alerts.append({
+            "id": f"failed_{f['_id']}",
+            "type": "failed_payments_spike",
+            "severity": "warning",
+            "tenant_id": f["_id"],
+            "tenant_name": tenant.get("name", "Unknown") if tenant else "Unknown",
+            "message": f"{f['count']} failed/rejected payments in last 7 days",
+            "data": {"failed_count": f["count"]},
+            "created_at": now.isoformat()
+        })
+    
+    # 3. Inactive tenants with active subscribers (potential abandoned bot)
+    all_tenants = await db.tenants.find({"status": "active"}, {"_id": 0, "tenant_id": 1, "name": 1}).to_list(1000)
+    for t in all_tenants:
+        tid = t["tenant_id"]
+        # Check if any recent activity (payments/subscribers in last 30 days)
+        recent_payments = await db.payments.count_documents({"tenant_id": tid, "created_at": {"$gte": month_ago}})
+        if recent_payments == 0:
+            active_subs = await db.subscribers.count_documents({"tenant_id": tid, "status": "active"})
+            if active_subs > 0:
+                alerts.append({
+                    "id": f"abandoned_{tid}",
+                    "type": "abandoned_bot",
+                    "severity": "info",
+                    "tenant_id": tid,
+                    "tenant_name": t.get("name", "Unknown"),
+                    "message": f"{active_subs} active subscribers but no payments in 30 days",
+                    "data": {"active_subscribers": active_subs},
+                    "created_at": now.isoformat()
+                })
+    
+    # 4. Unusually high payment volume (>50 payments in 24h for a single tenant)
+    day_ago = (now - timedelta(hours=24)).isoformat()
+    pipeline_volume = [
+        {"$match": {"created_at": {"$gte": day_ago}}},
+        {"$group": {"_id": "$tenant_id", "count": {"$sum": 1}}},
+        {"$match": {"count": {"$gte": 50}}},
+        {"$sort": {"count": -1}}
+    ]
+    volume_data = await db.payments.aggregate(pipeline_volume).to_list(50)
+    for v in volume_data:
+        tenant = await db.tenants.find_one({"tenant_id": v["_id"]}, {"_id": 0, "name": 1})
+        alerts.append({
+            "id": f"volume_{v['_id']}",
+            "type": "unusual_volume",
+            "severity": "warning",
+            "tenant_id": v["_id"],
+            "tenant_name": tenant.get("name", "Unknown") if tenant else "Unknown",
+            "message": f"{v['count']} payments in last 24 hours — unusually high",
+            "data": {"payment_count": v["count"]},
+            "created_at": now.isoformat()
+        })
+    
+    # 5. Subscription expiry wave (>20 subs expiring in next 3 days)
+    three_days = (now + timedelta(days=3)).isoformat()
+    pipeline_expiry = [
+        {"$match": {"status": "active", "end_date": {"$lte": three_days, "$gte": now.isoformat()}}},
+        {"$group": {"_id": "$tenant_id", "expiring": {"$sum": 1}}},
+        {"$match": {"expiring": {"$gte": 20}}},
+        {"$sort": {"expiring": -1}}
+    ]
+    expiry_data = await db.subscribers.aggregate(pipeline_expiry).to_list(50)
+    for e in expiry_data:
+        tenant = await db.tenants.find_one({"tenant_id": e["_id"]}, {"_id": 0, "name": 1})
+        alerts.append({
+            "id": f"expiry_{e['_id']}",
+            "type": "expiry_wave",
+            "severity": "info",
+            "tenant_id": e["_id"],
+            "tenant_name": tenant.get("name", "Unknown") if tenant else "Unknown",
+            "message": f"{e['expiring']} subscriptions expiring in next 3 days",
+            "data": {"expiring_count": e["expiring"]},
+            "created_at": now.isoformat()
+        })
+    
+    # Sort alerts: critical > warning > info
+    severity_order = {"critical": 0, "warning": 1, "info": 2}
+    alerts.sort(key=lambda a: severity_order.get(a["severity"], 3))
+    
+    return {
+        "alerts": alerts,
+        "total": len(alerts),
+        "critical_count": sum(1 for a in alerts if a["severity"] == "critical"),
+        "warning_count": sum(1 for a in alerts if a["severity"] == "warning"),
+        "info_count": sum(1 for a in alerts if a["severity"] == "info")
+    }
+
+@router.post("/saas/risk-alerts/{alert_id}/dismiss")
+async def dismiss_alert(alert_id: str, data: dict, user: dict = Depends(get_current_user)):
+    """Dismiss/acknowledge a risk alert."""
+    ensure_super_admin(user)
+    
+    await db.dismissed_alerts.insert_one({
+        "id": str(uuid.uuid4()),
+        "alert_id": alert_id,
+        "dismissed_by": user["id"],
+        "dismissed_by_email": user["email"],
+        "reason": data.get("reason", ""),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    await log_action(
+        tenant_id="platform",
+        actor_id=user["id"],
+        actor_email=user["email"],
+        action="dismiss_alert",
+        entity_type="risk_alert",
+        entity_id=alert_id,
+        metadata={"reason": data.get("reason", "")}
+    )
+    
+    return {"message": "Alert dismissed"}
+
+
 # ============== DASHBOARD SUBSCRIPTION ROUTES ==============
 
 # Default dashboard plans (will be stored in DB)

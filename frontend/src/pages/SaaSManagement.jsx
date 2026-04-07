@@ -140,6 +140,20 @@ export default function SaaSManagement() {
   const changeOwner = async () => {
     try { await axios.put(`${API}/saas/tenants/${changeOwnerTenant.tenant_id}/change-owner`, changeOwnerForm, getAuth()); toast.success("Owner changed!"); setChangeOwnerDialog(false); fetchTenants(); } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
   };
+  const impersonateTenant = async (tenantId, tenantName) => {
+    if (!window.confirm(`Impersonate tenant "${tenantName}"? You'll be logged in as their admin.`)) return;
+    try {
+      const { data } = await axios.post(`${API}/saas/impersonate/${tenantId}`, {}, getAuth());
+      // Store original credentials for exit
+      localStorage.setItem("original_token", localStorage.getItem("token"));
+      localStorage.setItem("original_user", localStorage.getItem("user"));
+      // Switch to impersonated user
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      toast.success(`Impersonating ${data.user.name || data.user.email}`);
+      window.location.href = "/dashboard";
+    } catch (e) { toast.error(e.response?.data?.detail || "Impersonation failed"); }
+  };
   const fetchIsolationReport = async () => {
     setReportLoading(true);
     try { const { data } = await axios.get(`${API}/saas/tenant-isolation-report`, getAuth()); setIsolationReport(data); } catch (e) { toast.error("Failed to fetch report"); }
@@ -316,6 +330,7 @@ export default function SaaSManagement() {
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openBotAdminDialog(t)} title="Bot Admins"><UserPlus className="w-4 h-4 text-blue-400" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => openTenantDialog(t)} title="Edit"><Edit className="w-4 h-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => impersonateTenant(t.tenant_id, t.name)} title="Impersonate"><Eye className="w-4 h-4 text-purple-400" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => openChangeOwnerDialog(t)} title="Change Owner"><UserCog className="w-4 h-4 text-amber-400" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => migrateData(t)} disabled={migrating} title="Migrate"><ArrowRightLeft className="w-4 h-4 text-cyan-500" /></Button>
                         {t.status === "inactive" ? (
