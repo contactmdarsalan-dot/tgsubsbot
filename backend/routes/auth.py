@@ -2,8 +2,8 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from database import db
 from services.auth import get_current_user, hash_password, verify_password, create_token
-from services.permissions import is_super_admin
-from config import logger, twilio_client, TWILIO_PHONE_NUMBER, SUPER_ADMIN_EMAILS
+from services.permissions import is_super_admin, is_any_admin
+from config import logger, twilio_client, TWILIO_PHONE_NUMBER
 from rate_limiter import limiter
 from models import UserCreate, UserLogin, User
 from datetime import datetime, timezone, timedelta
@@ -57,7 +57,7 @@ async def register(request: Request, user: UserCreate):
         doc["trial_started_at"] = datetime.now(timezone.utc).isoformat()
     
     await db.users.insert_one(doc)
-    token = create_token(user_obj.id)
+    token = create_token(user_obj.id, role="tenant_owner", tenant_id=tenant_id)
     return {
         "token": token, 
         "user": {
@@ -98,7 +98,7 @@ async def login(request: Request, user: UserLogin):
         sub_status = "expired"
         await db.users.update_one({"id": existing["id"]}, {"$set": {"dashboard_subscription_status": "expired"}})
     
-    token = create_token(existing["id"])
+    token = create_token(existing["id"], role=user_role, tenant_id=existing.get("tenant_id", ""))
     return {
         "token": token, 
         "user": {
@@ -191,8 +191,10 @@ async def process_google_session(data: dict):
         sub_end = None
         is_admin = True
     
-    # Create JWT token
-    token = create_token(user_id)
+    # Create JWT token — include role and tenant context
+    _g_role = existing.get("role", "tenant_owner") if existing else "tenant_owner"
+    _g_tid = existing.get("tenant_id", "") if existing else tenant_id
+    token = create_token(user_id, role=_g_role, tenant_id=_g_tid)
     
     # Check if sub expired
     if sub_end and isinstance(sub_end, str):
@@ -376,8 +378,10 @@ async def verify_otp(data: dict):
         sub_end = None
         is_admin = True
     
-    # Create JWT token
-    token = create_token(user_id)
+    # Create JWT token — include role and tenant context
+    _otp_role = existing.get("role", "tenant_owner") if existing else "tenant_owner"
+    _otp_tid = existing.get("tenant_id", "") if existing else tenant_id
+    token = create_token(user_id, role=_otp_role, tenant_id=_otp_tid)
     
     # Format subscription end date
     if sub_end and isinstance(sub_end, str):
@@ -588,10 +592,7 @@ async def add_user_message_to_ticket(ticket_id: str, data: dict, user = Depends(
 @router.get("/admin/support/tickets")
 async def get_all_support_tickets(user = Depends(get_current_user)):
     """Get all support tickets (super admin or admin only)"""
-    is_super_admin = is_super_admin(user)
-    is_admin = user.get("is_admin", False)
-    
-    if not is_super_admin and not is_admin:
+    if not is_any_admin(user):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     tickets = await db.support_tickets.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
@@ -600,10 +601,7 @@ async def get_all_support_tickets(user = Depends(get_current_user)):
 @router.post("/admin/support/tickets/{ticket_id}/reply")
 async def admin_reply_to_ticket(ticket_id: str, data: dict, user = Depends(get_current_user)):
     """Add admin reply to a ticket (can reply multiple times)"""
-    is_super_admin = is_super_admin(user)
-    is_admin = user.get("is_admin", False)
-    
-    if not is_super_admin and not is_admin:
+    if not is_any_admin(user):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     ticket = await db.support_tickets.find_one({"id": ticket_id}, {"_id": 0})
@@ -634,10 +632,7 @@ async def admin_reply_to_ticket(ticket_id: str, data: dict, user = Depends(get_c
 @router.put("/admin/support/tickets/{ticket_id}/status")
 async def update_ticket_status(ticket_id: str, data: dict, user = Depends(get_current_user)):
     """Update ticket status (super admin or admin only)"""
-    is_super_admin = is_super_admin(user)
-    is_admin = user.get("is_admin", False)
-    
-    if not is_super_admin and not is_admin:
+    if not is_any_admin(user):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     await db.support_tickets.update_one(
@@ -655,7 +650,6 @@ async def delete_ticket(ticket_id: str, user = Depends(get_current_user)):
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    from services.permissions import is_any_admin
     is_admin_user = is_any_admin(user)
     is_owner = ticket.get("user_id") == user.get("id")
 
@@ -673,10 +667,10 @@ async def close_ticket(ticket_id: str, user = Depends(get_current_user)):
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    is_admin = user.get("is_admin", False) or user.get("role") in ["admin", "super_admin"]
+    admin_check = is_any_admin(user)
     is_owner = ticket.get("user_id") == user.get("id")
 
-    if not is_admin and not is_owner:
+    if not admin_check and not is_owner:
         raise HTTPException(status_code=403, detail="Not authorized")
 
     await db.support_tickets.update_one({"id": ticket_id}, {"$set": {"status": "closed"}})
@@ -690,10 +684,10 @@ async def reopen_ticket(ticket_id: str, user = Depends(get_current_user)):
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    is_admin = user.get("is_admin", False) or user.get("role") in ["admin", "super_admin"]
+    admin_check = is_any_admin(user)
     is_owner = ticket.get("user_id") == user.get("id")
 
-    if not is_admin and not is_owner:
+    if not admin_check and not is_owner:
         raise HTTPException(status_code=403, detail="Not authorized")
 
     await db.support_tickets.update_one({"id": ticket_id}, {"$set": {"status": "open"}})

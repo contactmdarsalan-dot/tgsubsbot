@@ -2,9 +2,9 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from database import db
 from services.auth import get_current_user, hash_password
-from services.permissions import ensure_super_admin, is_super_admin, get_user_tenant
+from services.permissions import ensure_super_admin, is_super_admin, get_user_tenant, is_any_admin
 from services.audit import log_action
-from config import logger, RAZORPAY_KEY_ID, razorpay_client, DASHBOARD_PLANS, SUPER_ADMIN_EMAILS
+from config import logger, RAZORPAY_KEY_ID, razorpay_client, DASHBOARD_PLANS
 from models import User
 from datetime import datetime, timezone, timedelta
 import uuid
@@ -448,16 +448,13 @@ async def verify_dashboard_razorpay_payment(data: dict, user = Depends(get_curre
 async def check_if_admin(user = Depends(get_current_user)):
     """Check if current user is admin/super_admin/tenant_admin"""
     role = user.get("role", "user")
-    is_admin_user = role in ["admin", "super_admin", "tenant_admin"] or user.get("email") in SUPER_ADMIN_EMAILS
+    is_admin_user = is_any_admin(user)
     return {"is_admin": is_admin_user, "role": role}
 
 @router.get("/dashboard-subscription/requests")
 async def get_subscription_requests(user = Depends(get_current_user)):
     """Get all subscription requests (super_admin sees all)"""
-    role = user.get("role", "user")
-    is_platform_admin = role == "super_admin" or user.get("email") in SUPER_ADMIN_EMAILS
-
-    if is_platform_admin:
+    if is_super_admin(user):
         requests = await db.dashboard_subscriptions.find({}, {"_id": 0}).to_list(100)
     else:
         requests = await db.dashboard_subscriptions.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
@@ -902,7 +899,7 @@ async def revoke_user_access(user_id: str, user = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="User not found")
     
     # Don't allow revoking super admin's own access
-    if target_user.get("email") in SUPER_ADMIN_EMAILS:
+    if target_user.get("role") == "super_admin":
         raise HTTPException(status_code=400, detail="Cannot revoke super admin's access")
     
     await db.users.update_one(
@@ -924,7 +921,7 @@ async def make_user_admin(user_id: str, user = Depends(get_current_user)):
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    if target_user.get("email") in SUPER_ADMIN_EMAILS:
+    if target_user.get("role") == "super_admin":
         raise HTTPException(status_code=400, detail="Cannot modify super admin")
     
     await db.users.update_one(
@@ -943,7 +940,7 @@ async def remove_user_admin(user_id: str, user = Depends(get_current_user)):
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    if target_user.get("email") in SUPER_ADMIN_EMAILS:
+    if target_user.get("role") == "super_admin":
         raise HTTPException(status_code=400, detail="Cannot modify super admin")
     
     await db.users.update_one(
@@ -983,12 +980,8 @@ async def change_user_subscription(user_id: str, data: dict, user = Depends(get_
 
 @router.put("/dashboard-subscription/approve/{request_id}")
 async def approve_subscription(request_id: str, user = Depends(get_current_user)):
-    """Approve subscription request (admin only)"""
-    # Check if admin (first user) or super admin
-    is_super_admin = user.get("role") == "super_admin" or user.get("email") in SUPER_ADMIN_EMAILS
-    
-    if not is_super_admin:
-        raise HTTPException(status_code=403, detail="Super admin access required")
+    """Approve subscription request (super admin only)"""
+    ensure_super_admin(user)
     
     request = await db.dashboard_subscriptions.find_one({"id": request_id}, {"_id": 0})
     if not request:
@@ -1461,7 +1454,7 @@ async def create_tenant_admin(data: dict, user: dict = Depends(get_current_user)
 
 
 @router.put("/saas/tenants/{tenant_id}")
-async def update_tenant_admin(tenant_id: str, data: dict, user: dict = Depends(get_current_user)):
+async def update_tenant(tenant_id: str, data: dict, user: dict = Depends(get_current_user)):
     """Update a tenant"""
     await verify_super_admin(user)
 

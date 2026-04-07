@@ -1,15 +1,15 @@
 """Centralized permissions and role management.
-Single source of truth for authorization logic."""
+Single source of truth for authorization logic.
+SECURITY: Authorization is ROLE-BASED ONLY. No email-based bypass."""
 from fastapi import HTTPException
-from config import SUPER_ADMIN_EMAILS
 
 # Valid roles (ordered by privilege)
 ROLES = {"super_admin", "tenant_owner", "tenant_admin", "admin", "creator", "customer", "user"}
 
 
 def is_super_admin(user: dict) -> bool:
-    """Check if user is a platform super admin."""
-    return user.get("role") == "super_admin" or user.get("email") in SUPER_ADMIN_EMAILS
+    """Check if user is a platform super admin. Role-based only."""
+    return user.get("role") == "super_admin"
 
 
 def is_tenant_admin(user: dict) -> bool:
@@ -18,8 +18,8 @@ def is_tenant_admin(user: dict) -> bool:
 
 
 def is_any_admin(user: dict) -> bool:
-    """Check if user has any admin-level access."""
-    return user.get("role") in {"super_admin", "tenant_owner", "tenant_admin", "admin"} or user.get("email") in SUPER_ADMIN_EMAILS
+    """Check if user has any admin-level access. Role-based only."""
+    return user.get("role") in {"super_admin", "tenant_owner", "tenant_admin", "admin"}
 
 
 def get_user_tenant(user: dict) -> str:
@@ -29,7 +29,6 @@ def get_user_tenant(user: dict) -> str:
         return ""  # No filter — sees everything
     tenant_id = user.get("tenant_id", "")
     if not tenant_id:
-        # SECURITY: Return impossible value so tq() adds a filter matching nothing
         return "__no_tenant__"
     return tenant_id
 
@@ -43,7 +42,7 @@ def tq(base_query: dict, tenant_id: str) -> dict:
 
 
 def ensure_super_admin(user: dict):
-    """Raise 403 if user is not super admin."""
+    """Raise 403 if user is not super admin. Role-based only."""
     if not is_super_admin(user):
         raise HTTPException(status_code=403, detail="Super Admin access required")
 

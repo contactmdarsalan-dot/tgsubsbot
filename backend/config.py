@@ -13,9 +13,14 @@ load_dotenv(ROOT_DIR / '.env')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("server")
 
-# JWT Secret — MUST be set in production, no fallback
+# Environment mode
+ENVIRONMENT = os.environ.get('ENVIRONMENT', 'development')
+
+# JWT Secret — MUST be set in production
 JWT_SECRET = os.environ.get('JWT_SECRET')
 if not JWT_SECRET:
+    if ENVIRONMENT == 'production':
+        raise RuntimeError("FATAL: JWT_SECRET not set in production. Server cannot start without it.")
     JWT_SECRET = 'dev-only-unsafe-secret-do-not-use-in-prod'
     logger.warning("JWT_SECRET not set! Using unsafe dev default. Set JWT_SECRET in .env for production.")
 

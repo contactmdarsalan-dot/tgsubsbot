@@ -1,16 +1,18 @@
 """TgSubsBot - Telegram Subscription Bot SaaS Platform
 Main application entry point - app setup, middleware, router inclusion, startup/shutdown
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import os
 import logging
+import uuid as _uuid
 
 from fastapi.responses import Response
-from config import logger
-from database import client as mongo_client
+from config import logger, SUPER_ADMIN_EMAILS
+from database import client as mongo_client, db
 from rate_limiter import limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
@@ -43,12 +45,26 @@ from services.background_tasks import (
 )
 from services.chat_pool import check_expired_chat_sessions
 
+
+# ============== REQUEST CONTEXT MIDDLEWARE ==============
+class RequestContextMiddleware(BaseHTTPMiddleware):
+    """Attach request_id to every request for traceability."""
+    async def dispatch(self, request: Request, call_next):
+        request.state.request_id = str(_uuid.uuid4())
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request.state.request_id
+        return response
+
+
 # Create FastAPI app
 app = FastAPI()
 
 # Rate limiter setup
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Add RequestContext middleware
+app.add_middleware(RequestContextMiddleware)
 
 # Scheduler
 scheduler = AsyncIOScheduler()
@@ -90,11 +106,31 @@ app.add_middleware(
 )
 
 
+async def bootstrap_super_admins():
+    """Ensure SUPER_ADMIN_EMAILS users have role='super_admin' in DB.
+    This runs once at startup so authorization is ALWAYS role-based."""
+    for email in SUPER_ADMIN_EMAILS:
+        user = await db.users.find_one({"email": email})
+        if user and user.get("role") != "super_admin":
+            await db.users.update_one(
+                {"email": email},
+                {"$set": {"role": "super_admin", "is_admin": True}}
+            )
+            logger.info(f"Bootstrap: Set role='super_admin' for {email}")
+        elif user:
+            logger.info(f"Bootstrap: {email} already has role='super_admin'")
+        else:
+            logger.warning(f"Bootstrap: Super admin email {email} not found in DB — will be bootstrapped on first registration/login")
+
+
 @app.on_event("startup")
 async def startup():
     # Create MongoDB indexes
     from database import ensure_indexes
     await ensure_indexes()
+    
+    # Bootstrap super admin roles
+    await bootstrap_super_admins()
     
     scheduler.add_job(check_subscriptions, 'interval', hours=6)
     scheduler.add_job(send_followups, 'cron', day_of_week='mon,thu', hour=10)

@@ -5,7 +5,7 @@ from database import db
 from services.tenant import DEFAULT_TENANT_ID
 from services.auth import get_current_user
 from services.permissions import ensure_tenant_access, is_super_admin
-from config import logger, SUPER_ADMIN_EMAILS
+from config import logger
 from datetime import datetime, timezone
 import uuid
 import httpx
