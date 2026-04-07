@@ -6,7 +6,6 @@ from services.telegram import (
     get_bot_settings, get_bot_username, send_telegram_message,
     send_telegram_message_with_buttons
 )
-from services.tenant import DEFAULT_TENANT_ID
 from services.permissions import get_user_tenant, tq
 from config import logger
 from models import MessageTemplate

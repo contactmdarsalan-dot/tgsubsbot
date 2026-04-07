@@ -3,7 +3,6 @@ from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
 from database import db, cache_delete
 from services.auth import get_current_user
 from services.telegram import get_bot_settings
-from services.tenant import DEFAULT_TENANT_ID
 from services.permissions import is_super_admin, get_user_tenant, tq
 from services.chat_pool import release_chat_group
 from config import logger

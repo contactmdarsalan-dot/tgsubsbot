@@ -1,11 +1,11 @@
-"""Subscribers CRUD, renewal, and bulk operations"""
+"""Subscribers CRUD, renewal, and bulk operations — Repository pattern"""
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from database import db
 from services.auth import get_current_user
 from services.telegram import get_bot_settings, send_telegram_message, add_to_channel, remove_from_channel, notify_admin_new_payment
-from services.tenant import DEFAULT_TENANT_ID
 from services.permissions import get_user_tenant, tq
 from services.chat_pool import get_available_chat_group, assign_chat_group
+from repositories.base import subscribers_repo, plans_repo
 from config import logger
 from models import SubscriberCreate, Subscriber
 from typing import Optional
@@ -32,7 +32,6 @@ async def get_subscribers(status: Optional[str] = None, page: int = 1, limit: in
             {"telegram_username": {"$regex": search, "$options": "i"}},
         ]
     
-    # Pagination
     skip = (max(1, page) - 1) * limit
     limit = min(limit, 200)
     
@@ -65,7 +64,6 @@ async def get_subscribers(status: Optional[str] = None, page: int = 1, limit: in
             sub["group_name"] = ""
             sub["group_id"] = ""
 
-    # Server-side counts
     total_count = await db.subscribers.count_documents(list_query)
     all_query = dict(base_query)
     total_all = await db.subscribers.count_documents(all_query)
@@ -92,6 +90,10 @@ async def create_subscriber(subscriber: SubscriberCreate, background_tasks: Back
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
+    tenant_id = plan.get("tenant_id") or user.get("tenant_id", "")
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant context for subscriber creation")
+
     settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
     grace_days = settings.get("grace_period_days", 2)
 
@@ -115,8 +117,7 @@ async def create_subscriber(subscriber: SubscriberCreate, background_tasks: Back
     for field in ['start_date', 'end_date', 'grace_end_date', 'created_at']:
         if doc.get(field):
             doc[field] = doc[field].isoformat()
-    doc['tenant_id'] = plan.get("tenant_id") or user.get("tenant_id") or DEFAULT_TENANT_ID
-    await db.subscribers.insert_one(doc)
+    await subscribers_repo.insert_one(tenant_id, doc)
 
     plan_channel = plan.get("channel_id", "")
     background_tasks.add_task(add_to_channel, subscriber.telegram_user_id, plan_channel, plan["name"])
@@ -166,7 +167,6 @@ async def renew_subscriber(subscriber_id: str, plan_id: str, background_tasks: B
 
 
 async def send_renewal_notification(user_id: str, plan: dict, plan_channel: str, end_date: datetime):
-    """Send renewal notification with channel invite"""
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
 
@@ -198,6 +198,7 @@ async def delete_subscriber(subscriber_id: str, background_tasks: BackgroundTask
 async def create_subscriber_task(subscriber_create: SubscriberCreate, plan: dict):
     """Background task to create subscriber after payment verification"""
     try:
+        tenant_id = plan.get("tenant_id", "")
         settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
         grace_days = settings.get("grace_period_days", 2)
         plan_channel = plan.get("channel_id", "")
@@ -221,9 +222,12 @@ async def create_subscriber_task(subscriber_create: SubscriberCreate, plan: dict
         doc['end_date'] = doc['end_date'].isoformat()
         doc['grace_end_date'] = doc['grace_end_date'].isoformat()
         doc['created_at'] = doc['created_at'].isoformat()
-        doc['tenant_id'] = plan.get("tenant_id", DEFAULT_TENANT_ID)
 
-        await db.subscribers.insert_one(doc)
+        if tenant_id:
+            await subscribers_repo.insert_one(tenant_id, doc)
+        else:
+            doc['tenant_id'] = tenant_id
+            await db.subscribers.insert_one(doc)
 
         added = await add_to_channel(subscriber_create.telegram_user_id, plan_channel, plan["name"], use_default=True)
         logger.info(f"Add to channel result for {subscriber_create.telegram_user_id}: {added}")
@@ -277,7 +281,7 @@ async def create_subscriber_task(subscriber_create: SubscriberCreate, plan: dict
 
 @router.post("/subscribers/bulk-add-to-channel")
 async def bulk_add_subscribers_to_channel(user=Depends(get_current_user)):
-    """Add all active subscribers to the default channel - one time fix"""
+    """Add all active subscribers to the default channel — tenant-scoped"""
     tenant_id = get_user_tenant(user)
     settings = await get_bot_settings()
     channel_id = settings.get("telegram_channel_id", "")

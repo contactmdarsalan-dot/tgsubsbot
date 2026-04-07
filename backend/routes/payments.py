@@ -1,11 +1,11 @@
-"""Payments CRUD, verification, Razorpay, bot checkout, bulk operations"""
+"""Payments CRUD, verification, Razorpay, bot checkout, bulk operations — Repository pattern"""
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from database import db
 from services.auth import get_current_user
 from services.telegram import get_bot_settings, send_telegram_message, add_to_channel, notify_admin_new_payment, kick_user_from_channel
 from services.chat_pool import kick_user_from_group, release_chat_group
-from services.tenant import DEFAULT_TENANT_ID
 from services.permissions import get_user_tenant, tq, ensure_admin
+from repositories.base import payments_repo
 from config import logger, RAZORPAY_KEY_ID, razorpay_client
 from models import SubscriberCreate, Subscriber, PaymentCreate, Payment
 from datetime import datetime, timezone, timedelta
@@ -222,7 +222,7 @@ async def verify_bot_checkout(data: dict, background_tasks: BackgroundTasks):
         "razorpay_order_id": data['razorpay_order_id'],
         "razorpay_payment_id": data['razorpay_payment_id'],
         "status": "verified",
-        "tenant_id": plan.get("tenant_id", DEFAULT_TENANT_ID),
+        "tenant_id": plan.get("tenant_id", ""),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.payments.insert_one(payment_obj)
@@ -247,7 +247,7 @@ async def verify_bot_checkout(data: dict, background_tasks: BackgroundTasks):
         "end_date": end_date.isoformat(),
         "grace_end_date": grace_end.isoformat(),
         "reminder_sent": False,
-        "tenant_id": plan.get("tenant_id", DEFAULT_TENANT_ID),
+        "tenant_id": plan.get("tenant_id", ""),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.subscribers.insert_one(subscriber_obj)
@@ -296,7 +296,7 @@ async def create_razorpay_order(payment: PaymentCreate, user=Depends(get_current
     doc = payment_obj.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     plan_for_tenant = await db.plans.find_one({"id": payment.plan_id}, {"_id": 0, "tenant_id": 1})
-    doc['tenant_id'] = (plan_for_tenant or {}).get("tenant_id") or user.get("tenant_id") or DEFAULT_TENANT_ID
+    doc['tenant_id'] = (plan_for_tenant or {}).get("tenant_id") or user.get("tenant_id", "")
     await db.payments.insert_one(doc)
 
     return {"order_id": order["id"], "payment_id": payment_obj.id, "key_id": RAZORPAY_KEY_ID}
@@ -355,7 +355,7 @@ async def create_manual_payment(payment: PaymentCreate, user=Depends(get_current
     doc = payment_obj.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     plan_for_tenant = await db.plans.find_one({"id": payment.plan_id}, {"_id": 0, "tenant_id": 1})
-    doc['tenant_id'] = (plan_for_tenant or {}).get("tenant_id") or user.get("tenant_id") or DEFAULT_TENANT_ID
+    doc['tenant_id'] = (plan_for_tenant or {}).get("tenant_id") or user.get("tenant_id", "")
     await db.payments.insert_one(doc)
 
     return {"payment_id": payment_obj.id, "message": "Manual payment created, waiting for verification"}
