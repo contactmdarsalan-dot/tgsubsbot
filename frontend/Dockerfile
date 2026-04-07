@@ -1,11 +1,11 @@
-FROM node:20-alpine
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Copy package files and npmrc
+# Copy package files
 COPY package.json package-lock.json* yarn.lock* .npmrc* ./
 
-# Clear npm cache and install with yarn (more reliable)
+# Install dependencies
 RUN npm cache clean --force && \
     npm install -g yarn && \
     yarn install --frozen-lockfile || yarn install
@@ -14,13 +14,20 @@ RUN npm cache clean --force && \
 COPY . .
 
 # Build the app
-RUN yarn build
+RUN CI=false yarn build
 
-# Install serve for production
-RUN npm install -g serve
+# Production stage with Nginx
+FROM nginx:alpine
 
-# Expose port
+# Copy built files
+COPY --from=build /app/build /app/build
+
+# Copy nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Remove default nginx config
+RUN rm -f /etc/nginx/conf.d/default.conf.bak
+
 EXPOSE 3000
 
-# Start the application
-CMD ["serve", "-s", "build", "-l", "3000"]
+CMD ["nginx", "-g", "daemon off;"]
