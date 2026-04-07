@@ -1,5 +1,21 @@
 """TgSubsBot - Telegram Subscription Bot SaaS Platform
 Main application entry point - app setup, middleware, router inclusion, startup/shutdown
+
+Architecture:
+  core/          → Config, DB, security, exceptions, constants
+  dependencies/  → FastAPI dependencies (auth, permissions)
+  middleware/    → Request context, idempotency
+  api/           → Routes organized by audience
+    public/      → Auth, registration (unauthenticated)
+    tenant_admin/→ Tenant-scoped operations
+    platform_admin/ → Super admin operations
+    customer/    → End-user facing (mini app, wallet)
+    webhooks/    → Telegram, Razorpay callbacks
+  repositories/  → Strict tenant-scoped DB access
+  services/      → Business logic (telegram, payments, etc.)
+  schemas/       → Pydantic request/response models
+  workers/       → Background jobs (scheduler)
+  webhook_handlers/ → Telegram bot message handlers
 """
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -11,32 +27,42 @@ import logging
 import uuid as _uuid
 
 from fastapi.responses import Response
-from config import logger, SUPER_ADMIN_EMAILS
-from database import client as mongo_client, db
-from rate_limiter import limiter
+from core.config import logger, SUPER_ADMIN_EMAILS
+from core.db import client as mongo_client, db
+from core.rate_limiter import limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
-# Import route modules
-from routes.auth import router as auth_router
-from routes.admin import router as admin_router
-from routes.plans import router as plans_router
-from routes.subscribers import router as subscribers_router
-from routes.payments import router as payments_router
-from routes.dashboard import router as dashboard_router
-from routes.broadcasts import router as broadcasts_router
-from routes.engagement import router as engagement_router
-from routes.live_content import router as live_content_router
-from routes.analytics_exports import router as analytics_exports_router
-from routes.telegram_webhook import router as webhook_router
-from routes.miniapp_user import router as miniapp_user_router
-from routes.miniapp_admin import router as miniapp_admin_router
-from routes.miniapp_calls import router as miniapp_calls_router
-from routes.miniapp_chat import router as miniapp_chat_router
-from routes.tenant import router as tenant_router
-from routes.global_wallet import router as global_wallet_router
-from routes.global_app import router as global_app_router
-from routes.razorpay_webhook import router as razorpay_router
+# ============== API ROUTERS (organized by audience) ==============
+
+# Public routes (auth, registration)
+from api.public.auth import router as auth_router
+
+# Platform Admin routes (super admin)
+from api.platform_admin.admin import router as admin_router
+
+# Tenant Admin routes (tenant-scoped operations)
+from api.tenant_admin.plans import router as plans_router
+from api.tenant_admin.subscribers import router as subscribers_router
+from api.tenant_admin.payments import router as payments_router
+from api.tenant_admin.dashboard import router as dashboard_router
+from api.tenant_admin.broadcasts import router as broadcasts_router
+from api.tenant_admin.engagement import router as engagement_router
+from api.tenant_admin.live_content import router as live_content_router
+from api.tenant_admin.analytics_exports import router as analytics_exports_router
+from api.tenant_admin.tenant import router as tenant_router
+from api.tenant_admin.miniapp_admin import router as miniapp_admin_router
+
+# Customer routes (end-user facing)
+from api.customer.miniapp_user import router as miniapp_user_router
+from api.customer.miniapp_calls import router as miniapp_calls_router
+from api.customer.miniapp_chat import router as miniapp_chat_router
+from api.customer.global_wallet import router as global_wallet_router
+from api.customer.global_app import router as global_app_router
+
+# Webhook routes
+from api.webhooks.telegram import router as webhook_router
+from api.webhooks.razorpay import router as razorpay_router
 
 # Import worker scheduler
 from workers.scheduler import create_scheduler
@@ -122,7 +148,7 @@ async def bootstrap_super_admins():
 @app.on_event("startup")
 async def startup():
     # Create MongoDB indexes
-    from database import ensure_indexes
+    from core.db import ensure_indexes
     await ensure_indexes()
     
     # Bootstrap super admin roles
