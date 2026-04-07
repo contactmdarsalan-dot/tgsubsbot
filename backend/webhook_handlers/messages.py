@@ -1088,8 +1088,6 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
         # Show payment options
         post_price = paid_post.get("price", 0)
         settings = await get_bot_settings()
-        qr_code_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
-        qr_enabled = settings.get("qr_enabled", False)
         
         # If no specific price, use default from plans
         if post_price <= 0:
@@ -1102,15 +1100,10 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
         unlock_msg = f"🔒 <b>Paid Content</b>\n\n"
         unlock_msg += f"💰 Price: <b>₹{int(post_price)}</b>\n\n"
         unlock_msg += "━━━━━━━━━━━━━━━\n"
-        unlock_msg += "<b>💳 Payment Options:</b>\n\n"
-        unlock_msg += "1️⃣ Pay via UPI/QR Code\n"
-        unlock_msg += "2️⃣ Send payment screenshot here\n"
-        unlock_msg += "3️⃣ Get content instantly!\n\n"
+        unlock_msg += "💳 <b>Pay via Razorpay and click I've Paid</b>\n\n"
         unlock_msg += "OR subscribe for unlimited access! 👇"
         
         buttons = []
-        if qr_enabled and qr_code_url:
-            buttons.append([{"text": "📱 Show QR Code", "callback_data": f"unlock_qr_{post_id}"}])
         buttons.append([{"text": "✅ I've Paid - Verify", "callback_data": f"unlock_paid_{post_id}"}])
         buttons.append([{"text": "📦 Get Full Subscription", "callback_data": "back_plans"}])
         
@@ -1198,8 +1191,6 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                     price_display = f"<b>₹{original_price}</b>"
                     final_price = original_price
                 
-                qr_code_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
-                qr_enabled = settings.get("qr_enabled", False)
                 
                 payment_msg = f"🔥 <b>EXCLUSIVE OFFER!</b> 🔥\n\n"
                 payment_msg += f"<b>📦 {plan.get('name', 'Plan')}</b>\n\n"
@@ -1264,8 +1255,6 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                     except Exception as rp_err:
                         logger.error(f"Razorpay link creation failed in deep link: {rp_err}")
                 
-                if qr_enabled and qr_code_url:
-                    buttons.append([{"text": "📱 Show QR Code", "callback_data": f"qr_{plan_id}"}])
                 
                 payment_msg += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"
                 
@@ -2080,19 +2069,12 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                 }}
             )
             
-            qr_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
             amount = pending.get("superchat_amount", 0)
             
-            if qr_url:
-                msg = f"💬 <b>Super Chat - ₹{amount}</b>\n\n"
-                msg += f"📝 Your message:\n<i>{text[:100]}...</i>\n\n"
-                msg += "📱 Scan QR and pay, then send screenshot!"
-                
-                await send_telegram_photo(chat_id, qr_url, msg, bot_token)
-            else:
-                msg = f"💬 <b>Super Chat - ₹{amount}</b>\n\n"
-                msg += "❌ QR not configured. Contact admin!"
-                await send_telegram_message(chat_id, msg, bot_token)
+            msg = f"💬 <b>Super Chat - ₹{amount}</b>\n\n"
+            msg += f"📝 Your message:\n<i>{text[:100]}...</i>\n\n"
+            msg += "💳 Pay via Razorpay and send screenshot here!"
+            await send_telegram_message(chat_id, msg, bot_token)
     
     # Handle photo/screenshot uploads
     photo = message.get("photo")
