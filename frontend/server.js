@@ -31,7 +31,7 @@ app.use(express.static(path.join(__dirname, 'build'), {
 }));
 
 // SPA fallback
-app.get('*', (req, res) => {
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
