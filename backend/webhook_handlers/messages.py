@@ -1062,30 +1062,76 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
             # Also try without is_active filter (post may have been deactivated)
             paid_post = await db.paid_posts.find_one({"id": post_id, "tenant_id": bot_tenant_id}, {"_id": 0})
         
+        settings = await get_bot_settings()
+        from config import razorpay_client
+        
         if not paid_post:
-            # Post truly doesn't exist - show plans instead of dead-end error
-            logger.info(f"Post {post_id} not found for tenant {bot_tenant_id}, showing plans instead")
-            plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).sort("price", 1).to_list(10)
+            # Post not in DB — show Razorpay unlock with cheapest plan price
+            logger.info(f"Post {post_id} not found for tenant {bot_tenant_id}, showing generic unlock")
+            plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).sort("price", 1).to_list(1)
+            fallback_price = plans[0].get("price", 99) if plans else 99
             
-            if plans:
-                msg = "🔒 <b>Exclusive Content</b>\n\n"
-                msg += "💎 Subscribe to unlock all premium content!\n\n"
-                msg += "━━━━━━━━━━━━━━━\n"
-                msg += "👇 <b>Choose a plan to get started:</b>"
-                
-                buttons = []
-                for p in plans:
-                    price = p.get("price", 0)
-                    original = p.get("original_price", price)
-                    name = p.get("name", "Plan")
-                    if original > price:
-                        buttons.append([{"text": f"📦 {name} - ₹{int(price)} (was ₹{int(original)})", "callback_data": f"buy_{p['id']}"}])
-                    else:
-                        buttons.append([{"text": f"📦 {name} - ₹{int(price)}", "callback_data": f"buy_{p['id']}"}])
-                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
-            else:
-                await send_telegram_message(chat_id, "❌ <b>No plans available right now.</b>\n\nPlease try again later.", bot_token)
+            unlock_msg = "🔒 <b>Premium Content</b>\n\n"
+            unlock_msg += f"💰 Price: <b>₹{int(fallback_price)}</b>\n\n"
+            unlock_msg += "━━━━━━━━━━━━━━━\n"
+            unlock_msg += "💳 <b>Tap below to pay & unlock instantly!</b>"
+            
+            buttons = []
+            if razorpay_client:
+                try:
+                    callback_base = os.environ.get("RAZORPAY_CALLBACK_URL", "")
+                    if not callback_base:
+                        website_link = settings.get("website_link", "")
+                        if website_link and website_link.startswith("http"):
+                            callback_base = website_link.rstrip("/")
+                    
+                    link_data = {
+                        "amount": int(fallback_price) * 100,
+                        "currency": "INR",
+                        "accept_partial": False,
+                        "description": f"Unlock Premium Content - ₹{int(fallback_price)}",
+                        "customer": {"name": username or f"User_{chat_id}"},
+                        "notify": {"sms": False, "email": False},
+                        "reminder_enable": False,
+                        "notes": {
+                            "chat_id": str(chat_id),
+                            "unlock_post_id": post_id,
+                            "username": username or "",
+                            "tenant_id": bot_tenant_id,
+                            "type": "paid_post_unlock",
+                        },
+                        "expire_by": int((datetime.now(timezone.utc) + timedelta(hours=24)).timestamp()),
+                    }
+                    if callback_base:
+                        link_data["callback_url"] = f"{callback_base}/api/razorpay/callback"
+                        link_data["callback_method"] = "get"
+                    
+                    rp_result = razorpay_client.payment_link.create(link_data)
+                    rp_link = rp_result.get("short_url", "")
+                    if rp_link:
+                        await db.razorpay_bot_orders.update_one(
+                            {"chat_id": str(chat_id), "unlock_post_id": post_id, "status": "created"},
+                            {"$set": {
+                                "chat_id": str(chat_id), "username": username or "",
+                                "unlock_post_id": post_id,
+                                "plan_id": "", "plan_name": "Unlock Content",
+                                "duration_days": 0, "amount": int(fallback_price),
+                                "payment_link_id": rp_result.get("id", ""),
+                                "payment_link_url": rp_link, "status": "created",
+                                "type": "paid_post_unlock",
+                                "tenant_id": bot_tenant_id,
+                                "created_at": datetime.now(timezone.utc).isoformat()
+                            }}, upsert=True
+                        )
+                        buttons.append([{"text": f"💳 Pay ₹{int(fallback_price)} - Unlock Now", "url": rp_link}])
+                except Exception as rp_err:
+                    logger.error(f"Razorpay unlock (fallback) failed: {rp_err}")
+            
+            buttons.append([{"text": "📦 View All Plans", "callback_data": "back_plans"}])
+            await send_telegram_message_with_buttons(chat_id, unlock_msg, buttons, bot_token)
             return {"ok": True}
+        
+        # ---- Post found in DB ----
         
         # Check if user already unlocked this post
         existing_unlock = await db.paid_post_unlocks.find_one({
@@ -1109,30 +1155,69 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
             
             return {"ok": True}
         
-        # Everyone must pay for paid posts - direct Razorpay payment
+        # Everyone must pay — send blurred preview + Razorpay button
         post_price = paid_post.get("price", 0)
-        settings = await get_bot_settings()
         
-        # If no specific price, use default from plans
+        # If no specific price, use cheapest plan
         if post_price <= 0:
             plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).sort("price", 1).to_list(1)
-            if plans:
-                post_price = plans[0].get("price", 99)
-            else:
-                post_price = 99
+            post_price = plans[0].get("price", 99) if plans else 99
         
-        content_label = "Video" if paid_post.get("content_type") == "video" else "Post"
-        unlock_msg = f"🔒 <b>Paid {content_label}</b>\n\n"
-        unlock_msg += f"💰 Price: <b>₹{int(post_price)}</b>\n\n"
-        if paid_post.get("caption"):
-            unlock_msg += f"📝 {paid_post['caption']}\n\n"
-        unlock_msg += "━━━━━━━━━━━━━━━\n"
-        unlock_msg += "💳 <b>Tap below to pay instantly via Razorpay!</b>"
+        content_type = paid_post.get("content_type", "photo")
+        content_label = "Video" if content_type == "video" else "Post"
+        original_file_id = paid_post.get("original_file_id", "")
         
+        # Try to send blurred preview
+        blurred_sent = False
+        if original_file_id:
+            try:
+                if content_type == "photo":
+                    image_bytes = await download_telegram_photo(original_file_id, bot_token)
+                    if image_bytes:
+                        blurred_bytes = create_blurred_image(image_bytes, content_type="photo")
+                        if blurred_bytes:
+                            blur_caption = f"🔒 <b>Paid {content_label}</b>\n\n"
+                            blur_caption += f"💰 Price: <b>₹{int(post_price)}</b>\n"
+                            if paid_post.get("caption"):
+                                blur_caption += f"\n📝 {paid_post['caption']}\n"
+                            blur_caption += "\n👆 <b>Pay below to unlock this content!</b>"
+                            await send_telegram_photo(chat_id, blurred_bytes, blur_caption, bot_token)
+                            blurred_sent = True
+                elif content_type == "video":
+                    # For video, try to get a thumbnail and blur it
+                    # We need to get file info first
+                    async with httpx.AsyncClient(timeout=30.0) as http_client:
+                        file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={original_file_id}"
+                        resp = await http_client.get(file_info_url)
+                        if resp.status_code == 200:
+                            file_data = resp.json()
+                            # Video files can't easily be thumbnailed from file_id
+                            # Send a styled text message instead with play icon
+                            pass
+                    
+                    # Send video preview message
+                    blur_caption = f"🎬 <b>Paid Video Content</b>\n\n"
+                    blur_caption += f"💰 Price: <b>₹{int(post_price)}</b>\n"
+                    if paid_post.get("caption"):
+                        blur_caption += f"\n📝 {paid_post['caption']}\n"
+                    blur_caption += "\n▶️ <b>Pay below to watch this video!</b>"
+                    await send_telegram_message(chat_id, blur_caption, bot_token)
+                    blurred_sent = True
+            except Exception as blur_err:
+                logger.error(f"Error sending blurred preview: {blur_err}")
+        
+        # If blur failed, send text-only unlock message
+        if not blurred_sent:
+            unlock_msg = f"🔒 <b>Paid {content_label}</b>\n\n"
+            unlock_msg += f"💰 Price: <b>₹{int(post_price)}</b>\n"
+            if paid_post.get("caption"):
+                unlock_msg += f"\n📝 {paid_post['caption']}\n"
+            unlock_msg += "\n━━━━━━━━━━━━━━━\n"
+            unlock_msg += "💳 <b>Tap below to pay & unlock!</b>"
+            await send_telegram_message(chat_id, unlock_msg, bot_token)
+        
+        # Create Razorpay Payment Link
         buttons = []
-        
-        # Create Razorpay Payment Link for paid post unlock
-        from config import razorpay_client
         if razorpay_client:
             try:
                 callback_base = os.environ.get("RAZORPAY_CALLBACK_URL", "")
@@ -1165,15 +1250,13 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                 rp_result = razorpay_client.payment_link.create(link_data)
                 rp_link = rp_result.get("short_url", "")
                 if rp_link:
-                    # Save order for callback processing
                     await db.razorpay_bot_orders.update_one(
                         {"chat_id": str(chat_id), "unlock_post_id": post_id, "status": "created"},
                         {"$set": {
                             "chat_id": str(chat_id), "username": username or "",
                             "unlock_post_id": post_id,
                             "plan_id": "", "plan_name": f"Unlock {content_label}",
-                            "duration_days": 0,
-                            "amount": int(post_price),
+                            "duration_days": 0, "amount": int(post_price),
                             "payment_link_id": rp_result.get("id", ""),
                             "payment_link_url": rp_link, "status": "created",
                             "type": "paid_post_unlock",
@@ -1184,11 +1267,13 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                     buttons.append([{"text": f"💳 Pay ₹{int(post_price)} - Unlock {content_label}", "url": rp_link}])
             except Exception as rp_err:
                 logger.error(f"Razorpay link creation for unlock failed: {rp_err}")
-                unlock_msg += "\n\n⚠️ Payment gateway error. Please try again later."
         
         buttons.append([{"text": "📦 Get Full Subscription", "callback_data": "back_plans"}])
         
-        await send_telegram_message_with_buttons(chat_id, unlock_msg, buttons, bot_token)
+        # Send Razorpay button as separate message
+        pay_msg = f"💳 <b>Pay ₹{int(post_price)} to unlock this {content_label.lower()}!</b>\n\n"
+        pay_msg += "✅ Instant access after payment"
+        await send_telegram_message_with_buttons(chat_id, pay_msg, buttons, bot_token)
         
         return {"ok": True}
     
