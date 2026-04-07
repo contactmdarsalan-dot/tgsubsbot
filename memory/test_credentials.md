@@ -23,4 +23,7 @@
 - Login: POST /api/auth/login
 - Check Admin: GET /api/auth/check-admin
 - Tenants: GET /api/saas/tenants
+- Risk Alerts: GET /api/saas/risk-alerts
+- Impersonate: POST /api/saas/impersonate/{tenant_id}
+- Impersonation Log: GET /api/saas/impersonation-log
 - Webhook: POST /api/telegram/webhook
