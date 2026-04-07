@@ -57,7 +57,7 @@ async def register(request: Request, user: UserCreate):
         doc["trial_started_at"] = datetime.now(timezone.utc).isoformat()
     
     await db.users.insert_one(doc)
-    token = create_token(user_obj.id, role="tenant_owner", tenant_id=tenant_id)
+    token = create_token(user_obj.id, role="tenant_owner", tenant_id=tenant_id, token_version=0)
     refresh = create_refresh_token(user_obj.id)
     return {
         "token": token,

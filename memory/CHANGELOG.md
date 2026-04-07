@@ -1,27 +1,20 @@
-# CHANGELOG — TgSubsBot
+# CHANGELOG
 
-## Phase 24: Default Tenant Removal + Repository Pattern Migration (2026-04-07)
-- **Default tenant eliminated**: Migrated "Kaloo" from `tenant_id: "default"` to `tenant_b36ca1244502`
-- **DEFAULT_TENANT_ID = `"__unresolved_tenant__"`**: Dead filter that matches nothing — prevents any data leak from unresolved tenants
-- **`get_or_create_default_tenant()` removed**: No more auto-creating default tenant
-- **plans.py fully rewritten**: Uses `plans_repo` (TenantScopedRepository) for all CRUD — `find_many()` for tenant-scoped, `find_many_global()` for super admin
-- **subscribers.py fully rewritten**: Uses `subscribers_repo.insert_one()` for creates, `tq()` for reads
-- **payments.py cleaned**: Removed `DEFAULT_TENANT_ID` import, uses direct plan tenant resolution
-- **dashboard.py, broadcasts.py cleaned**: Removed unused `DEFAULT_TENANT_ID` imports
-- **Tested**: 18/18 backend + 100% frontend (iteration_38.json)
+## 2026-04-07 — P1 Features Completion (Iteration 40)
+- **Repository Pattern Complete Migration**: Migrated `dashboard.py`, `broadcasts.py`, `engagement.py` to use `TenantScopedRepository`. All tenant-owned collections (channels, chat_groups, chat_sessions, templates, scheduled_broadcasts, user_notes, user_tags, blocked_users, faqs, video_call_bookings) now use strict tenant scoping.
+- **Payment Idempotency**: Added MongoDB-based idempotency locks (`acquire_idempotency_lock`, `mark_idempotency_complete`) to Razorpay webhook callbacks and bot-checkout verify endpoints. Prevents double-crediting on retry/duplicate callbacks.
+- **JWT Refresh Token Architecture**: Implemented access tokens (2hr expiry) + refresh tokens (30d expiry) + `token_version` for forced logout. New endpoints: `POST /api/auth/refresh`, `POST /api/auth/logout`, `POST /api/auth/force-logout/{user_id}`.
+- **Scheduler Process Separation**: Refactored `workers/scheduler.py` to support both embedded (default) and standalone modes via `SCHEDULER_MODE` env var. Can be run as `python -m workers.scheduler` for horizontal scaling.
+- **Frontend Role-based Route Guards**: Enhanced `ProtectedRoute` with client-side JWT expiry check and refresh token flow. `SuperAdminRoute` and `TenantRoute` guards properly isolate routes by role.
+- **CRITICAL BUG FIX**: `create_token()` was not including `token_version` in JWT payload — all tokens failed validation after any logout. Fixed by testing agent.
 
-## Phase 23: Impersonation Mode + Risk & Alerts + Route Guards (2026-04-07)
-- Impersonation Mode: Super Admin → Tenant Admin (audit-logged)
-- Risk & Alerts: 5 detection types (refund rate, failed spike, abandoned bot, volume, expiry)
-- Frontend SuperAdminRoute + TenantRoute guards
-- Layout.jsx email bypass removed
-- Tested: 15/15 backend + 100% frontend (iteration_37.json)
-
-## Phase 22: Production Security Hardening (2026-04-07)
-- JWT with role/tenant_id, email bypass removed, compound indexes
-- Tested: 16/16 (iteration_36.json)
-
-## Phase 21: Critical Multi-Tenant Data Isolation Fix (2026-04-05)
-## Phase 20: Enhanced Tenant Management (2026-04-05)
-## Phase 19: Razorpay Bot Payment Integration (2026-04-04)
-## Phase 18: Telegram Bot Command Fix (2026-04-04)
+## Previous Sessions
+- Strict Row-Level Tenant Isolation enforced
+- SUPER_ADMIN_EMAILS bypass eliminated — strict RBAC only
+- DEFAULT_TENANT_ID fallback eradicated
+- Webhook refactoring (4300 lines → modular handlers)
+- APScheduler extraction to workers/scheduler.py
+- Impersonation Mode + Risk & Alerts Dashboard
+- High-conversion Landing Page redesign
+- Complete CRUD for Tenant Admins and Subscriptions
+- Security: .env properly ignored in .gitignore
