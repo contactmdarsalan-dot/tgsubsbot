@@ -119,8 +119,18 @@ uploads_dir = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(uploads_dir, exist_ok=True)
 app.mount("/api/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
+@app.get("/api/debug/razorpay-status")
+async def razorpay_debug():
+    from core.config import razorpay_client, RAZORPAY_KEY_ID
+    return {
+        "razorpay_key_set": bool(RAZORPAY_KEY_ID),
+        "razorpay_key_prefix": RAZORPAY_KEY_ID[:8] + "..." if RAZORPAY_KEY_ID else "NOT_SET",
+        "razorpay_client_initialized": razorpay_client is not None,
+    }
+
+
 # CORS middleware — strict allowlist
-_default_origins = "https://tgsubsbot.com,https://www.tgsubsbot.com,https://trial-management-hub-1.preview.emergentagent.com"
+_default_origins = "https://tgsubsbot.com,https://www.tgsubsbot.com,https://api.tgsubsbot.com,https://trial-management-hub-1.preview.emergentagent.com"
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
