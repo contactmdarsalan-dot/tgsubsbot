@@ -1,198 +1,98 @@
-# TgSubsBot - Telegram Subscription Bot SaaS Platform
+# TgSubsBot - Product Requirements Document
 
 ## Original Problem Statement
-Transform a Telegram Subscription Bot into a scalable, market-ready SaaS product with multi-tenant isolation, RBAC, and enterprise-grade security.
+Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS product. Core requirements include full Multi-Tenant SaaS isolation, distinct RBAC (Super Admin vs. Tenant Admin), dynamic subscription plans, a highly analytical "Control Center" Super Admin Dashboard, and a conversion-focused Landing Page & Mini App.
 
 ## Core Requirements
-1. Multi-Tenant SaaS isolation across ALL database collections, backend routes, and webhooks
-2. RBAC: Super Admins (platform) vs Tenant Admins/Owners (dashboard) vs Bot Admins (Telegram)
-3. Security: JWT auth, CORS, Telegram initData HMAC, tenant data isolation
-4. AI-powered payment verification (GPT-5.2 Vision)
-5. Telegram Bot with subscription management, payments, broadcasts, live sessions
+1. Full Multi-Tenant SaaS isolation across database, backend, and webhooks
+2. Distinct RBAC: Super Admins vs. Tenant Admins vs. Bot Admins
+3. Razorpay integration for Telegram Bot checkout flows
+4. "Global Marketplace App" API integration (Wallet, Coins, Revenue Share)
+5. Comprehensive Tenant Management via Super Admin Dashboard
 
-## What's Been Implemented
+## User Personas
+- **Super Admin**: Platform owner, manages all tenants, views global analytics
+- **Tenant Admin/Owner**: Creator who owns a bot, manages subscribers, plans, payments
+- **Bot User**: Telegram user who buys plans, accesses content
+- **Mini App User**: Accesses creator content via Telegram Mini App
 
-### Phase 1-9: (Complete - see CHANGELOG.md for details)
-- Full Telegram bot, Plans CRUD, Payments, Subscribers, Mini App
-- Multi-Tenant SaaS with RBAC, Trial Management, Team Management
-- Super Admin Control Center, Tenant Profile, Dynamic Pricing
-- Rose/Crimson design system, Login/Registration UI fixes
+## Tech Stack
+- **Backend**: FastAPI (Python)
+- **Frontend**: React (CRA with CRACO)
+- **Database**: MongoDB (shared DB, shared schema, row-level tenant isolation)
+- **Theme**: Neon Green (#c8ff00) on Deep Black
 
-### Phase 10: P0 Core Tenant Isolation (Complete - 2026-04-02)
-- Fixed `get_user_tenant()` to return `__no_tenant__` for users without tenant_id
-- Fixed `tenant_query()` to always filter (no DEFAULT skip)
-- Registration auto-creates unique tenant per user
-
-### Phase 11: Payments & Subscribers Pagination (Complete - 2026-04-02)
-- Server-side pagination with page/limit/search params
-- Server-side stats (total_collected, pending_count, total_transactions)
-- MongoDB aggregation for revenue (removed `.to_list(10000)`)
-
-### Phase 12: COMPLETE Data Isolation + UI Fixes (Complete - 2026-04-02)
-- **20+ route files** updated with tenant isolation:
-  - `live_content.py`: Creators, TG Admins, Live Sessions, Paid Posts, Super Chats, Live Tickets, Unlock Requests
-  - `engagement.py`: Coupons, FAQs, Referrals, Video Calls, Tags, Blocked Users, User Notes
-  - `broadcasts.py`: Templates, Broadcasts, Scheduled Broadcasts, Renewal Broadcasts
-  - `dashboard.py`: Channels, Chat Groups, Chat Sessions, Settings, Bot Language
-  - `analytics_exports.py`: Bot Activity logs and stats
-  - `admin.py`: Mini App Users restricted to Super Admin only
-- **Plans Dialog UI**: Widened to 550px with scrollable content
-- **Sidebar**: Mini App Users moved to Super Admin only
-- **Settings**: Tenant-isolated (each tenant gets own settings document)
-- **Data Migration API**: `/api/saas/migrate-to-tenant` for normalizing old data
-- Tested: Iteration 30 (ALL PASSED - 21 routes verified for new tenant = 0 data, original tenant correct)
-
-### Phase 13: MiniApp Admin/User Final Isolation (Complete - 2026-04-02)
-- **8 critical security fixes in `miniapp_admin.py`**:
-  - `/admin/payment-action`: Payment update, plan lookup, subscriber upsert now use `tenant_query()`
-  - `/admin/announce-live`: Session find + update now tenant-scoped
-  - `/admin/paid-post/{id}/toggle`: Post find + update now tenant-scoped
-  - `/admin/paid-post/{id}/blur`: Update now tenant-scoped
-  - `/admin/paid-post/{id}/broadcast`: Post find now tenant-scoped
-  - `/admin/live-session/{id}/go-live`: Session find + update now tenant-scoped
-  - DELETE `/admin/live-session/{id}`: Delete now tenant-scoped
-  - `/admin/live-session/{id}/end`: Update now tenant-scoped
-- **`miniapp_user.py` fixes**: upload-screenshot uses bot_user's tenant_id instead of hardcoded DEFAULT
-- Tested: Iteration 31 (ALL 24 TESTS PASSED - cross-tenant access fully blocked)
-
-### Phase 15: Mini App Video Call, Live Stream, Chat & Dashboard Hub (Complete - 2026-04-02)
-- **Video Call Booking System**:
-  - User books video call after purchasing plan → `POST /api/miniapp/book-video-call`
-  - Bookings show in Mini App "Calls" tab and Dashboard "Video Calls" tab
-  - Status flow: pending → scheduled → in_call → completed
-  - Admin schedule/start/complete/reject from Dashboard
-  - WebRTC 1:1 video call via WebSocket signaling (`/api/ws/call/{room_id}`)
-- **Creator Live Stream**:
-  - Dashboard "Go Live" → creates live session with WebRTC
-  - Mini App users watch live stream in "Live" tab
-  - Live chat alongside stream via WebSocket (`/api/ws/live/{session_id}`)
-- **In-App Private Messaging**:
-  - Mini App "Chat" tab → user sends message to creator
-  - Dashboard "Messages" tab → creator sees conversations with unread counts, replies
-  - Real-time WebSocket chat (`/api/ws/chat/{type}/{id}`)
-- **Dashboard Sidebar Restructured**:
-  - TELEGRAM BOT section (17 items)
-  - MINI APP section (Mini App Hub)
-  - ACCOUNT section (Team, Support)
-- Uses existing collections: `live_sessions` (with `session_type` + `source` fields), `chat_messages` (with `chat_type` + `source`)
-- Tested: Iteration 33 (ALL 28 TESTS PASSED - backend 100%, frontend 100%)
-- **Root cause**: Mini App frontend was NOT passing tenant_id to ANY backend API calls → all queries defaulted to "default" tenant which had 0 plans
-- **New endpoints**: 
-  - `/api/miniapp/resolve-tenant/{userId}` - fallback: bot_users → settings
-  - `/api/miniapp/resolve-tenant-by-init` (POST) - validates Telegram initData against ALL tenant bot tokens to identify correct tenant (prevents cross-tenant plan leakage in multi-bot setups)
-- **Frontend fixes**: MiniApp.jsx, PlansScreen.jsx, ReferralScreen.jsx, SupportScreen.jsx all now pass tenant_id
-- **Webhook fix**: telegram_webhook.py - 15+ `DEFAULT_TENANT_ID` usages replaced with `bot_tenant_id` resolved from settings
-- **Settings fix**: dashboard.py settings update now persists `tenant_id` in settings document
-- **Payment fix**: `has_screenshot` now checks both `screenshot_file_id` and `screenshot_url` for Mini App manual payments
-- Tested: Iteration 32 (ALL TESTS PASSED - 8 plans show in Mini App matching Dashboard)
+## 3rd Party Integrations
+- OpenAI GPT-5.2 Vision (Emergent LLM Key) — Payment screenshot verification
+- Razorpay — Bot payment links
+- Telegram Bot API — Webhook-based bot management
+- Resend — Email OTPs (BLOCKED: domain verification pending)
 
 ## Architecture
 ```
-/app/backend/
-├── server.py
-├── routes/ (ALL routes tenant-isolated)
-│   ├── admin.py (Super Admin + Trial + Stats + Migration)
-│   ├── auth.py (Login, Registration with auto-tenant)
-│   ├── tenant.py (Team Management)
-│   ├── dashboard.py (Analytics, Settings, Channels, Groups)
-│   ├── payments.py (Paginated, tenant-filtered)
-│   ├── subscribers.py (Paginated, tenant-filtered)
-│   ├── plans.py, live_content.py, engagement.py, broadcasts.py
-│   ├── analytics_exports.py, miniapp_user.py, miniapp_admin.py
-├── services/
-│   ├── permissions.py (CRITICAL: get_user_tenant(), tq())
-│   ├── tenant.py (tenant_query(), DEFAULT_TENANT_ID)
+/app/
+├── backend/
+│   ├── server.py (FastAPI app, middleware, router mounting, startup bootstrap)
+│   ├── config.py (Environment config, JWT_SECRET with production guard)
+│   ├── database.py (MongoDB connection, compound indexes)
+│   ├── repositories/
+│   │   └── base.py (TenantScopedRepository — mandatory tenant isolation layer)
+│   ├── services/
+│   │   ├── auth.py (JWT with role/tenant_id in payload)
+│   │   ├── permissions.py (Role-only RBAC, no email bypass)
+│   │   ├── tenant.py (Tenant resolution, isolation utilities)
+│   │   └── audit.py (Enhanced audit logging with before/after state)
+│   ├── routes/
+│   │   ├── auth.py, admin.py, plans.py, payments.py, subscribers.py
+│   │   ├── telegram_webhook.py (~4300 lines, tenant-isolated)
+│   │   ├── miniapp_user.py, miniapp_admin.py
+│   │   ├── razorpay_webhook.py, global_app.py, global_wallet.py
+│   │   └── tenant.py, dashboard.py, broadcasts.py, etc.
+├── frontend/
+│   ├── src/
+│   │   ├── pages/ (LandingPage, Login, Dashboard, SaaSManagement, etc.)
+│   │   ├── components/ (Layout with RBAC sidebar)
+│   │   └── components/ui/ (Shadcn components, dark mode enforced)
 ```
 
-### Phase 16: Mini App CRUD Data Isolation (Complete - 2026-04-02)
-- **Complete separation of Plans/Subscribers/Payments between Bot and Mini App**
-- Backend: Added `source: {"$ne": "miniapp"}` filter to bot endpoints (`plans.py`, `subscribers.py`, `payments.py`)
-- Backend: Mini App endpoints in `miniapp_calls.py` use `source: "miniapp"` for all CRUD operations
-- Frontend: Created `MiniAppPlans.jsx` (full CRUD with Create/Edit/Delete), `MiniAppSubscribers.jsx` (with stats & search), `MiniAppPayments.jsx` (with filter tabs & approve/reject)
-- Frontend: Updated `Layout.jsx` sidebar — Mini App section now has Plans, Subscribers, Payments links
-- Frontend: Added routes in `App.js` for `/dashboard/miniapp-plans`, `/dashboard/miniapp-subscribers`, `/dashboard/miniapp-payments`
-- Tested: Iteration 34 (ALL PASSED - Backend 23/23, Frontend 100%)
-
-### Phase 17: Global App API Layer for Mobile (Complete - 2026-04-03)
-- **55 new endpoints** built across 2 route files for consumer mobile app
-- **Wallet/Coin System**: Coin packages, wallet balance, purchase coins, admin approval, spend coins
-- **Creator Profiles**: Register as creator, listing requests, admin approval, public discovery
-- **Content System**: Create free/paid content, coin-based unlock, home feed, content discovery
-- **Creator Plans & Subscriptions**: Create plans, coin-based subscription purchase
-- **Live Sessions**: Creator live management, coin-based access, viewer tracking
-- **Follow System**: Follow/unfollow creators
-- **Revenue Share**: Configurable platform % (default 20%), automatic split on every transaction
-- **Notifications**: User notification system
-- Tested: Full flow verified (coin purchase → admin approve → unlock content → revenue share)
+## Security Model (Production-Hardened — Phase 22)
+- **JWT**: Includes `user_id`, `role`, `tenant_id` in payload. Secret MUST be set in production.
+- **RBAC**: Role-based only (`super_admin`, `tenant_owner`, `tenant_admin`, `admin`). No email-based bypass.
+- **Tenant Isolation**: `tq()` helper + Repository pattern for mandatory tenant_id filtering.
+- **Super Admin Bootstrap**: Startup ensures SUPER_ADMIN_EMAILS users have `role='super_admin'` in DB.
+- **Request Tracing**: X-Request-ID header on every response via middleware.
+- **Compound Indexes**: `(tenant_id, id)` on all business collections.
+- **Audit Logging**: Enhanced with before/after state, request_id tracking.
 
 ## Prioritized Backlog
 
+### P0 (Immediate)
+- [x] Phase 1 Security Hardening (JWT, RBAC, email bypass removal) — DONE
+- [ ] Phase 2: Migrate critical route files to use Repository pattern
+- [ ] Phase 3: Frontend role-based route segmentation
+
 ### P1 (Next)
-- [ ] Creator Availability Calendar for Video Calls
-- [ ] Implement Impersonation Mode (Super Admin -> Tenant Admin login)
+- [ ] Impersonation Mode (Super Admin → Tenant Admin login)
 - [ ] Risk & Alerts System UI (Fraud detection, high refund alerts)
+- [ ] Remove "default" tenant fallback entirely (after data backfill)
 
 ### P2
 - [ ] Move APScheduler to separate worker/Redis queue
-- [ ] Subscription Analytics Dashboard (MRR, churn, revenue graphs)
+- [ ] Analytics Dashboard (Razorpay vs QR payments comparison)
+- [ ] Object Storage migration (local files → S3/R2)
 
 ### P3
 - [ ] WhatsApp integration
 - [ ] Multi-language bot support
-
-## Production Deployment Notes
-- **IMPORTANT**: After deploying, run the data migration endpoint:
-  `POST /api/saas/migrate-to-tenant` with `{"source_tenant_id": "default", "target_tenant_id": "<actual_tenant_id>"}`
-  to normalize old data with `tenant_id: "default"` to the correct tenant.
-- Ensure original creator's user record has correct `tenant_id` and `role: "tenant_owner"`
-- All new users auto-get unique `tenant_id` on registration
-
-## 3rd Party Integrations
-- OpenAI GPT-5.2 Vision (Emergent LLM Key)
-- Razorpay, Telegram Bot API
-- Resend (BLOCKED: domain verification pending)
+- [ ] CRA → Vite migration
 
 ## Known Issues
 - Resend email OTP: Domain verification pending
-- Production env vars need user injection
+- Production env vars need user injection on VPS
+- `telegram_webhook.py` (~4300 lines) needs refactoring into smaller handlers
 
-### Phase 18: Telegram Bot Command Fix (Complete - 2026-04-04)
-- **Root Cause**: `/start` command had a URL button `{"url": website_link}` that was ALWAYS added even when `website_link` was empty. Telegram API rejects messages with invalid/empty URL buttons (`BUTTON_URL_INVALID`). Other commands (`/status`, `/help`) had no URL buttons so they worked fine.
-- **Fix**: URL button now only added when `website_link` is a valid HTTP URL
-- **Additional fixes**:
-  - All `send_telegram_message*` calls now explicitly pass `bot_token` (13+ commands fixed)
-  - Safe `.get()` access for plan fields (prevents `KeyError` on malformed plans)
-  - Tenant-isolated plans query (`tenant_id: bot_tenant_id`) with fallback
-  - Error response body logging in `send_telegram_message_with_buttons`
-  - Fallback: sends plain message if button message fails
-  - HTML entity escaping for plan names
-  - Same URL button fix applied to `chat_member_update` welcome handler
-- Tested: All commands return `ok:true`, correct logging confirms fix
-
-### Phase 19: Razorpay Bot Payment Integration (Complete - 2026-04-04)
-- **Feature**: Razorpay Payment Links integrated into Telegram Bot payment flow
-- **Flow**: User selects plan → Razorpay payment link created → "Pay with Razorpay" button appears above QR → user pays → auto-verified via callback → subscription activated → Telegram confirmation
-- **New files**: `/app/backend/routes/razorpay_webhook.py`
-- **Modified**: `telegram_webhook.py` (buy_ callback + /start buy_ deep link), `server.py` (route registration)
-- **Config**: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, optional `RAZORPAY_CALLBACK_URL`
-- **DB**: New `razorpay_bot_orders` collection for payment tracking
-
-### Phase 21: Critical Multi-Tenant Data Isolation Fix (Complete - 2026-04-05)
-- **Issue**: Telegram webhook and Mini App had 50+ unfiltered DB queries showing ALL tenants' data
-- **Root Cause**: `db.plans.find()`, `db.subscribers.find()`, `db.payments.find()`, `db.bot_users.find()`, `db.pending_screenshots`, `db.paid_posts` queries missing `tenant_id: bot_tenant_id` filter
-- **Fix**: Added `tenant_id` filter to ALL find/count/update/delete queries across:
-  - `telegram_webhook.py`: 50+ queries fixed (plans, subscribers, payments, bot_users, pending_screenshots, paid_posts, paid_post_unlocks, unlock_requests, video_call_bookings, chat_messages, live_superchats)
-  - `miniapp_user.py`: Removed fallback queries that leaked cross-tenant data
-  - All INSERT operations now include `tenant_id: bot_tenant_id`
-- **Impact**: Complete tenant data isolation — each bot only sees its own tenant's data
-
-### Phase 20: Enhanced Tenant Management (Complete - 2026-04-05)
-- **Feature**: Complete CRUD for Tenant Management with professional-grade admin tools
-- **Changes**:
-  - Email input replaced with searchable user dropdown (37 registered users)
-  - Change Owner dialog with user select
-  - Permanent Delete with confirmation text safety
-  - Reactivate inactive tenants
-  - Data Isolation Report tab with summary cards + per-tenant data breakdown
-- **New APIs**: `GET /api/saas/all-users-dropdown`, `PUT /api/saas/tenants/{id}/change-owner`, `DELETE /api/saas/tenants/{id}/permanent`, `PUT /api/saas/tenants/{id}/reactivate`, `GET /api/saas/tenant-isolation-report`
-- **Tested**: 23/23 backend tests passed, all frontend features verified (Iteration 35)
+## Production Deployment Notes
+- Set `ENVIRONMENT=production` to enforce JWT_SECRET requirement
+- Set `JWT_SECRET` (strong random value)
+- Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`
+- Super admin bootstrap runs at startup — no manual DB edits needed

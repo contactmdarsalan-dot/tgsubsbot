@@ -38,7 +38,7 @@ async def get_subscribers(status: Optional[str] = None, page: int = 1, limit: in
     
     subscribers = await db.subscribers.find(list_query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
 
-    plans = await db.plans.find({}, {"_id": 0}).to_list(100)
+    plans = await db.plans.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
     plans_map = {p["id"]: p for p in plans}
 
     groups = await db.chat_groups_pool.find({}, {"_id": 0}).to_list(100)
@@ -278,6 +278,7 @@ async def create_subscriber_task(subscriber_create: SubscriberCreate, plan: dict
 @router.post("/subscribers/bulk-add-to-channel")
 async def bulk_add_subscribers_to_channel(user=Depends(get_current_user)):
     """Add all active subscribers to the default channel - one time fix"""
+    tenant_id = get_user_tenant(user)
     settings = await get_bot_settings()
     channel_id = settings.get("telegram_channel_id", "")
     bot_token = settings.get("telegram_bot_token", "")
@@ -285,7 +286,7 @@ async def bulk_add_subscribers_to_channel(user=Depends(get_current_user)):
     if not channel_id or not bot_token:
         raise HTTPException(status_code=400, detail="Channel ID or Bot Token not configured")
 
-    active_subs = await db.subscribers.find({"status": "active"}, {"_id": 0}).to_list(1000)
+    active_subs = await db.subscribers.find(tq({"status": "active"}, tenant_id), {"_id": 0}).to_list(1000)
 
     results = {"success": 0, "failed": 0, "total": len(active_subs), "details": []}
 
