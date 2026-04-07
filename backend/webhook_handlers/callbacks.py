@@ -3,7 +3,7 @@ from database import db
 from services.telegram import (
     get_bot_settings, get_bot_username, send_telegram_message, send_telegram_message_with_buttons,
     send_telegram_message_with_buttons_and_return, edit_telegram_message,
-    send_telegram_video, delete_telegram_message,
+    send_telegram_photo, send_telegram_video, delete_telegram_message,
     add_to_channel, is_admin_or_creator, notify_admin_new_payment,
     urgency_timer_task
 )
@@ -139,9 +139,8 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                     payment_msg += "   Click below to pay instantly!\n\n"
                     buttons.append([{"text": "💳 Pay with Razorpay", "url": razorpay_link}])
                 
-                payment_msg += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"
+                payment_msg += f"📱 <b>Your ID:</b> <code>{chat_id}</code>"
                 
-                buttons.append([{"text": "✅ I've Paid - Contact Admin", "callback_data": f"paid_{plan_id}"}])
                 buttons.append([{"text": "◀️ Back to Plans", "callback_data": "back_plans"}])
                 
                 # Send initial message with urgency timer
@@ -930,33 +929,29 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
         # ========== PAID POST UNLOCK CALLBACKS ==========
         
         elif callback_data.startswith("unlock_paid_"):
-            # User claims to have paid for unlock
+            # User clicked old "I've Paid" button - redirect to use Razorpay link
             post_id = callback_data.replace("unlock_paid_", "")
             paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0})
             
             if paid_post:
-                post_price = paid_post.get("price", 99)
-                
-                # Save pending unlock payment
-                await db.pending_screenshots.update_one(
-                    {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
-                    {"$set": {
-                        "telegram_user_id": chat_id,
-                        "telegram_username": username,
-                        "unlock_post_id": post_id,
-                        "expected_amount": post_price,
-                        "status": "waiting_unlock",
-                        "created_at": datetime.now(timezone.utc).isoformat()
-                    }},
-                    upsert=True
-                )
-                
-                verify_msg = "📸 <b>Send Payment Screenshot!</b>\n\n"
-                verify_msg += f"💰 Amount: ₹{int(post_price)}\n\n"
-                verify_msg += "Send your payment screenshot now and I'll verify it automatically! ✅"
-                
-                buttons = [[{"text": "❌ Cancel", "callback_data": "cancel_action"}]]
-                await send_telegram_message_with_buttons(chat_id, verify_msg, buttons, bot_token)
+                # Check if already unlocked
+                existing = await db.paid_post_unlocks.find_one({
+                    "post_id": post_id, "telegram_user_id": chat_id, "tenant_id": bot_tenant_id
+                }, {"_id": 0})
+                if existing:
+                    # Already unlocked - resend content
+                    if paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
+                        caption = f"🔓 <b>Already Unlocked!</b>\n\n{paid_post.get('caption', '')}"
+                        await send_telegram_photo(chat_id, paid_post["original_file_id"], caption, bot_token)
+                    elif paid_post.get("content_type") == "video" and paid_post.get("original_file_id"):
+                        caption = f"🔓 <b>Already Unlocked!</b>\n\n{paid_post.get('caption', '')}"
+                        await send_telegram_video(chat_id, paid_post["original_file_id"], caption, bot_token)
+                    else:
+                        await send_telegram_message(chat_id, "✅ You've already unlocked this content!", bot_token)
+                else:
+                    verify_msg = "💳 <b>Please use the Razorpay payment button above to pay!</b>\n\n"
+                    verify_msg += "After payment, content will be unlocked automatically. ✅"
+                    await send_telegram_message(chat_id, verify_msg, bot_token)
             else:
                 await send_telegram_message(chat_id, "❌ Post not found or expired.", bot_token)
         

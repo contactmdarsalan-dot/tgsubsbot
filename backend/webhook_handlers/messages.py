@@ -1084,8 +1084,7 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
             
             return {"ok": True}
         
-        # Everyone must pay for paid posts - no free unlock for subscribers
-        # Show payment options
+        # Everyone must pay for paid posts - direct Razorpay payment
         post_price = paid_post.get("price", 0)
         settings = await get_bot_settings()
         
@@ -1097,31 +1096,74 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
             else:
                 post_price = 99
         
-        unlock_msg = f"🔒 <b>Paid Content</b>\n\n"
+        content_label = "Video" if paid_post.get("content_type") == "video" else "Post"
+        unlock_msg = f"🔒 <b>Paid {content_label}</b>\n\n"
         unlock_msg += f"💰 Price: <b>₹{int(post_price)}</b>\n\n"
+        if paid_post.get("caption"):
+            unlock_msg += f"📝 {paid_post['caption']}\n\n"
         unlock_msg += "━━━━━━━━━━━━━━━\n"
-        unlock_msg += "💳 <b>Pay via Razorpay and click I've Paid</b>\n\n"
-        unlock_msg += "OR subscribe for unlimited access! 👇"
+        unlock_msg += "💳 <b>Tap below to pay instantly via Razorpay!</b>"
         
         buttons = []
-        buttons.append([{"text": "✅ I've Paid - Verify", "callback_data": f"unlock_paid_{post_id}"}])
+        
+        # Create Razorpay Payment Link for paid post unlock
+        from config import razorpay_client
+        if razorpay_client:
+            try:
+                callback_base = os.environ.get("RAZORPAY_CALLBACK_URL", "")
+                if not callback_base:
+                    website_link = settings.get("website_link", "")
+                    if website_link and website_link.startswith("http"):
+                        callback_base = website_link.rstrip("/")
+                
+                link_data = {
+                    "amount": int(post_price) * 100,
+                    "currency": "INR",
+                    "accept_partial": False,
+                    "description": f"Unlock {content_label} - ₹{int(post_price)}",
+                    "customer": {"name": username or f"User_{chat_id}"},
+                    "notify": {"sms": False, "email": False},
+                    "reminder_enable": False,
+                    "notes": {
+                        "chat_id": str(chat_id),
+                        "unlock_post_id": post_id,
+                        "username": username or "",
+                        "tenant_id": bot_tenant_id,
+                        "type": "paid_post_unlock",
+                    },
+                    "expire_by": int((datetime.now(timezone.utc) + timedelta(hours=24)).timestamp()),
+                }
+                if callback_base:
+                    link_data["callback_url"] = f"{callback_base}/api/razorpay/callback"
+                    link_data["callback_method"] = "get"
+                
+                rp_result = razorpay_client.payment_link.create(link_data)
+                rp_link = rp_result.get("short_url", "")
+                if rp_link:
+                    # Save order for callback processing
+                    await db.razorpay_bot_orders.update_one(
+                        {"chat_id": str(chat_id), "unlock_post_id": post_id, "status": "created"},
+                        {"$set": {
+                            "chat_id": str(chat_id), "username": username or "",
+                            "unlock_post_id": post_id,
+                            "plan_id": "", "plan_name": f"Unlock {content_label}",
+                            "duration_days": 0,
+                            "amount": int(post_price),
+                            "payment_link_id": rp_result.get("id", ""),
+                            "payment_link_url": rp_link, "status": "created",
+                            "type": "paid_post_unlock",
+                            "tenant_id": bot_tenant_id,
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }}, upsert=True
+                    )
+                    buttons.append([{"text": f"💳 Pay ₹{int(post_price)} - Unlock {content_label}", "url": rp_link}])
+            except Exception as rp_err:
+                logger.error(f"Razorpay link creation for unlock failed: {rp_err}")
+                unlock_msg += "\n\n⚠️ Payment gateway error. Please try again later."
+        
         buttons.append([{"text": "📦 Get Full Subscription", "callback_data": "back_plans"}])
         
         await send_telegram_message_with_buttons(chat_id, unlock_msg, buttons, bot_token)
-        
-        # Save pending unlock request
-        await db.pending_screenshots.update_one(
-            {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
-            {"$set": {
-                "telegram_user_id": chat_id,
-                "telegram_username": username,
-                "unlock_post_id": post_id,
-                "expected_amount": post_price,
-                "status": "waiting_unlock",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }},
-            upsert=True
-        )
         
         return {"ok": True}
     
@@ -1256,9 +1298,8 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                         logger.error(f"Razorpay link creation failed in deep link: {rp_err}")
                 
                 
-                payment_msg += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"
+                payment_msg += f"📱 <b>Your ID:</b> <code>{chat_id}</code>"
                 
-                buttons.append([{"text": "✅ I've Paid - Contact Admin", "callback_data": f"paid_{plan_id}"}])
                 buttons.append([{"text": "◀️ Back to Plans", "callback_data": "back_plans"}])
                 
                 msg_result = await send_telegram_message_with_buttons_and_return(chat_id, payment_msg, buttons, bot_token)

@@ -503,9 +503,9 @@ async def urgency_timer_task(chat_id: str, message_id: int, plan: dict, price_di
             return f"{m:01d}:{s:02d}"
 
         payment_info = "\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
-        payment_info += "\n<b>Payment Methods:</b>\n"
-        payment_info += "  \u25b8 UPI / QR Code \u2014 Any UPI app\n"
-        payment_info += "  \u25b8 Send screenshot after payment\n\n"
+        payment_info += "\n<b>Payment:</b>\n"
+        payment_info += "  \u25b8 Tap <b>Pay with Razorpay</b> below\n"
+        payment_info += "  \u25b8 Instant activation after payment\n\n"
         payment_info += f"<b>Your ID:</b> <code>{chat_id}</code>"
 
         # Phase 1: Smooth countdown (60s)

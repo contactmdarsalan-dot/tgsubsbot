@@ -130,7 +130,7 @@ async def razorpay_payment_callback(request: Request):
         logger.warning(f"Razorpay callback duplicate detected: {idempotency_key}")
         return HTMLResponse(content=_success_html(order.get("plan_name", "Plan")))
 
-    # Payment verified! Process subscription
+    # Payment verified! Process subscription or paid post unlock
     chat_id = order.get("chat_id", "")
     plan_id = order.get("plan_id", "")
     plan_name = order.get("plan_name", "")
@@ -138,6 +138,8 @@ async def razorpay_payment_callback(request: Request):
     amount = order.get("amount", 0)
     username = order.get("username", "")
     tenant_id = order.get("tenant_id", "default")
+    unlock_post_id = order.get("unlock_post_id", "")
+    order_type = order.get("type", "subscription")
 
     try:
         # Update order status
@@ -150,9 +152,91 @@ async def razorpay_payment_callback(request: Request):
             }}
         )
 
+        now = datetime.now(timezone.utc)
+
+        # ===== PAID POST UNLOCK =====
+        if order_type == "paid_post_unlock" and unlock_post_id:
+            paid_post = await db.paid_posts.find_one(
+                {"id": unlock_post_id, "is_active": True, "tenant_id": tenant_id},
+                {"_id": 0}
+            )
+
+            # Create payment record
+            payment_id = str(uuid.uuid4())[:8]
+            payment_record = {
+                "id": payment_id,
+                "telegram_user_id": chat_id,
+                "telegram_username": username,
+                "plan_id": "", "plan_name": plan_name,
+                "amount": amount,
+                "payment_method": "razorpay",
+                "razorpay_payment_id": razorpay_payment_id,
+                "razorpay_payment_link_id": payment_link_id,
+                "status": "verified",
+                "type": "paid_post_unlock",
+                "unlock_post_id": unlock_post_id,
+                "verified_at": now.isoformat(),
+                "tenant_id": tenant_id,
+                "created_at": now.isoformat()
+            }
+            await db.payments.insert_one(payment_record)
+
+            # Save unlock record
+            unlock_record = {
+                "id": str(uuid.uuid4()),
+                "post_id": unlock_post_id,
+                "telegram_user_id": chat_id,
+                "telegram_username": username,
+                "payment_id": payment_id,
+                "payment_method": "razorpay",
+                "amount": amount,
+                "tenant_id": tenant_id,
+                "unlocked_at": now.isoformat()
+            }
+            await db.paid_post_unlocks.insert_one(unlock_record)
+
+            # Update unlock count
+            await db.paid_posts.update_one(
+                {"id": unlock_post_id, "tenant_id": tenant_id},
+                {"$inc": {"unlock_count": 1}}
+            )
+
+            # Clean up pending screenshots
+            await db.pending_screenshots.delete_one({"telegram_user_id": chat_id})
+
+            # Send unlocked content via Telegram
+            settings = await get_bot_settings()
+            bot_token = settings.get("telegram_bot_token", "")
+
+            if bot_token and paid_post:
+                from services.telegram import send_telegram_photo, send_telegram_video
+
+                success_msg = "✅ <b>Payment Successful!</b>\n\n🔓 Unlocking your content..."
+                await send_telegram_message(chat_id, success_msg, bot_token)
+
+                if paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
+                    caption = f"🔓 <b>Unlocked!</b>\n\n{paid_post.get('caption', '')}"
+                    await send_telegram_photo(chat_id, paid_post["original_file_id"], caption, bot_token)
+                elif paid_post.get("content_type") == "video" and paid_post.get("original_file_id"):
+                    caption = f"🔓 <b>Unlocked Video!</b>\n\n{paid_post.get('caption', '')}"
+                    await send_telegram_video(chat_id, paid_post["original_file_id"], caption, bot_token)
+                else:
+                    await send_telegram_message(chat_id, f"🔓 <b>Unlocked!</b>\n\n{paid_post.get('caption', 'Content unlocked!')}", bot_token)
+            elif bot_token:
+                await send_telegram_message(chat_id, "✅ <b>Payment Successful!</b>\n\n⚠️ Content not found. Contact admin.", bot_token)
+
+            asyncio.create_task(log_bot_activity(
+                "razorpay_unlock", chat_id, username,
+                f"Paid ₹{int(amount)} to unlock post {unlock_post_id[:8]}"
+            ))
+
+            logger.info(f"Razorpay unlock processed: user={chat_id}, post={unlock_post_id}, amount=₹{amount}")
+            await mark_idempotency_complete(idempotency_key, {"payment_id": payment_id, "post_id": unlock_post_id})
+            return HTMLResponse(content=_success_html(f"Content Unlocked - ₹{int(amount)}"))
+
+        # ===== REGULAR SUBSCRIPTION =====
         # Create/update payment record
         payment_id = str(uuid.uuid4())[:8]
-        now = datetime.now(timezone.utc)
         end_date = now + timedelta(days=duration_days)
 
         payment_record = {

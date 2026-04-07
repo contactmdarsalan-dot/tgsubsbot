@@ -20,6 +20,7 @@ Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS prod
 - DDD backend architecture (legacy routes/ deleted)
 - Discount strikethrough display in bot plan messages
 - Mini App dynamically shows only enabled payment methods per-tenant
+- **Paid Post Unlock: Direct Razorpay payment** (no manual screenshot flow)
 
 ## Wallet System
 - **Commission**: Configurable (percentage or fixed per transaction)
@@ -32,10 +33,17 @@ Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS prod
 - Admin: `/api/saas/tenants` (GET/POST/PUT with payment_methods field)
 - Mini App: `/api/miniapp/payment-methods` (tenant-aware, returns only enabled methods)
 - Webhook: `/api/telegram/webhook`
+- Razorpay Callback: `/api/razorpay/callback` (handles subscriptions + paid post unlocks)
+
+## Paid Post Unlock Flow (Razorpay Only)
+1. User clicks "Unlock Post" button on channel post
+2. Bot creates Razorpay payment link with post price
+3. Shows "Pay ₹X - Unlock Post/Video" button (direct Razorpay link)
+4. After payment, Razorpay callback → auto-unlock → sends content via bot
 
 ## 3rd Party Integrations
 - Telegram WebApp SDK & Bot API
-- Razorpay Payments (with idempotency locks)
+- Razorpay Payments (subscriptions + paid post unlocks)
 - Resend Email OTPs (MOCKED)
 - OpenAI GPT-5.2 Vision (Emergent LLM Key)
 
@@ -43,6 +51,7 @@ Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS prod
 - (P2) SaaSManagement.jsx refactoring (too large >1100 lines)
 - (P2) Object Storage migration (S3/R2)
 - (P2) Analytics Dashboard (Razorpay vs Custom payments)
+- (P2) Clean up subscription renewal/discount flows to use Razorpay links
 - (P3) WhatsApp integration
 - (P3) Multi-language bot support
 
