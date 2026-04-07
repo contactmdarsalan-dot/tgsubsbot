@@ -134,17 +134,29 @@ async def miniapp_get_user_discount(telegram_user_id: str):
 # ============== UPI DETAILS ==============
 
 def _generate_upi_qr(upi_id: str, upi_name: str = "") -> str:
+    from PIL import Image, ImageDraw, ImageFont
     upi_url = f"upi://pay?pa={upi_id}&pn={upi_name}&cu=INR"
-    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_H, box_size=10, border=4)
+    qr = qrcode.QRCode(version=4, error_correction=qrcode.constants.ERROR_CORRECT_H, box_size=12, border=3)
     qr.add_data(upi_url)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
+    qr_img = qr.make_image(fill_color="white", back_color="#1a1a2e").convert("RGB")
+    qr_w, qr_h = qr_img.size
+    padding, text_height = 40, 50
+    canvas = Image.new("RGB", (qr_w + padding * 2, qr_h + padding * 2 + text_height), color="#1a1a2e")
+    canvas.paste(qr_img, ((canvas.width - qr_w) // 2, padding))
+    draw = ImageDraw.Draw(canvas)
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
+    except Exception:
+        font = ImageFont.load_default()
+    bbox = draw.textbbox((0, 0), upi_id, font=font)
+    draw.text(((canvas.width - (bbox[2] - bbox[0])) // 2, padding + qr_h + 15), upi_id, fill="white", font=font)
     # Always use /app/backend/uploads/ regardless of where this file lives
     uploads_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads")
     os.makedirs(uploads_path, exist_ok=True)
-    filename = f"qr_auto_{upi_id.replace('@','_')}.png"
+    filename = f"qr_styled_{upi_id.replace('@','_')}.png"
     filepath = os.path.join(uploads_path, filename)
-    img.save(filepath)
+    canvas.save(filepath, "PNG")
     return f"/api/uploads/{filename}"
 
 
