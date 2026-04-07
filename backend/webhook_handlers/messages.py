@@ -1059,7 +1059,32 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
         paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0})
         
         if not paid_post:
-            await send_telegram_message(chat_id, "❌ <b>Post not found!</b>\n\nThis paid content may have been removed or expired.", bot_token)
+            # Also try without is_active filter (post may have been deactivated)
+            paid_post = await db.paid_posts.find_one({"id": post_id, "tenant_id": bot_tenant_id}, {"_id": 0})
+        
+        if not paid_post:
+            # Post truly doesn't exist - show plans instead of dead-end error
+            logger.info(f"Post {post_id} not found for tenant {bot_tenant_id}, showing plans instead")
+            plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).sort("price", 1).to_list(10)
+            
+            if plans:
+                msg = "🔒 <b>Exclusive Content</b>\n\n"
+                msg += "💎 Subscribe to unlock all premium content!\n\n"
+                msg += "━━━━━━━━━━━━━━━\n"
+                msg += "👇 <b>Choose a plan to get started:</b>"
+                
+                buttons = []
+                for p in plans:
+                    price = p.get("price", 0)
+                    original = p.get("original_price", price)
+                    name = p.get("name", "Plan")
+                    if original > price:
+                        buttons.append([{"text": f"📦 {name} - ₹{int(price)} (was ₹{int(original)})", "callback_data": f"buy_{p['id']}"}])
+                    else:
+                        buttons.append([{"text": f"📦 {name} - ₹{int(price)}", "callback_data": f"buy_{p['id']}"}])
+                await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
+            else:
+                await send_telegram_message(chat_id, "❌ <b>No plans available right now.</b>\n\nPlease try again later.", bot_token)
             return {"ok": True}
         
         # Check if user already unlocked this post
