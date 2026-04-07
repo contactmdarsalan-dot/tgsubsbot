@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Form
 from database import db
 from services.telegram import get_bot_settings, send_telegram_message, add_to_channel
-from services.tenant import DEFAULT_TENANT_ID, tenant_query
+from services.tenant import UNRESOLVED_TENANT, tenant_query
 from config import logger
 from datetime import datetime, timezone, timedelta
 import uuid
@@ -24,7 +24,7 @@ async def _get_admin_tenant(telegram_user_id: str) -> str:
     admin = await _verify_miniapp_admin(telegram_user_id)
     if admin and admin.get("tenant_id"):
         return admin["tenant_id"]
-    return DEFAULT_TENANT_ID
+    return UNRESOLVED_TENANT
 
 
 @router.get("/admin/check/{telegram_user_id}")
@@ -44,7 +44,7 @@ async def miniapp_admin_stats(telegram_user_id: str):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    tenant_id = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    tenant_id = admin.get("tenant_id", UNRESOLVED_TENANT)
 
     def tq(q):
         return tenant_query(q, tenant_id)
@@ -75,7 +75,7 @@ async def miniapp_admin_pending_payments(telegram_user_id: str):
         raise HTTPException(status_code=403, detail="No payment verification permission")
 
     payments_list = await db.payments.find(
-        tenant_query({"status": "pending"}, admin.get("tenant_id", DEFAULT_TENANT_ID)), {"_id": 0}
+        tenant_query({"status": "pending"}, admin.get("tenant_id", UNRESOLVED_TENANT)), {"_id": 0}
     ).sort("created_at", -1).to_list(50)
     return payments_list
 
@@ -95,11 +95,11 @@ async def miniapp_admin_payment_action(data: dict):
     if action not in ("approve", "reject"):
         raise HTTPException(status_code=400, detail="Invalid action")
 
-    payment = await db.payments.find_one(tenant_query({"id": payment_id}, admin.get("tenant_id", DEFAULT_TENANT_ID)), {"_id": 0})
+    payment = await db.payments.find_one(tenant_query({"id": payment_id}, admin.get("tenant_id", UNRESOLVED_TENANT)), {"_id": 0})
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
 
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
     new_status = "verified" if action == "approve" else "rejected"
     await db.payments.update_one(
         tenant_query({"id": payment_id}, admin_tenant),
@@ -150,7 +150,7 @@ async def miniapp_admin_subscribers(telegram_user_id: str):
         raise HTTPException(status_code=403, detail="Not an admin")
 
     subs = await db.subscribers.find(
-        tenant_query({}, admin.get("tenant_id", DEFAULT_TENANT_ID)), {"_id": 0}
+        tenant_query({}, admin.get("tenant_id", UNRESOLVED_TENANT)), {"_id": 0}
     ).sort("start_date", -1).to_list(100)
     return subs
 
@@ -173,7 +173,7 @@ async def miniapp_admin_broadcast(data: dict, background_tasks: BackgroundTasks)
     if not bot_token:
         raise HTTPException(status_code=400, detail="Bot token not configured")
 
-    tenant_id = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    tenant_id = admin.get("tenant_id", UNRESOLVED_TENANT)
     bot_users = await db.bot_users.find(tenant_query({}, tenant_id), {"_id": 0, "telegram_user_id": 1}).to_list(10000)
     user_ids = [u["telegram_user_id"] for u in bot_users if u.get("telegram_user_id")]
 
@@ -212,7 +212,7 @@ async def miniapp_admin_live_sessions(telegram_user_id: str):
         raise HTTPException(status_code=403, detail="Not an admin")
 
     sessions = await db.live_sessions.find(
-        tenant_query({}, admin.get("tenant_id", DEFAULT_TENANT_ID)), {"_id": 0}
+        tenant_query({}, admin.get("tenant_id", UNRESOLVED_TENANT)), {"_id": 0}
     ).sort("created_at", -1).to_list(20)
     return sessions
 
@@ -232,7 +232,7 @@ async def miniapp_admin_create_live(data: dict):
         "stream_link": data.get("stream_link", ""), "superchat_enabled": data.get("superchat_enabled", False),
         "superchat_min_amount": data.get("superchat_min_amount", 50),
         "status": "scheduled", "tickets_sold": 0, "started_at": "",
-        "created_by": admin.get("name", "Admin"), "tenant_id": admin.get("tenant_id", DEFAULT_TENANT_ID),
+        "created_by": admin.get("name", "Admin"), "tenant_id": admin.get("tenant_id", UNRESOLVED_TENANT),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.live_sessions.insert_one(session)
@@ -247,7 +247,7 @@ async def miniapp_admin_announce_live(session_id: str, data: dict):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
     session = await db.live_sessions.find_one(tenant_query({"id": session_id}, admin_tenant), {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -290,7 +290,7 @@ async def miniapp_admin_paid_posts(telegram_user_id: str):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
     posts = await db.paid_posts.find(
-        tenant_query({}, admin.get("tenant_id", DEFAULT_TENANT_ID)), {"_id": 0}
+        tenant_query({}, admin.get("tenant_id", UNRESOLVED_TENANT)), {"_id": 0}
     ).sort("created_at", -1).to_list(50)
     return posts
 
@@ -309,7 +309,7 @@ async def miniapp_admin_create_paid_post(data: dict):
         "content_type": data.get("content_type", "text"), "original_file_id": data.get("original_file_id", ""),
         "media_url": data.get("media_url", ""), "original_message_id": data.get("original_message_id", 0),
         "blurred_message_id": data.get("blurred_message_id", 0), "is_active": True, "unlock_count": 0,
-        "created_by": admin.get("name", "Admin"), "tenant_id": admin.get("tenant_id", DEFAULT_TENANT_ID),
+        "created_by": admin.get("name", "Admin"), "tenant_id": admin.get("tenant_id", UNRESOLVED_TENANT),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.paid_posts.insert_one(post)
@@ -361,7 +361,7 @@ async def miniapp_admin_create_paid_post_with_media(
         "blur_level": blur_level, "content_type": content_type, "original_file_id": "",
         "media_url": media_url, "media_filename": filename, "original_message_id": 0,
         "blurred_message_id": 0, "is_active": True, "unlock_count": 0,
-        "created_by": admin.get("name", "Admin"), "tenant_id": admin.get("tenant_id", DEFAULT_TENANT_ID),
+        "created_by": admin.get("name", "Admin"), "tenant_id": admin.get("tenant_id", UNRESOLVED_TENANT),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.paid_posts.insert_one(post)
@@ -376,7 +376,7 @@ async def miniapp_toggle_paid_post(post_id: str, data: dict):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
     post = await db.paid_posts.find_one(tenant_query({"id": post_id}, admin_tenant), {"_id": 0})
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -393,7 +393,7 @@ async def miniapp_update_blur(post_id: str, data: dict):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
     blur_level = data.get("blur_level", 10)
     blur_level = max(0, min(50, blur_level))
     await db.paid_posts.update_one(tenant_query({"id": post_id}, admin_tenant), {"$set": {"blur_level": blur_level}})
@@ -407,7 +407,7 @@ async def miniapp_broadcast_paid_post(post_id: str, data: dict, background_tasks
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
     post = await db.paid_posts.find_one(tenant_query({"id": post_id, "is_active": True}, admin_tenant), {"_id": 0})
     if not post:
         raise HTTPException(status_code=404, detail="Post not found or inactive")
@@ -440,7 +440,7 @@ async def miniapp_go_live(session_id: str, data: dict):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
     session = await db.live_sessions.find_one(tenant_query({"id": session_id}, admin_tenant), {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -474,7 +474,7 @@ async def miniapp_delete_live(session_id: str, data: dict):
     admin = await _verify_miniapp_admin(telegram_user_id)
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
     result = await db.live_sessions.delete_one(tenant_query({"id": session_id}, admin_tenant))
     return {"success": result.deleted_count > 0}
 
@@ -485,7 +485,7 @@ async def miniapp_end_live(session_id: str, data: dict):
     admin = await _verify_miniapp_admin(telegram_user_id)
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
     result = await db.live_sessions.update_one(
         tenant_query({"id": session_id}, admin_tenant), {"$set": {"status": "ended", "ended_at": datetime.now(timezone.utc).isoformat()}}
     )
@@ -499,7 +499,7 @@ async def miniapp_get_tenant(telegram_user_id: str):
     admin = await _verify_miniapp_admin(telegram_user_id)
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
-    tenant_id = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    tenant_id = admin.get("tenant_id", UNRESOLVED_TENANT)
     tenant = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0})
     if not tenant:
         tenant = {"tenant_id": tenant_id, "name": "Default Creator", "status": "active"}

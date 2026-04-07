@@ -4,7 +4,7 @@ Adds fields: session_type, source, room_id, booked_by, call_duration_minutes"""
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from database import db
-from services.tenant import DEFAULT_TENANT_ID, tenant_query
+from services.tenant import UNRESOLVED_TENANT, tenant_query
 from datetime import datetime, timezone, timedelta
 import uuid, json, logging, asyncio
 
@@ -23,7 +23,7 @@ async def book_video_call(data: dict):
     """User books a video call after purchasing a video call plan."""
     telegram_user_id = str(data.get("telegram_user_id", ""))
     plan_id = data.get("plan_id", "")
-    tenant_id = data.get("tenant_id", DEFAULT_TENANT_ID)
+    tenant_id = data.get("tenant_id", UNRESOLVED_TENANT)
 
     if not telegram_user_id or not plan_id:
         raise HTTPException(status_code=400, detail="Missing required fields")
@@ -70,7 +70,7 @@ async def book_video_call(data: dict):
 
 
 @router.get("/miniapp/my-bookings/{telegram_user_id}")
-async def get_my_bookings(telegram_user_id: str, tenant_id: str = DEFAULT_TENANT_ID):
+async def get_my_bookings(telegram_user_id: str, tenant_id: str = UNRESOLVED_TENANT):
     """Get user's video call bookings."""
     query = {"booked_by": str(telegram_user_id), "session_type": "video_call_booking", "source": "miniapp"}
     if tenant_id:
@@ -80,7 +80,7 @@ async def get_my_bookings(telegram_user_id: str, tenant_id: str = DEFAULT_TENANT
 
 
 @router.get("/miniapp/active-live")
-async def get_active_live(tenant_id: str = DEFAULT_TENANT_ID):
+async def get_active_live(tenant_id: str = UNRESOLVED_TENANT):
     """Get currently active live stream for this tenant."""
     query = {"session_type": "live_stream", "source": "miniapp", "status": "live"}
     if tenant_id:
@@ -103,7 +103,7 @@ async def admin_get_video_bookings(telegram_user_id: str, status: str = None):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
     query = tenant_query({"session_type": "video_call_booking", "source": "miniapp"}, admin_tenant)
     if status:
         query["status"] = status
@@ -120,7 +120,7 @@ async def admin_booking_action(data: dict):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
     booking_id = data.get("booking_id", "")
     action = data.get("action", "")
 
@@ -164,7 +164,7 @@ async def admin_start_live(data: dict):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
     session_id = str(uuid.uuid4())
     room_id = str(uuid.uuid4())[:8]
 
@@ -198,7 +198,7 @@ async def admin_end_live(data: dict):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
     session_id = data.get("session_id", "")
 
     await db.live_sessions.update_one(
@@ -290,7 +290,7 @@ async def dashboard_start_live(data: dict, user=Depends(get_current_user)):
         "viewer_count": 0,
         "actual_start": datetime.now(timezone.utc).isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "tenant_id": tenant_id if tenant_id else DEFAULT_TENANT_ID,
+        "tenant_id": tenant_id if tenant_id else UNRESOLVED_TENANT,
     }
 
     await db.live_sessions.insert_one(session)
@@ -331,7 +331,7 @@ async def dashboard_create_miniapp_plan(data: dict, user=Depends(get_current_use
         "is_active": True, "source": "miniapp",
         "no_channel_access": data.get("plan_type") == "video_call",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "tenant_id": tenant_id if tenant_id else DEFAULT_TENANT_ID,
+        "tenant_id": tenant_id if tenant_id else UNRESOLVED_TENANT,
     }
     await db.plans.insert_one(plan)
     del plan["_id"]

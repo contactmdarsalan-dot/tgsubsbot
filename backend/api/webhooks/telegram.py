@@ -6,7 +6,7 @@ Refactored from 4300+ lines into modular handlers:
 """
 from fastapi import APIRouter, BackgroundTasks, Request
 from services.telegram import get_bot_settings
-from services.tenant import DEFAULT_TENANT_ID
+from services.tenant import UNRESOLVED_TENANT
 from config import logger
 from rate_limiter import limiter
 
@@ -28,7 +28,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         # Resolve bot context
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
-        bot_tenant_id = settings.get("tenant_id") or DEFAULT_TENANT_ID
+        bot_tenant_id = settings.get("tenant_id") or UNRESOLVED_TENANT
 
         if not bot_token:
             logger.error("BOT TOKEN NOT FOUND! Check database settings or TELEGRAM_BOT_TOKEN env var")

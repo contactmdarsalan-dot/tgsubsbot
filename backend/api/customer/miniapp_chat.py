@@ -3,7 +3,7 @@ Uses existing collections: chat_messages, chat_sessions."""
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from database import db
-from services.tenant import DEFAULT_TENANT_ID, tenant_query
+from services.tenant import UNRESOLVED_TENANT, tenant_query
 from services.auth import get_current_user
 from services.permissions import get_user_tenant, tq
 from datetime import datetime, timezone
@@ -23,7 +23,7 @@ async def send_message(data: dict):
     """User sends a private message to creator."""
     telegram_user_id = str(data.get("telegram_user_id", ""))
     message = data.get("message", "").strip()
-    tenant_id = data.get("tenant_id", DEFAULT_TENANT_ID)
+    tenant_id = data.get("tenant_id", UNRESOLVED_TENANT)
 
     if not telegram_user_id or not message:
         raise HTTPException(status_code=400, detail="Missing fields")
@@ -61,7 +61,7 @@ async def send_message(data: dict):
 
 
 @router.get("/miniapp/chat/history/{telegram_user_id}")
-async def get_chat_history(telegram_user_id: str, tenant_id: str = DEFAULT_TENANT_ID):
+async def get_chat_history(telegram_user_id: str, tenant_id: str = UNRESOLVED_TENANT):
     """Get chat history for a user."""
     query = {
         "source": "miniapp",
@@ -87,7 +87,7 @@ async def admin_get_chats(telegram_user_id: str):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
 
     # Get unique users who have sent messages
     pipeline = [
@@ -115,7 +115,7 @@ async def admin_reply(data: dict):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
     recipient_id = data.get("recipient_id", "")
     message = data.get("message", "").strip()
 
@@ -157,7 +157,7 @@ async def admin_get_user_messages(user_id: str, admin_id: str = ""):
     if not admin:
         raise HTTPException(status_code=403, detail="Not an admin")
 
-    admin_tenant = admin.get("tenant_id", DEFAULT_TENANT_ID)
+    admin_tenant = admin.get("tenant_id", UNRESOLVED_TENANT)
 
     query = tenant_query({
         "source": "miniapp", "chat_type": "private",
@@ -250,7 +250,7 @@ async def dashboard_reply(data: dict, user=Depends(get_current_user)):
         "message": message,
         "read": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "tenant_id": tenant_id if tenant_id else DEFAULT_TENANT_ID,
+        "tenant_id": tenant_id if tenant_id else UNRESOLVED_TENANT,
     }
 
     await db.chat_messages.insert_one(msg_doc)

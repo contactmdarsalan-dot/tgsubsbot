@@ -2,7 +2,7 @@
 Allows new creators to self-register and manage their tenant."""
 from fastapi import APIRouter, HTTPException, Depends
 from database import db
-from services.tenant import DEFAULT_TENANT_ID
+from services.tenant import UNRESOLVED_TENANT
 from services.auth import get_current_user
 from services.permissions import ensure_tenant_access, is_super_admin
 from config import logger
@@ -78,7 +78,7 @@ async def onboard_creator(data: dict):
 
     # Check if telegram_user_id already has a tenant
     existing_admin = await db.telegram_admins.find_one(
-        {"telegram_user_id": telegram_user_id, "tenant_id": {"$ne": DEFAULT_TENANT_ID}},
+        {"telegram_user_id": telegram_user_id, "tenant_id": {"$ne": UNRESOLVED_TENANT}},
         {"_id": 0}
     )
     if existing_admin:

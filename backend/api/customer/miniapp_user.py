@@ -4,7 +4,7 @@ from database import db
 from services.telegram import get_bot_settings, send_telegram_message, send_telegram_photo, add_to_channel
 from services.payment import analyze_payment_screenshot_with_ai
 from services.telegram_verify import validate_telegram_init_data
-from services.tenant import DEFAULT_TENANT_ID
+from services.tenant import UNRESOLVED_TENANT
 from config import logger, RAZORPAY_KEY_ID, razorpay_client, EMERGENT_LLM_KEY
 from datetime import datetime, timezone, timedelta
 import uuid
@@ -40,11 +40,11 @@ async def miniapp_resolve_tenant(telegram_user_id: str):
         {"telegram_user_id": str(telegram_user_id)}, {"_id": 0, "tenant_id": 1}
     )
     user_tenant = bot_user.get("tenant_id", "") if bot_user else ""
-    if user_tenant and user_tenant != DEFAULT_TENANT_ID:
+    if user_tenant and user_tenant != UNRESOLVED_TENANT:
         return {"tenant_id": user_tenant}
     # Fallback to default settings tenant
     settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0, "tenant_id": 1})
-    return {"tenant_id": (settings.get("tenant_id") if settings else None) or DEFAULT_TENANT_ID}
+    return {"tenant_id": (settings.get("tenant_id") if settings else None) or UNRESOLVED_TENANT}
 
 
 @router.post("/resolve-tenant-by-init")
@@ -70,11 +70,11 @@ async def miniapp_resolve_tenant_by_init(data: dict):
                 # This bot token validated the initData — this is the correct tenant
                 tid = s.get("tenant_id", "")
                 # For "bot_settings" (no tenant_id), resolve from the settings id pattern
-                if not tid or tid == DEFAULT_TENANT_ID:
+                if not tid or tid == UNRESOLVED_TENANT:
                     sid = s.get("id", "")
                     if sid.startswith("bot_settings_"):
                         tid = sid.replace("bot_settings_", "")
-                return {"tenant_id": tid or DEFAULT_TENANT_ID, "verified": True}
+                return {"tenant_id": tid or UNRESOLVED_TENANT, "verified": True}
 
     # Fallback: use bot_users lookup
     if telegram_user_id:
@@ -82,16 +82,16 @@ async def miniapp_resolve_tenant_by_init(data: dict):
             {"telegram_user_id": str(telegram_user_id)}, {"_id": 0, "tenant_id": 1}
         )
         user_tenant = bot_user.get("tenant_id", "") if bot_user else ""
-        if user_tenant and user_tenant != DEFAULT_TENANT_ID:
+        if user_tenant and user_tenant != UNRESOLVED_TENANT:
             return {"tenant_id": user_tenant, "verified": False}
 
     # Fallback: use settings tenant_id (resolves for single-bot setups)
     settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0, "tenant_id": 1})
     settings_tenant = (settings.get("tenant_id") if settings else None) or ""
-    if settings_tenant and settings_tenant != DEFAULT_TENANT_ID:
+    if settings_tenant and settings_tenant != UNRESOLVED_TENANT:
         return {"tenant_id": settings_tenant, "verified": False}
 
-    return {"tenant_id": DEFAULT_TENANT_ID, "verified": False}
+    return {"tenant_id": UNRESOLVED_TENANT, "verified": False}
 
 
 # ============== PHONE LOGIN ==============
@@ -109,7 +109,7 @@ async def miniapp_phone_login(data: dict):
     if existing:
         return {"success": True, "discount": 20, "already_registered": True, "message": "Welcome back! Your 20% discount is active."}
 
-    tenant_id = data.get("tenant_id", DEFAULT_TENANT_ID)
+    tenant_id = data.get("tenant_id", UNRESOLVED_TENANT)
     user_doc = {
         "id": str(uuid.uuid4()),
         "phone": phone,
@@ -184,13 +184,13 @@ def _is_valid_qr_file(qr_url: str) -> bool:
 
 
 @router.get("/upi-details")
-async def miniapp_get_upi_details(tenant_id: str = DEFAULT_TENANT_ID):
+async def miniapp_get_upi_details(tenant_id: str = UNRESOLVED_TENANT):
     # Try tenant-specific settings first
-    settings_id = f"bot_settings_{tenant_id}" if tenant_id and tenant_id != DEFAULT_TENANT_ID else "bot_settings"
+    settings_id = f"bot_settings_{tenant_id}" if tenant_id and tenant_id != UNRESOLVED_TENANT else "bot_settings"
     settings = await db.settings.find_one({"id": settings_id}, {"_id": 0})
     if not settings:
         # Only fallback to default for the default tenant
-        if tenant_id == DEFAULT_TENANT_ID:
+        if tenant_id == UNRESOLVED_TENANT:
             settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
         else:
             settings = {}
@@ -213,7 +213,7 @@ async def miniapp_get_upi_details(tenant_id: str = DEFAULT_TENANT_ID):
 # ============== PLANS ==============
 
 @router.get("/plans")
-async def miniapp_get_plans(tenant_id: str = DEFAULT_TENANT_ID):
+async def miniapp_get_plans(tenant_id: str = UNRESOLVED_TENANT):
     """Get active plans for a specific tenant only."""
     plans = await db.plans.find({"is_active": True, "tenant_id": tenant_id}, {"_id": 0}).sort("price", 1).to_list(50)
     return plans
@@ -222,7 +222,7 @@ async def miniapp_get_plans(tenant_id: str = DEFAULT_TENANT_ID):
 # ============== SUBSCRIPTION STATUS ==============
 
 @router.get("/status/{telegram_user_id}")
-async def miniapp_get_status(telegram_user_id: str, tenant_id: str = DEFAULT_TENANT_ID):
+async def miniapp_get_status(telegram_user_id: str, tenant_id: str = UNRESOLVED_TENANT):
     sub = await db.subscribers.find_one({"telegram_user_id": telegram_user_id, "status": "active", "tenant_id": tenant_id}, {"_id": 0})
     if sub:
         end_date = sub.get("end_date", "")
@@ -254,7 +254,7 @@ async def miniapp_apply_coupon(data: dict):
     code = data.get("code", "").upper().strip()
     plan_id = data.get("plan_id")
     amount = float(data.get("amount", 0))
-    tenant_id = data.get("tenant_id", DEFAULT_TENANT_ID)
+    tenant_id = data.get("tenant_id", UNRESOLVED_TENANT)
 
     if not code:
         return {"valid": False, "error": "Enter a coupon code"}
@@ -298,7 +298,7 @@ async def miniapp_create_razorpay_order(data: dict):
     telegram_username = data.get("telegram_username", "")
     coupon_code = data.get("coupon_code")
     amount = float(data.get("amount", 0))
-    tenant_id = data.get("tenant_id", DEFAULT_TENANT_ID)
+    tenant_id = data.get("tenant_id", UNRESOLVED_TENANT)
 
     plan = await db.plans.find_one({"id": plan_id, "tenant_id": tenant_id}, {"_id": 0})
     if not plan:
@@ -323,7 +323,7 @@ async def miniapp_create_razorpay_order(data: dict):
         logger.error(f"Razorpay order creation failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to create payment order")
 
-    tenant_id = data.get("tenant_id", DEFAULT_TENANT_ID)
+    tenant_id = data.get("tenant_id", UNRESOLVED_TENANT)
     order_doc = {
         "id": str(uuid.uuid4()), "razorpay_order_id": razor_order["id"], "plan_id": plan_id, "plan_name": plan["name"],
         "amount": final_amount, "original_amount": plan["price"], "coupon_code": coupon_code,
@@ -370,7 +370,7 @@ async def miniapp_verify_payment(data: dict, background_tasks: BackgroundTasks):
         "telegram_username": telegram_username, "amount": order["amount"], "plan_id": order["plan_id"],
         "plan_name": plan["name"], "payment_method": "razorpay", "razorpay_order_id": data['razorpay_order_id'],
         "razorpay_payment_id": data['razorpay_payment_id'], "coupon_code": order.get("coupon_code"),
-        "status": "verified", "source": "miniapp", "tenant_id": order.get("tenant_id", DEFAULT_TENANT_ID),
+        "status": "verified", "source": "miniapp", "tenant_id": order.get("tenant_id", UNRESOLVED_TENANT),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.payments.insert_one(payment_obj)
@@ -387,7 +387,7 @@ async def miniapp_verify_payment(data: dict, background_tasks: BackgroundTasks):
         "plan_id": plan["id"], "plan_name": plan["name"], "payment_method": "razorpay", "payment_id": payment_obj["id"],
         "status": "active", "start_date": datetime.now(timezone.utc).isoformat(), "end_date": end_date.isoformat(),
         "grace_end_date": grace_end.isoformat(), "reminder_sent": False,
-        "tenant_id": order.get("tenant_id", DEFAULT_TENANT_ID), "created_at": datetime.now(timezone.utc).isoformat()
+        "tenant_id": order.get("tenant_id", UNRESOLVED_TENANT), "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.subscribers.insert_one(subscriber_obj)
 
@@ -409,7 +409,7 @@ async def miniapp_verify_payment(data: dict, background_tasks: BackgroundTasks):
 # ============== PAYMENT HISTORY ==============
 
 @router.get("/payments/{telegram_user_id}")
-async def miniapp_payment_history(telegram_user_id: str, tenant_id: str = DEFAULT_TENANT_ID):
+async def miniapp_payment_history(telegram_user_id: str, tenant_id: str = UNRESOLVED_TENANT):
     payments = await db.payments.find({"telegram_user_id": telegram_user_id, "tenant_id": tenant_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
     return payments
 
@@ -448,12 +448,12 @@ async def miniapp_upload_screenshot(
             resolved_tenant = plan.get("tenant_id", "")
     if not resolved_tenant:
         bot_user = await db.bot_users.find_one({"telegram_user_id": str(telegram_user_id)}, {"_id": 0})
-        resolved_tenant = (bot_user.get("tenant_id", "") if bot_user else "") or DEFAULT_TENANT_ID
+        resolved_tenant = (bot_user.get("tenant_id", "") if bot_user else "") or UNRESOLVED_TENANT
     else:
         bot_user = await db.bot_users.find_one({"telegram_user_id": str(telegram_user_id)}, {"_id": 0})
 
     # Get tenant-specific settings for UPI
-    settings_id = f"bot_settings_{resolved_tenant}" if resolved_tenant and resolved_tenant != DEFAULT_TENANT_ID else "bot_settings"
+    settings_id = f"bot_settings_{resolved_tenant}" if resolved_tenant and resolved_tenant != UNRESOLVED_TENANT else "bot_settings"
     settings = await db.settings.find_one({"id": settings_id}, {"_id": 0})
     if not settings:
         settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
@@ -639,7 +639,7 @@ async def miniapp_support_history(telegram_user_id: str):
 # ============== REFERRAL SYSTEM ==============
 
 @router.get("/referral/{telegram_user_id}")
-async def miniapp_get_referral(telegram_user_id: str, tenant_id: str = DEFAULT_TENANT_ID):
+async def miniapp_get_referral(telegram_user_id: str, tenant_id: str = UNRESOLVED_TENANT):
     referral = await db.referrals.find_one({"referrer_id": telegram_user_id, "tenant_id": tenant_id}, {"_id": 0})
 
     if not referral:
@@ -651,7 +651,7 @@ async def miniapp_get_referral(telegram_user_id: str, tenant_id: str = DEFAULT_T
         await db.referrals.insert_one(referral)
         referral.pop("_id", None)
 
-    settings_id = f"referral_settings_{tenant_id}" if tenant_id and tenant_id != DEFAULT_TENANT_ID else "referral_settings"
+    settings_id = f"referral_settings_{tenant_id}" if tenant_id and tenant_id != UNRESOLVED_TENANT else "referral_settings"
     settings = await db.referral_settings.find_one({"id": settings_id}, {"_id": 0})
     if not settings:
         settings = await db.referral_settings.find_one({"id": "referral_settings"}, {"_id": 0})
@@ -669,7 +669,7 @@ async def miniapp_get_referral(telegram_user_id: str, tenant_id: str = DEFAULT_T
 async def miniapp_apply_referral(data: dict):
     code = data.get("code", "").upper().strip()
     telegram_user_id = data.get("telegram_user_id", "")
-    tenant_id = data.get("tenant_id", DEFAULT_TENANT_ID)
+    tenant_id = data.get("tenant_id", UNRESOLVED_TENANT)
 
     if not code or not telegram_user_id:
         return {"valid": False, "error": "Missing referral code or user ID"}
@@ -685,7 +685,7 @@ async def miniapp_apply_referral(data: dict):
         return {"valid": False, "error": "You've already used a referral code"}
 
     await db.referrals.update_one({"referral_code": code, "tenant_id": tenant_id}, {"$push": {"referred_users": telegram_user_id}})
-    settings_id = f"referral_settings_{tenant_id}" if tenant_id and tenant_id != DEFAULT_TENANT_ID else "referral_settings"
+    settings_id = f"referral_settings_{tenant_id}" if tenant_id and tenant_id != UNRESOLVED_TENANT else "referral_settings"
     settings = await db.referral_settings.find_one({"id": settings_id}, {"_id": 0})
     referee_discount = settings.get("referee_reward_value", 10) if settings else 10
     return {"valid": True, "discount_percent": referee_discount, "message": f"Referral applied! You get {referee_discount}% off on your next purchase!"}
@@ -694,7 +694,7 @@ async def miniapp_apply_referral(data: dict):
 # ============== NOTIFICATIONS ==============
 
 @router.get("/notifications/{telegram_user_id}")
-async def miniapp_get_notifications(telegram_user_id: str, tenant_id: str = DEFAULT_TENANT_ID):
+async def miniapp_get_notifications(telegram_user_id: str, tenant_id: str = UNRESOLVED_TENANT):
     notifications = []
 
     sub = await db.subscribers.find_one({"telegram_user_id": telegram_user_id, "status": "active", "tenant_id": tenant_id}, {"_id": 0})
@@ -806,7 +806,7 @@ async def miniapp_live_ticket_upload_screenshot(
     ticket = {
         "id": ticket_id, "session_id": session_id, "telegram_user_id": str(telegram_user_id),
         "amount": ticket_price, "screenshot_url": screenshot_url, "status": "pending",
-        "payment_method": "miniapp_upi", "tenant_id": session.get("tenant_id", DEFAULT_TENANT_ID),
+        "payment_method": "miniapp_upi", "tenant_id": session.get("tenant_id", UNRESOLVED_TENANT),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -865,13 +865,13 @@ async def miniapp_live_ticket_upload_screenshot(
 
 
 @router.get("/live-sessions/public")
-async def miniapp_get_live_sessions_public(tenant_id: str = DEFAULT_TENANT_ID):
+async def miniapp_get_live_sessions_public(tenant_id: str = UNRESOLVED_TENANT):
     sessions = await db.live_sessions.find({"status": {"$in": ["scheduled", "announced", "live"]}, "tenant_id": tenant_id}, {"_id": 0}).sort("created_at", -1).to_list(20)
     return sessions
 
 
 @router.get("/live-ticket/status/{telegram_user_id}/{session_id}")
-async def miniapp_live_ticket_status(telegram_user_id: str, session_id: str, tenant_id: str = DEFAULT_TENANT_ID):
+async def miniapp_live_ticket_status(telegram_user_id: str, session_id: str, tenant_id: str = UNRESOLVED_TENANT):
     ticket = await db.live_tickets.find_one(
         {"telegram_user_id": str(telegram_user_id), "session_id": session_id, "status": {"$in": ["approved", "pending"]}, "tenant_id": tenant_id}, {"_id": 0}
     )
