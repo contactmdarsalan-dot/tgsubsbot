@@ -12,7 +12,7 @@ app.use('/api', createProxyMiddleware({
   changeOrigin: true,
   timeout: 120000,
   proxyTimeout: 120000,
-  onError: (err, req, res) => {
+  onError: function(err, req, res) {
     console.error('Proxy error:', err.message);
     res.status(502).json({ error: 'Backend unavailable' });
   }
@@ -30,12 +30,12 @@ app.use(express.static(path.join(__dirname, 'build'), {
   immutable: true
 }));
 
-// SPA fallback
-app.use((req, res) => {
+// SPA fallback - catch all remaining routes
+app.use(function(req, res) {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Frontend server running on port ${PORT}`);
-  console.log(`API proxy target: ${BACKEND_URL}`);
+app.listen(PORT, '0.0.0.0', function() {
+  console.log('Frontend server running on port ' + PORT);
+  console.log('API proxy target: ' + BACKEND_URL);
 });
