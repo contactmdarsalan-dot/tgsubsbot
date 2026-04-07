@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:20-alpine
 
 WORKDIR /app
 
@@ -16,18 +16,11 @@ COPY . .
 # Build the app
 RUN CI=false yarn build
 
-# Production stage
-FROM node:20-alpine
+# Install serve for production
+RUN npm install -g serve
 
-WORKDIR /app
-
-# Install production server dependencies
-RUN npm install express@4 http-proxy-middleware@2
-
-# Copy built files and server
-COPY --from=build /app/build ./build
-COPY --from=build /app/server.js ./server.js
-
+# Expose port
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+# Start the application
+CMD ["serve", "-s", "build", "-l", "3000"]

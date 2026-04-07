@@ -5,8 +5,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    expose:
-      - "8001"
+    ports:
+      - "8001:8001"
     environment:
       - MONGO_URL=${MONGO_URL}
       - DB_NAME=${DB_NAME}
@@ -21,6 +21,7 @@ services:
       - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
       - JWT_SECRET=${JWT_SECRET}
       - RESEND_API_KEY=${RESEND_API_KEY}
+      - REDIS_URL=${REDIS_URL}
     restart: unless-stopped
     networks:
       - app-network
