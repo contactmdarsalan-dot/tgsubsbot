@@ -28,11 +28,17 @@ async def get_bot_settings():
     if tenant_id:
         tenant = await db.tenants.find_one(
             {"tenant_id": tenant_id},
-            {"_id": 0, "bot_token": 1}
+            {"_id": 0, "bot_token": 1, "qr_enabled": 1, "upi_id": 1}
         )
         if tenant and tenant.get("bot_token"):
             settings["telegram_bot_token"] = tenant["bot_token"]
             logger.debug(f"Using bot_token from tenants collection for {tenant_id}")
+        # Always sync qr_enabled from tenant (Super Admin control)
+        if tenant is not None:
+            settings["qr_enabled"] = tenant.get("qr_enabled", False)
+            # Also sync UPI ID from tenant if not in settings
+            if tenant.get("upi_id") and not settings.get("upi_id"):
+                settings["upi_id"] = tenant["upi_id"]
 
     # Priority 2: Environment variable fallback
     if not settings.get("telegram_bot_token"):

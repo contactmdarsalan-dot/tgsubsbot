@@ -1089,6 +1089,7 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
         post_price = paid_post.get("price", 0)
         settings = await get_bot_settings()
         qr_code_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
+        qr_enabled = settings.get("qr_enabled", False)
         
         # If no specific price, use default from plans
         if post_price <= 0:
@@ -1108,7 +1109,7 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
         unlock_msg += "OR subscribe for unlimited access! 👇"
         
         buttons = []
-        if qr_code_url:
+        if qr_enabled and qr_code_url:
             buttons.append([{"text": "📱 Show QR Code", "callback_data": f"unlock_qr_{post_id}"}])
         buttons.append([{"text": "✅ I've Paid - Verify", "callback_data": f"unlock_paid_{post_id}"}])
         buttons.append([{"text": "📦 Get Full Subscription", "callback_data": "back_plans"}])
@@ -1198,6 +1199,7 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                     final_price = original_price
                 
                 qr_code_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
+                qr_enabled = settings.get("qr_enabled", False)
                 
                 payment_msg = f"🔥 <b>EXCLUSIVE OFFER!</b> 🔥\n\n"
                 payment_msg += f"<b>📦 {plan.get('name', 'Plan')}</b>\n\n"
@@ -1262,7 +1264,7 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                     except Exception as rp_err:
                         logger.error(f"Razorpay link creation failed in deep link: {rp_err}")
                 
-                if qr_code_url:
+                if qr_enabled and qr_code_url:
                     buttons.append([{"text": "📱 Show QR Code", "callback_data": f"qr_{plan_id}"}])
                 
                 payment_msg += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"

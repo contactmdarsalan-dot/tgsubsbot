@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Switch } from "../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Users, Package, Shield, Crown, Plus, Edit, Trash2, CheckCircle, XCircle, UserPlus, ArrowRightLeft, Loader2, CreditCard, Check, X, Clock, RefreshCw, Zap, Settings, Eye, EyeOff, KeyRound, AlertTriangle, FileText, RotateCcw, UserCog } from "lucide-react";
+import { Users, Package, Shield, Crown, Plus, Edit, Trash2, CheckCircle, XCircle, UserPlus, ArrowRightLeft, Loader2, CreditCard, Check, X, Clock, RefreshCw, Zap, Settings, Eye, EyeOff, KeyRound, AlertTriangle, FileText, RotateCcw, UserCog, QrCode } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const getAuth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
@@ -49,7 +49,7 @@ export default function SaaSManagement() {
   // Tenant dialog
   const [tenantDialog, setTenantDialog] = useState(false);
   const [editingTenant, setEditingTenant] = useState(null);
-  const [tenantForm, setTenantForm] = useState({ name: "", email: "", owner_telegram_id: "", bot_token: "", bot_username: "", upi_id: "", channel_id: "", razorpay_key_id: "" });
+  const [tenantForm, setTenantForm] = useState({ name: "", email: "", owner_telegram_id: "", bot_token: "", bot_username: "", upi_id: "", channel_id: "", razorpay_key_id: "", qr_enabled: false });
 
   // Admin dialog
   const [adminDialog, setAdminDialog] = useState(false);
@@ -120,8 +120,8 @@ export default function SaaSManagement() {
 
   // ===== TENANT CRUD =====
   const openTenantDialog = (t = null) => {
-    if (t) { setEditingTenant(t); setTenantForm({ name: t.name || "", email: t.email || "", owner_telegram_id: t.owner_telegram_id || "", bot_token: t.bot_token || "", bot_username: t.bot_username || "", upi_id: t.upi_id || "", channel_id: t.channel_id || "", razorpay_key_id: t.razorpay_key_id || "" }); }
-    else { setEditingTenant(null); setTenantForm({ name: "", email: "", owner_telegram_id: "", bot_token: "", bot_username: "", upi_id: "", channel_id: "", razorpay_key_id: "" }); }
+    if (t) { setEditingTenant(t); setTenantForm({ name: t.name || "", email: t.email || "", owner_telegram_id: t.owner_telegram_id || "", bot_token: t.bot_token || "", bot_username: t.bot_username || "", upi_id: t.upi_id || "", channel_id: t.channel_id || "", razorpay_key_id: t.razorpay_key_id || "", qr_enabled: t.qr_enabled || false }); }
+    else { setEditingTenant(null); setTenantForm({ name: "", email: "", owner_telegram_id: "", bot_token: "", bot_username: "", upi_id: "", channel_id: "", razorpay_key_id: "", qr_enabled: false }); }
     setTenantDialog(true);
   };
   const saveTenant = async () => { try { if (editingTenant) { await axios.put(`${API}/saas/tenants/${editingTenant.tenant_id}`, tenantForm, getAuth()); toast.success("Tenant updated"); } else { await axios.post(`${API}/saas/tenants`, tenantForm, getAuth()); toast.success("Tenant created"); } fetchTenants(); setTenantDialog(false); } catch (e) { toast.error(e.response?.data?.detail || "Failed"); } };
@@ -325,7 +325,14 @@ export default function SaaSManagement() {
                     <TableCell className="text-white">{t.stats?.total_users || 0}</TableCell>
                     <TableCell className="text-white">{t.stats?.active_subs || 0}</TableCell>
                     <TableCell className="font-semibold text-white">{`\u20B9${(t.stats?.revenue || 0).toLocaleString()}`}</TableCell>
-                    <TableCell><Badge variant={t.status === "active" ? "default" : "destructive"}>{t.status || "active"}</Badge></TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        <Badge variant={t.status === "active" ? "default" : "destructive"}>{t.status || "active"}</Badge>
+                        <Badge variant={t.qr_enabled ? "default" : "secondary"} className="text-[10px]">
+                          <QrCode className="w-3 h-3 mr-0.5" /> QR {t.qr_enabled ? "ON" : "OFF"}
+                        </Badge>
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openBotAdminDialog(t)} title="Bot Admins"><UserPlus className="w-4 h-4 text-blue-400" /></Button>
@@ -778,6 +785,17 @@ export default function SaaSManagement() {
             <div><Label>UPI ID</Label><Input value={tenantForm.upi_id} onChange={e => setTenantForm(p => ({ ...p, upi_id: e.target.value }))} placeholder="name@paytm" /></div>
             <div><Label>Channel ID</Label><Input value={tenantForm.channel_id} onChange={e => setTenantForm(p => ({ ...p, channel_id: e.target.value }))} placeholder="-1001234567890" /></div>
             <div><Label>Razorpay Key ID</Label><Input value={tenantForm.razorpay_key_id} onChange={e => setTenantForm(p => ({ ...p, razorpay_key_id: e.target.value }))} placeholder="rzp_live_..." /></div>
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <Label className="text-sm font-medium">QR Code Payment</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Enable QR code payment option in bot</p>
+              </div>
+              <Switch
+                checked={tenantForm.qr_enabled || false}
+                onCheckedChange={v => setTenantForm(p => ({ ...p, qr_enabled: v }))}
+                data-testid="qr-enabled-toggle"
+              />
+            </div>
             <Button className="w-full" onClick={saveTenant} disabled={!tenantForm.name.trim()}>{editingTenant ? "Update Tenant" : "Create Tenant"}</Button>
           </div>
         </DialogContent>

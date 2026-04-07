@@ -33,6 +33,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
         
         settings = await get_bot_settings()
         bot_token = settings.get("telegram_bot_token", "")
+        qr_enabled = settings.get("qr_enabled", False)
         
         if callback_data.startswith("buy_"):
             plan_id = callback_data.replace("buy_", "")
@@ -142,7 +143,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                     buttons.append([{"text": "💳 Pay with Razorpay", "url": razorpay_link}])
                 
                 # Add QR Code button
-                if qr_code_url:
+                if qr_enabled and qr_code_url:
                     payment_msg += f"{'2️⃣' if razorpay_link else '1️⃣'} <b>UPI/QR Code:</b>\n"
                     payment_msg += "   Pay via any UPI app\n\n"
                     buttons.append([{"text": "📱 Show QR Code", "callback_data": f"qr_{plan_id}"}])
@@ -208,7 +209,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                 upsert=True
             )
             
-            if qr_url:
+            if qr_enabled and qr_url:
                 try:
                     logger.info(f"Sending QR to {chat_id}...")
                     
@@ -652,7 +653,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                     renew_msg += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"
                     
                     buttons = []
-                    if qr_code_url:
+                    if qr_enabled and qr_code_url:
                         buttons.append([{"text": "📱 Show QR Code", "callback_data": f"qr_{plan['id']}"}])
                     buttons.append([{"text": "✅ I've Paid", "callback_data": f"paid_{plan['id']}"}])
                     
@@ -713,7 +714,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                 renew_msg += f"📱 <b>Your User ID:</b> <code>{chat_id}</code>"
                 
                 buttons = []
-                if qr_code_url:
+                if qr_enabled and qr_code_url:
                     buttons.append([{"text": "📱 Show QR Code", "callback_data": f"qr_{plan_id}"}])
                 buttons.append([{"text": "✅ I've Paid", "callback_data": f"paid_{plan_id}"}])
                 buttons.append([{"text": "📦 View Other Plans", "callback_data": "back_plans"}])
@@ -833,7 +834,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
             msg += f"📱 <b>Your ID:</b> <code>{chat_id}</code>"
             
             buttons = []
-            if qr_code_url:
+            if qr_enabled and qr_code_url:
                 buttons.append([{"text": "📱 Show QR Code", "callback_data": f"vc_qr_{booking['id']}"}])
             buttons.append([{"text": "❌ Cancel Booking", "callback_data": f"vc_cancel_{booking['id']}"}])
             
@@ -844,7 +845,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
             booking_id = callback_data.replace("vc_qr_", "")
             qr_code_url = settings.get("payment_qr_url", "") or settings.get("qr_code_url", "")
             
-            if qr_code_url:
+            if qr_enabled and qr_code_url:
                 await send_telegram_photo(chat_id, qr_code_url, "📱 Scan this QR code to pay\n\nAfter payment, send screenshot here.", bot_token)
             else:
                 await send_telegram_message(chat_id, "QR Code not configured. Please contact admin.", bot_token)
@@ -1077,7 +1078,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                 
                 logger.info(f"unlock_qr_ - qr_code_url: {qr_code_url[:50] if qr_code_url else 'EMPTY'}...")
                 
-                if qr_code_url:
+                if qr_enabled and qr_code_url:
                     # Save pending unlock request so bot knows to expect screenshot
                     await db.pending_screenshots.update_one(
                         {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
@@ -1216,7 +1217,7 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                             upsert=True
                         )
                         
-                        if qr_url:
+                        if qr_enabled and qr_url:
                             msg = f"🎟 <b>Get Ticket: {session.get('title')}</b>\n\n"
                             msg += f"💰 Price: <b>₹{int(price)}</b>\n\n"
                             msg += "📱 Scan QR code and pay\n"

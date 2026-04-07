@@ -1682,6 +1682,7 @@ async def create_tenant_admin(data: dict, user: dict = Depends(get_current_user)
         "upi_id": data.get("upi_id", ""),
         "channel_id": data.get("channel_id", ""),
         "razorpay_key_id": data.get("razorpay_key_id", ""),
+        "qr_enabled": data.get("qr_enabled", False),
         "status": "active",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -1696,7 +1697,7 @@ async def update_tenant(tenant_id: str, data: dict, user: dict = Depends(get_cur
     await verify_super_admin(user)
 
     allowed = ["name", "email", "bot_token", "bot_username", "upi_id",
-               "channel_id", "razorpay_key_id", "razorpay_key_secret", "status", "owner_telegram_id"]
+               "channel_id", "razorpay_key_id", "razorpay_key_secret", "status", "owner_telegram_id", "qr_enabled"]
     update_fields = {k: data[k] for k in allowed if k in data}
 
     if update_fields:

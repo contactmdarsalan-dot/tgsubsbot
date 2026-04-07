@@ -15,24 +15,25 @@ Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS prod
 - Multi-tenant SaaS with strict row-level isolation (22 repository instances)
 - RBAC: Super Admin, Tenant Owner, Tenant Admin, Bot Admin
 - Wallet System: All payments → Super Admin Razorpay → tenants request withdrawals
-- Impersonation Mode + Risk & Alerts Dashboard
+- QR Code Toggle: Super Admin controls QR payment option per-tenant
 - Payment Idempotency via MongoDB-based dedup locks
 - DDD backend architecture with backward-compatible wrappers
+- Auto-QR generation from UPI ID when external URLs are broken
+- Discount strikethrough display in bot plan messages
 
 ## Wallet System
 - **Commission**: Configurable (percentage or fixed per transaction)
 - **Withdrawal Rules**: Min amount, max per day, processing days, auto-approve threshold
 - **Flow**: Tenant requests → Super Admin approves → Super Admin marks paid
-- **Balance Calculation**: Total revenue - commission - approved withdrawals - pending
 
 ## Key API Endpoints
 - Auth: `/api/auth/login`, `/api/auth/register`, `/api/auth/refresh`, `/api/auth/logout`
-- Wallet: `/api/wallet/config`, `/api/wallet/platform-revenue`, `/api/wallet/balance`, `/api/wallet/withdraw`, `/api/wallet/all-withdrawals`, `/api/wallet/withdrawals/{id}/approve|reject|complete`
-- Admin: `/api/admin/impersonate`, `/api/admin/risk-alerts`, `/api/saas/tenants`
+- Wallet: `/api/wallet/config`, `/api/wallet/platform-revenue`, `/api/wallet/balance`, `/api/wallet/withdraw`
+- Admin: `/api/saas/tenants` (GET/POST/PUT with qr_enabled field)
 - Webhook: `/api/telegram/webhook`
 
 ## 3rd Party Integrations
-- Telegram WebApp SDK & Bot API
+- Telegram WebApp SDK & Bot API (Token: 8275964628:AAH8...)
 - Razorpay Payments (with idempotency locks)
 - Resend Email OTPs (MOCKED)
 - OpenAI GPT-5.2 Vision (Emergent LLM Key)
@@ -46,5 +47,5 @@ Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS prod
 - (P3) Multi-language bot support
 
 ## Known Issues
-- QR Code URL in settings (`https://NEW-QR.com/new.png`) returns invalid content type for Telegram
 - Webhook currently pointing to preview URL (needs production deployment)
+- Some Telegram channels return 403 (bot can't initiate conversation with users who haven't started the bot)
