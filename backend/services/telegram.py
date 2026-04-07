@@ -180,12 +180,14 @@ async def edit_telegram_message(chat_id: str, message_id: int, text: str, button
     if not bot_token:
         return False
     try:
+        # Clean surrogate characters that break UTF-8 encoding
+        clean_text = text.encode('utf-8', errors='replace').decode('utf-8')
         async with httpx.AsyncClient(timeout=10.0) as http_client:
             url = f"https://api.telegram.org/bot{bot_token}/editMessageText"
             payload = {
                 "chat_id": chat_id,
                 "message_id": message_id,
-                "text": text,
+                "text": clean_text,
                 "parse_mode": "HTML"
             }
             if buttons:

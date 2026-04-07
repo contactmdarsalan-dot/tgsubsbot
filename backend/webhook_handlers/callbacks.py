@@ -382,11 +382,19 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                 plan_name = plan.get('name', 'Plan')
                 plan_days = plan.get('duration_days', 30)
                 plan_id = plan.get('id', '')
+                discount = plan.get('discount_percentage', 0)
                 if not plan_id:
                     continue
-                welcome_msg += f"📦 <b>{plan_name}</b>\n"
-                welcome_msg += f"   💰 ₹{plan_price} • ⏱ {plan_days} days\n\n"
-                buttons.append([{"text": f"📦 {plan_name} - ₹{plan_price}", "callback_data": f"buy_{plan_id}"}])
+                
+                if discount and discount > 0:
+                    discounted_price = round(plan_price * (1 - discount / 100))
+                    welcome_msg += f"📦 <b>{plan_name}</b>\n"
+                    welcome_msg += f"   💰 <s>₹{plan_price}</s> ₹{discounted_price} ({discount}% OFF) • ⏱ {plan_days} days\n\n"
+                    buttons.append([{"text": f"📦 {plan_name} - ₹{discounted_price}", "callback_data": f"buy_{plan_id}"}])
+                else:
+                    welcome_msg += f"📦 <b>{plan_name}</b>\n"
+                    welcome_msg += f"   💰 ₹{plan_price} • ⏱ {plan_days} days\n\n"
+                    buttons.append([{"text": f"📦 {plan_name} - ₹{plan_price}", "callback_data": f"buy_{plan_id}"}])
             
             buttons.append([{"text": "📊 Check My Status", "callback_data": "check_status"}])
             await send_telegram_message_with_buttons(chat_id, welcome_msg, buttons, bot_token)

@@ -1299,13 +1299,23 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                 plan_name = plan.get('name', 'Plan')
                 plan_days = plan.get('duration_days', 30)
                 plan_id = plan.get('id', '')
+                discount = plan.get('discount_percentage', 0)
                 if not plan_id:
                     continue
-                # Escape HTML special chars in plan name
-                safe_name = str(plan_name).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                welcome_msg += f"📦 <b>{safe_name}</b>\n"
-                welcome_msg += f"   💰 ₹{int(plan_price)} • ⏱ {plan_days} days\n\n"
-                buttons.append([{"text": f"📦 {plan_name} - ₹{int(plan_price)}", "callback_data": f"buy_{plan_id}"}])
+                
+                # Calculate discounted price
+                if discount and discount > 0:
+                    discounted_price = round(plan_price * (1 - discount / 100))
+                    # Escape HTML special chars in plan name
+                    safe_name = str(plan_name).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    welcome_msg += f"📦 <b>{safe_name}</b>\n"
+                    welcome_msg += f"   💰 <s>₹{int(plan_price)}</s> ₹{discounted_price} ({discount}% OFF) • ⏱ {plan_days} days\n\n"
+                    buttons.append([{"text": f"📦 {plan_name} - ₹{discounted_price}", "callback_data": f"buy_{plan_id}"}])
+                else:
+                    safe_name = str(plan_name).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    welcome_msg += f"📦 <b>{safe_name}</b>\n"
+                    welcome_msg += f"   💰 ₹{int(plan_price)} • ⏱ {plan_days} days\n\n"
+                    buttons.append([{"text": f"📦 {plan_name} - ₹{int(plan_price)}", "callback_data": f"buy_{plan_id}"}])
             
             if not plans:
                 welcome_msg += "No plans available at the moment.\n"
