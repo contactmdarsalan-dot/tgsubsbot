@@ -7,13 +7,14 @@ import {
   Sparkles, IndianRupee, Activity, User, ChevronDown, Building2,
   TrendingUp, AlertTriangle, Headphones, Globe, Search, Plus, Bell,
   ChevronRight, Zap, MessagesSquare, Languages, Smartphone, Crown, Palette,
-  UserCog, MessageSquare, ShieldCheck,
+  UserCog, MessageSquare, ShieldCheck, Wallet,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
 const superAdminNav = [
   { path: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { path: "/dashboard/saas-management", label: "Tenants", icon: Building2 },
+  { path: "/dashboard/wallet", label: "Wallet", icon: Wallet },
   { path: "/dashboard/risk-alerts", label: "Risk & Alerts", icon: AlertTriangle },
   { path: "/dashboard/revenue", label: "Revenue", icon: IndianRupee },
   { path: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
@@ -46,6 +47,7 @@ const miniAppNav = [
 ];
 
 const accountNav = [
+  { path: "/dashboard/wallet", label: "Wallet", icon: Wallet },
   { path: "/dashboard/broadcast", label: "Broadcast", icon: Radio },
   { path: "/dashboard/coupons", label: "Coupons", icon: Ticket },
   { path: "/dashboard/telegram-admins", label: "TG Admins", icon: ShieldCheck },

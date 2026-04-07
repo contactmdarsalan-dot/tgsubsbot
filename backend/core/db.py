@@ -85,6 +85,12 @@ async def ensure_indexes():
         await db.idempotency_keys.create_index("key", unique=True)
         await db.idempotency_keys.create_index("expires_at")
 
+        # Wallet — withdrawal requests
+        await db.withdrawal_requests.create_index([("tenant_id", 1), ("created_at", -1)])
+        await db.withdrawal_requests.create_index([("tenant_id", 1), ("status", 1)])
+        await db.withdrawal_requests.create_index("status")
+        await db.wallet_config.create_index("id", unique=True)
+
         # Global App indexes
         for coll_name in ["wallets", "wallet_transactions", "coin_payments", "coin_packages",
                           "creator_profiles", "global_content", "content_unlocks",

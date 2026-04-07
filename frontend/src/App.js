@@ -45,6 +45,7 @@ import MiniAppPlans from "./pages/MiniAppPlans";
 import MiniAppSubscribers from "./pages/MiniAppSubscribers";
 import MiniAppPayments from "./pages/MiniAppPayments";
 import RiskAlerts from "./pages/RiskAlerts";
+import WalletPage from "./pages/WalletPage";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -185,6 +186,7 @@ function AppRouter() {
         <Route path="miniapp-subscribers" element={<TenantRoute><MiniAppSubscribers /></TenantRoute>} />
         <Route path="miniapp-payments" element={<TenantRoute><MiniAppPayments /></TenantRoute>} />
         <Route path="risk-alerts" element={<SuperAdminRoute><RiskAlerts /></SuperAdminRoute>} />
+                <Route path="wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
       </Route>
     </Routes>
   );

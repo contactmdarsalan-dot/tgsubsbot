@@ -40,6 +40,7 @@ from api.public.auth import router as auth_router
 
 # Platform Admin routes (super admin)
 from api.platform_admin.admin import router as admin_router
+from api.platform_admin.wallet import router as wallet_router
 
 # Tenant Admin routes (tenant-scoped operations)
 from api.tenant_admin.plans import router as plans_router
@@ -94,6 +95,7 @@ scheduler = create_scheduler()
 # Include all route modules under /api prefix
 app.include_router(auth_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
+app.include_router(wallet_router, prefix="/api")
 app.include_router(plans_router, prefix="/api")
 app.include_router(subscribers_router, prefix="/api")
 app.include_router(payments_router, prefix="/api")
