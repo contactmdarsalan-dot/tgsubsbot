@@ -131,6 +131,46 @@ async def miniapp_get_user_discount(telegram_user_id: str):
     return {"has_discount": False, "discount_percent": 0}
 
 
+# ============== PAYMENT METHODS ==============
+
+@router.get("/payment-methods")
+async def get_payment_methods(
+    tg_id: str = "",
+    x_telegram_init_data: str = Header(default="", alias="X-Telegram-Init-Data"),
+):
+    """Get available payment methods for this tenant's Mini App"""
+    settings = await get_bot_settings()
+    tenant_id = settings.get("tenant_id", "")
+
+    if not tenant_id:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    tenant = await db.tenants.find_one(
+        {"tenant_id": tenant_id},
+        {"_id": 0, "payment_methods": 1, "qr_enabled": 1, "razorpay_key_id": 1}
+    )
+
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    default_methods = {
+        "razorpay": {"enabled": bool(tenant.get("razorpay_key_id"))},
+        "mobile_banking": {"enabled": False, "qr_url": "", "account_number": "", "bank_name": ""},
+        "esewa": {"enabled": False, "qr_url": "", "esewa_id": ""},
+        "khalti": {"enabled": False, "qr_url": "", "khalti_id": ""},
+    }
+
+    methods = tenant.get("payment_methods", default_methods)
+    # Filter to only return enabled methods with their public details
+    active_methods = {}
+    for key, config in methods.items():
+        if config.get("enabled"):
+            active_methods[key] = {k: v for k, v in config.items()}
+
+    return {"payment_methods": active_methods}
+
+
+
 # ============== UPI DETAILS ==============
 
 def _generate_upi_qr(upi_id: str, upi_name: str = "") -> str:

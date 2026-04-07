@@ -14,6 +14,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Users, Package, Shield, Crown, Plus, Edit, Trash2, CheckCircle, XCircle, UserPlus, ArrowRightLeft, Loader2, CreditCard, Check, X, Clock, RefreshCw, Zap, Settings, Eye, EyeOff, KeyRound, AlertTriangle, FileText, RotateCcw, UserCog, QrCode } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+// Reusable payment method toggle with expandable config
+const PaymentMethodToggle = ({ label, desc, enabled, onToggle, children, testId }) => (
+  <div className="rounded-md border p-2.5">
+    <div className="flex items-center justify-between">
+      <div>
+        <span className="text-sm font-medium">{label}</span>
+        <p className="text-[11px] text-muted-foreground">{desc}</p>
+      </div>
+      <Switch checked={enabled} onCheckedChange={onToggle} data-testid={testId} />
+    </div>
+    {enabled && children && <div className="mt-2 space-y-1">{children}</div>}
+  </div>
+);
+
 const getAuth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
 const FEATURE_OPTIONS = ["Subscription Management", "Payment Verification", "Broadcasts", "Live Streaming", "Paid Posts", "Referral System", "Analytics", "Export Data"];
 
@@ -49,7 +64,13 @@ export default function SaaSManagement() {
   // Tenant dialog
   const [tenantDialog, setTenantDialog] = useState(false);
   const [editingTenant, setEditingTenant] = useState(null);
-  const [tenantForm, setTenantForm] = useState({ name: "", email: "", owner_telegram_id: "", bot_token: "", bot_username: "", upi_id: "", channel_id: "", razorpay_key_id: "", qr_enabled: false });
+  const defaultPaymentMethods = {
+    razorpay: { enabled: true },
+    mobile_banking: { enabled: false, qr_url: "", account_number: "", bank_name: "" },
+    esewa: { enabled: false, qr_url: "", esewa_id: "" },
+    khalti: { enabled: false, qr_url: "", khalti_id: "" },
+  };
+  const [tenantForm, setTenantForm] = useState({ name: "", email: "", owner_telegram_id: "", bot_token: "", bot_username: "", upi_id: "", channel_id: "", razorpay_key_id: "", qr_enabled: false, payment_methods: defaultPaymentMethods });
 
   // Admin dialog
   const [adminDialog, setAdminDialog] = useState(false);
@@ -120,8 +141,8 @@ export default function SaaSManagement() {
 
   // ===== TENANT CRUD =====
   const openTenantDialog = (t = null) => {
-    if (t) { setEditingTenant(t); setTenantForm({ name: t.name || "", email: t.email || "", owner_telegram_id: t.owner_telegram_id || "", bot_token: t.bot_token || "", bot_username: t.bot_username || "", upi_id: t.upi_id || "", channel_id: t.channel_id || "", razorpay_key_id: t.razorpay_key_id || "", qr_enabled: t.qr_enabled || false }); }
-    else { setEditingTenant(null); setTenantForm({ name: "", email: "", owner_telegram_id: "", bot_token: "", bot_username: "", upi_id: "", channel_id: "", razorpay_key_id: "", qr_enabled: false }); }
+    if (t) { setEditingTenant(t); setTenantForm({ name: t.name || "", email: t.email || "", owner_telegram_id: t.owner_telegram_id || "", bot_token: t.bot_token || "", bot_username: t.bot_username || "", upi_id: t.upi_id || "", channel_id: t.channel_id || "", razorpay_key_id: t.razorpay_key_id || "", qr_enabled: t.qr_enabled || false, payment_methods: t.payment_methods || defaultPaymentMethods }); }
+    else { setEditingTenant(null); setTenantForm({ name: "", email: "", owner_telegram_id: "", bot_token: "", bot_username: "", upi_id: "", channel_id: "", razorpay_key_id: "", qr_enabled: false, payment_methods: defaultPaymentMethods }); }
     setTenantDialog(true);
   };
   const saveTenant = async () => { try { if (editingTenant) { await axios.put(`${API}/saas/tenants/${editingTenant.tenant_id}`, tenantForm, getAuth()); toast.success("Tenant updated"); } else { await axios.post(`${API}/saas/tenants`, tenantForm, getAuth()); toast.success("Tenant created"); } fetchTenants(); setTenantDialog(false); } catch (e) { toast.error(e.response?.data?.detail || "Failed"); } };
@@ -328,9 +349,13 @@ export default function SaaSManagement() {
                     <TableCell>
                       <div className="flex flex-col gap-1">
                         <Badge variant={t.status === "active" ? "default" : "destructive"}>{t.status || "active"}</Badge>
-                        <Badge variant={t.qr_enabled ? "default" : "secondary"} className="text-[10px]">
-                          <QrCode className="w-3 h-3 mr-0.5" /> QR {t.qr_enabled ? "ON" : "OFF"}
-                        </Badge>
+                        <div className="flex flex-wrap gap-0.5">
+                          {t.payment_methods?.razorpay?.enabled && <Badge variant="outline" className="text-[9px] px-1">Razorpay</Badge>}
+                          {t.qr_enabled && <Badge variant="outline" className="text-[9px] px-1">QR</Badge>}
+                          {t.payment_methods?.mobile_banking?.enabled && <Badge variant="outline" className="text-[9px] px-1">Banking</Badge>}
+                          {t.payment_methods?.esewa?.enabled && <Badge variant="outline" className="text-[9px] px-1">eSewa</Badge>}
+                          {t.payment_methods?.khalti?.enabled && <Badge variant="outline" className="text-[9px] px-1">Khalti</Badge>}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -785,17 +810,69 @@ export default function SaaSManagement() {
             <div><Label>UPI ID</Label><Input value={tenantForm.upi_id} onChange={e => setTenantForm(p => ({ ...p, upi_id: e.target.value }))} placeholder="name@paytm" /></div>
             <div><Label>Channel ID</Label><Input value={tenantForm.channel_id} onChange={e => setTenantForm(p => ({ ...p, channel_id: e.target.value }))} placeholder="-1001234567890" /></div>
             <div><Label>Razorpay Key ID</Label><Input value={tenantForm.razorpay_key_id} onChange={e => setTenantForm(p => ({ ...p, razorpay_key_id: e.target.value }))} placeholder="rzp_live_..." /></div>
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <Label className="text-sm font-medium">QR Code Payment</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">Enable QR code payment option in bot</p>
-              </div>
-              <Switch
-                checked={tenantForm.qr_enabled || false}
-                onCheckedChange={v => setTenantForm(p => ({ ...p, qr_enabled: v }))}
-                data-testid="qr-enabled-toggle"
+            
+            {/* ===== PAYMENT METHODS SECTION ===== */}
+            <div className="border rounded-lg p-3 space-y-3">
+              <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <CreditCard className="w-4 h-4" /> Payment Methods
+              </h4>
+              
+              {/* Razorpay Toggle */}
+              <PaymentMethodToggle
+                label="Razorpay"
+                desc="Cards, UPI, NetBanking (India)"
+                enabled={tenantForm.payment_methods?.razorpay?.enabled ?? true}
+                onToggle={v => setTenantForm(p => ({ ...p, payment_methods: { ...p.payment_methods, razorpay: { ...p.payment_methods?.razorpay, enabled: v } } }))}
+                testId="pm-razorpay"
               />
+              
+              {/* QR Code Toggle (for Mini App) */}
+              <PaymentMethodToggle
+                label="QR Code (UPI)"
+                desc="Show QR in Mini App for UPI scan"
+                enabled={tenantForm.qr_enabled || false}
+                onToggle={v => setTenantForm(p => ({ ...p, qr_enabled: v }))}
+                testId="pm-qr-code"
+              />
+              
+              {/* Mobile Banking */}
+              <PaymentMethodToggle
+                label="Mobile Banking"
+                desc="Bank QR + Account Number (Nepal)"
+                enabled={tenantForm.payment_methods?.mobile_banking?.enabled ?? false}
+                onToggle={v => setTenantForm(p => ({ ...p, payment_methods: { ...p.payment_methods, mobile_banking: { ...p.payment_methods?.mobile_banking, enabled: v } } }))}
+                testId="pm-mobile-banking"
+              >
+                <Input placeholder="Bank Name" value={tenantForm.payment_methods?.mobile_banking?.bank_name || ""} onChange={e => setTenantForm(p => ({ ...p, payment_methods: { ...p.payment_methods, mobile_banking: { ...p.payment_methods?.mobile_banking, bank_name: e.target.value } } }))} className="mt-2" />
+                <Input placeholder="Account Number" value={tenantForm.payment_methods?.mobile_banking?.account_number || ""} onChange={e => setTenantForm(p => ({ ...p, payment_methods: { ...p.payment_methods, mobile_banking: { ...p.payment_methods?.mobile_banking, account_number: e.target.value } } }))} className="mt-1" />
+                <Input placeholder="QR Image URL" value={tenantForm.payment_methods?.mobile_banking?.qr_url || ""} onChange={e => setTenantForm(p => ({ ...p, payment_methods: { ...p.payment_methods, mobile_banking: { ...p.payment_methods?.mobile_banking, qr_url: e.target.value } } }))} className="mt-1" />
+              </PaymentMethodToggle>
+              
+              {/* eSewa */}
+              <PaymentMethodToggle
+                label="eSewa"
+                desc="Nepal digital wallet"
+                enabled={tenantForm.payment_methods?.esewa?.enabled ?? false}
+                onToggle={v => setTenantForm(p => ({ ...p, payment_methods: { ...p.payment_methods, esewa: { ...p.payment_methods?.esewa, enabled: v } } }))}
+                testId="pm-esewa"
+              >
+                <Input placeholder="eSewa ID / Number" value={tenantForm.payment_methods?.esewa?.esewa_id || ""} onChange={e => setTenantForm(p => ({ ...p, payment_methods: { ...p.payment_methods, esewa: { ...p.payment_methods?.esewa, esewa_id: e.target.value } } }))} className="mt-2" />
+                <Input placeholder="QR Image URL" value={tenantForm.payment_methods?.esewa?.qr_url || ""} onChange={e => setTenantForm(p => ({ ...p, payment_methods: { ...p.payment_methods, esewa: { ...p.payment_methods?.esewa, qr_url: e.target.value } } }))} className="mt-1" />
+              </PaymentMethodToggle>
+              
+              {/* Khalti */}
+              <PaymentMethodToggle
+                label="Khalti"
+                desc="Nepal digital wallet"
+                enabled={tenantForm.payment_methods?.khalti?.enabled ?? false}
+                onToggle={v => setTenantForm(p => ({ ...p, payment_methods: { ...p.payment_methods, khalti: { ...p.payment_methods?.khalti, enabled: v } } }))}
+                testId="pm-khalti"
+              >
+                <Input placeholder="Khalti ID / Number" value={tenantForm.payment_methods?.khalti?.khalti_id || ""} onChange={e => setTenantForm(p => ({ ...p, payment_methods: { ...p.payment_methods, khalti: { ...p.payment_methods?.khalti, khalti_id: e.target.value } } }))} className="mt-2" />
+                <Input placeholder="QR Image URL" value={tenantForm.payment_methods?.khalti?.qr_url || ""} onChange={e => setTenantForm(p => ({ ...p, payment_methods: { ...p.payment_methods, khalti: { ...p.payment_methods?.khalti, qr_url: e.target.value } } }))} className="mt-1" />
+              </PaymentMethodToggle>
             </div>
+
             <Button className="w-full" onClick={saveTenant} disabled={!tenantForm.name.trim()}>{editingTenant ? "Update Tenant" : "Create Tenant"}</Button>
           </div>
         </DialogContent>
