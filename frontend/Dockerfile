@@ -16,18 +16,18 @@ COPY . .
 # Build the app
 RUN CI=false yarn build
 
-# Production stage with Nginx
-FROM nginx:alpine
+# Production stage
+FROM node:20-alpine
 
-# Copy built files
-COPY --from=build /app/build /app/build
+WORKDIR /app
 
-# Copy nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Install production server dependencies
+RUN npm install express http-proxy-middleware
 
-# Remove default nginx config
-RUN rm -f /etc/nginx/conf.d/default.conf.bak
+# Copy built files and server
+COPY --from=build /app/build ./build
+COPY --from=build /app/server.js ./server.js
 
 EXPOSE 3000
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["node", "server.js"]
