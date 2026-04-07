@@ -49,6 +49,9 @@ export default function MiniApp() {
   const [screenshotPreview, setScreenshotPreview] = useState(null);
   const [uploadResult, setUploadResult] = useState(null);
 
+  // Payment methods (tenant-specific)
+  const [paymentMethods, setPaymentMethods] = useState(null);
+
   // Payment history
   const [payments, setPayments] = useState([]);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -82,6 +85,14 @@ export default function MiniApp() {
         const discRes = await fetch(`${API}/miniapp/user-discount/${userId}`);
         const discData = await discRes.json();
         if (discData.has_discount) { setLoginDiscount(discData.discount_percent); setPhoneScreen(false); }
+      }
+      // Fetch payment methods for this tenant
+      if (resolvedTenant) {
+        try {
+          const pmRes = await fetch(`${API}/miniapp/payment-methods?tenant_id=${resolvedTenant}`);
+          const pmData = await pmRes.json();
+          setPaymentMethods(pmData.payment_methods || {});
+        } catch { setPaymentMethods({}); }
       }
       await fetchData(resolvedTenant);
       if (userId) {
@@ -182,7 +193,7 @@ export default function MiniApp() {
     upiDetails, setUpiDetails, qrLoading, setQrLoading, uploadStep, setUploadStep,
     screenshotFile, setScreenshotFile, screenshotPreview, setScreenshotPreview,
     uploadResult, setUploadResult, paySuccess, setPaySuccess, fetchData,
-    isAdmin, adminPerms, adminName, payments, tenantId,
+    isAdmin, adminPerms, adminName, payments, tenantId, paymentMethods,
   };
 
   // Loading

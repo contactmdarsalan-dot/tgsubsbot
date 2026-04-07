@@ -15,11 +15,11 @@ Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS prod
 - Multi-tenant SaaS with strict row-level isolation (22 repository instances)
 - RBAC: Super Admin, Tenant Owner, Tenant Admin, Bot Admin
 - Wallet System: All payments → Super Admin Razorpay → tenants request withdrawals
-- QR Code Toggle: Super Admin controls QR payment option per-tenant
+- Dynamic Payment Methods per-tenant (Razorpay, eSewa, Khalti, Mobile Banking)
 - Payment Idempotency via MongoDB-based dedup locks
-- DDD backend architecture with backward-compatible wrappers
-- Auto-QR generation from UPI ID when external URLs are broken
+- DDD backend architecture (legacy routes/ deleted)
 - Discount strikethrough display in bot plan messages
+- Mini App dynamically shows only enabled payment methods per-tenant
 
 ## Wallet System
 - **Commission**: Configurable (percentage or fixed per transaction)
@@ -29,20 +29,20 @@ Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS prod
 ## Key API Endpoints
 - Auth: `/api/auth/login`, `/api/auth/register`, `/api/auth/refresh`, `/api/auth/logout`
 - Wallet: `/api/wallet/config`, `/api/wallet/platform-revenue`, `/api/wallet/balance`, `/api/wallet/withdraw`
-- Admin: `/api/saas/tenants` (GET/POST/PUT with qr_enabled field)
+- Admin: `/api/saas/tenants` (GET/POST/PUT with payment_methods field)
+- Mini App: `/api/miniapp/payment-methods` (tenant-aware, returns only enabled methods)
 - Webhook: `/api/telegram/webhook`
 
 ## 3rd Party Integrations
-- Telegram WebApp SDK & Bot API (Token: 8275964628:AAH8...)
+- Telegram WebApp SDK & Bot API
 - Razorpay Payments (with idempotency locks)
 - Resend Email OTPs (MOCKED)
 - OpenAI GPT-5.2 Vision (Emergent LLM Key)
 
 ## Remaining Backlog
-- (P1) Strict Tenant Enforcement — run backfill script, remove "default" fallback
-- (P1) Phase out legacy routes/ wrapper files
+- (P2) SaaSManagement.jsx refactoring (too large >1100 lines)
 - (P2) Object Storage migration (S3/R2)
-- (P2) Analytics Dashboard (Razorpay vs QR comparison)
+- (P2) Analytics Dashboard (Razorpay vs Custom payments)
 - (P3) WhatsApp integration
 - (P3) Multi-language bot support
 

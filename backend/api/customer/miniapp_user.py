@@ -136,17 +136,20 @@ async def miniapp_get_user_discount(telegram_user_id: str):
 @router.get("/payment-methods")
 async def get_payment_methods(
     tg_id: str = "",
+    tenant_id: str = "",
     x_telegram_init_data: str = Header(default="", alias="X-Telegram-Init-Data"),
 ):
     """Get available payment methods for this tenant's Mini App"""
-    settings = await get_bot_settings()
-    tenant_id = settings.get("tenant_id", "")
+    resolved_tenant = tenant_id.strip() if tenant_id else ""
+    if not resolved_tenant:
+        settings = await get_bot_settings()
+        resolved_tenant = settings.get("tenant_id", "")
 
-    if not tenant_id:
+    if not resolved_tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
     tenant = await db.tenants.find_one(
-        {"tenant_id": tenant_id},
+        {"tenant_id": resolved_tenant},
         {"_id": 0, "payment_methods": 1, "qr_enabled": 1, "razorpay_key_id": 1}
     )
 

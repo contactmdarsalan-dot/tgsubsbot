@@ -4,8 +4,15 @@ import { useMiniApp, API, copyToClipboard, tg } from "./context";
 import { Shield, Check, X, ChevronDown, Upload, Loader2, Sparkles, Camera } from "lucide-react";
 
 export default function PlansScreen() {
-  const { plans, selectedPlan, setSelectedPlan, subscription, loginDiscount, userId, user, activeTab, setActiveTab, couponCode, setCouponCode, couponResult, setCouponResult, couponLoading, setCouponLoading, getPayAmount, handleRazorpay, payProcessing, showManualSheet, setShowManualSheet, handlePayNow, upiDetails, setUpiDetails, qrLoading, setQrLoading, uploadStep, setUploadStep, screenshotFile, setScreenshotFile, screenshotPreview, setScreenshotPreview, uploadResult, setUploadResult, paySuccess, setPaySuccess, fetchData, tenantId } = useMiniApp();
+  const { plans, selectedPlan, setSelectedPlan, subscription, loginDiscount, userId, user, activeTab, setActiveTab, couponCode, setCouponCode, couponResult, setCouponResult, couponLoading, setCouponLoading, getPayAmount, handleRazorpay, payProcessing, showManualSheet, setShowManualSheet, handlePayNow, upiDetails, setUpiDetails, qrLoading, setQrLoading, uploadStep, setUploadStep, screenshotFile, setScreenshotFile, screenshotPreview, setScreenshotPreview, uploadResult, setUploadResult, paySuccess, setPaySuccess, fetchData, tenantId, paymentMethods } = useMiniApp();
   const fileInputRef = useRef(null);
+
+  // Check if any manual/non-razorpay payment method is enabled
+  const hasManualPayment = paymentMethods && (
+    paymentMethods.esewa?.enabled ||
+    paymentMethods.khalti?.enabled ||
+    paymentMethods.mobile_banking?.enabled
+  );
 
   const applyCoupon = async () => {
     if (!couponCode.trim() || !selectedPlan) return;
@@ -133,9 +140,11 @@ export default function PlansScreen() {
         <button onClick={handleRazorpay} disabled={payProcessing} className="gradient-cta text-white font-bold rounded-2xl px-6 py-4 w-full text-lg mb-3 active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-2" data-testid="pay-razorpay-btn">
           {payProcessing ? <><Loader2 className="w-5 h-5 animate-spin" /> Processing...</> : <><Sparkles className="w-5 h-5" /> Pay Rs.{getPayAmount()} - Instant</>}
         </button>
-        <button onClick={openManualPay} className="w-full py-3 text-sm font-semibold text-zinc-400 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all" data-testid="pay-upi-btn">
-          Pay via UPI (Manual)
-        </button>
+        {hasManualPayment && (
+          <button onClick={openManualPay} className="w-full py-3 text-sm font-semibold text-zinc-400 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all" data-testid="pay-upi-btn">
+            Pay via UPI (Manual)
+          </button>
+        )}
 
         {/* Manual Payment Sheet */}
         <AnimatePresence>
