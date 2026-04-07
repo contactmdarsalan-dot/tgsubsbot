@@ -128,12 +128,19 @@ async def startup():
     # Bootstrap super admin roles
     await bootstrap_super_admins()
     
-    # Start scheduler (all jobs defined in workers/scheduler.py)
-    scheduler.start()
-    logger.info("Scheduler started — all jobs have distributed locking")
+    # Start scheduler only in embedded mode (default for single-instance)
+    # Set SCHEDULER_MODE=standalone to run scheduler as a separate worker
+    import os
+    if os.environ.get("SCHEDULER_MODE", "embedded") == "embedded":
+        scheduler.start()
+        logger.info("Scheduler started in EMBEDDED mode (all jobs have distributed locking)")
+    else:
+        logger.info("Scheduler SKIPPED — running in standalone worker mode")
 
 
 @app.on_event("shutdown")
 async def shutdown():
-    scheduler.shutdown()
+    import os
+    if os.environ.get("SCHEDULER_MODE", "embedded") == "embedded":
+        scheduler.shutdown()
     mongo_client.close()

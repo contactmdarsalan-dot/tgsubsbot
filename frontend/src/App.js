@@ -80,6 +80,7 @@ function AuthCallback() {
 
         const data = await response.json();
         localStorage.setItem('token', data.token);
+        if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
         localStorage.setItem('user', JSON.stringify(data.user));
         
         // Check admin status
@@ -197,6 +198,23 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
   
+  // Check JWT expiry client-side to avoid unnecessary API calls
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      // Token expired — try to refresh
+      const refreshToken = localStorage.getItem("refresh_token");
+      if (!refreshToken) {
+        localStorage.clear();
+        return <Navigate to="/login" replace />;
+      }
+      // Attempt refresh in background (the useEffect in App handles it)
+    }
+  } catch (e) {
+    localStorage.clear();
+    return <Navigate to="/login" replace />;
+  }
+  
   const subStatus = user.dashboard_subscription_status;
   const subEnd = user.dashboard_subscription_end;
   const isAdmin = user.isAdmin || localStorage.getItem("isFirstUser") === "true";
@@ -227,7 +245,7 @@ const SuperAdminRoute = ({ children }) => {
   return children;
 };
 
-// Role-based route guard — Tenant Admin/Owner only pages
+// Role-based route guard — Tenant Admin/Owner only pages (Super Admins can also access when impersonating)
 const TenantRoute = ({ children }) => {
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const allowed = ["super_admin", "tenant_admin", "tenant_owner", "admin"];
@@ -259,8 +277,33 @@ const PricingRoute = () => {
 };
 
 function App() {
-  // Check if first user on mount
+  // Token refresh logic - silently refresh access token using refresh_token
   useEffect(() => {
+    const refreshAccessToken = async () => {
+      const refreshToken = localStorage.getItem("refresh_token");
+      if (!refreshToken) return;
+      try {
+        const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          localStorage.setItem("token", data.token);
+        } else if (response.status === 401) {
+          // Refresh token expired — force re-login
+          localStorage.removeItem("token");
+          localStorage.removeItem("refresh_token");
+          localStorage.removeItem("user");
+          window.location.href = "/login";
+        }
+      } catch (e) {
+        console.error("Token refresh failed:", e);
+      }
+    };
+
+    // Refresh on mount
     const checkFirstUser = async () => {
       try {
         const token = localStorage.getItem("token");

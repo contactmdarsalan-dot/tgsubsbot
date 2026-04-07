@@ -7,6 +7,10 @@ from services.telegram import (
     send_telegram_message_with_buttons
 )
 from services.permissions import get_user_tenant, tq
+from repositories.base import (
+    templates_repo, broadcasts_repo, subscribers_repo, bot_users_repo,
+    paid_posts_repo, scheduled_broadcasts_repo, plans_repo
+)
 from config import logger
 from models import MessageTemplate
 from pydantic import BaseModel
@@ -24,28 +28,36 @@ router = APIRouter()
 @router.get("/templates")
 async def get_templates(user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
-    templates = await db.templates.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
+    if not tenant_id:
+        templates = await templates_repo.find_many_global()
+    else:
+        templates = await templates_repo.find_many(tenant_id)
     return templates
 
 @router.post("/templates")
 async def create_template(template: MessageTemplate, user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
     doc = template.model_dump()
-    doc["tenant_id"] = tenant_id
-    await db.templates.insert_one(doc)
+    await templates_repo.insert_one(tenant_id, doc)
     return {"message": "Template created", "id": template.id}
 
 @router.put("/templates/{template_id}")
 async def update_template(template_id: str, template: MessageTemplate, user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
     doc = template.model_dump()
-    await db.templates.update_one(tq({"id": template_id}, tenant_id), {"$set": doc})
+    await templates_repo.update_one(tenant_id, {"id": template_id}, {"$set": doc})
     return {"message": "Template updated"}
 
 @router.delete("/templates/{template_id}")
 async def delete_template(template_id: str, user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
-    await db.templates.delete_one(tq({"id": template_id}, tenant_id))
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
+    await templates_repo.delete_one(tenant_id, {"id": template_id})
     return {"message": "Template deleted"}
 
 @router.post("/promote-plan")
@@ -55,7 +67,7 @@ async def promote_plan_to_group(data: dict, user=Depends(get_current_user)):
     plan_id = data.get("plan_id")
     target = data.get("target", "channel")
 
-    plan = await db.plans.find_one(tq({"id": plan_id}, tenant_id), {"_id": 0})
+    plan = await plans_repo.find_one(tenant_id, {"id": plan_id})
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
@@ -110,20 +122,22 @@ class BroadcastRequest(BaseModel):
 async def send_broadcast(request: BroadcastRequest, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     """Send broadcast to all/targeted subscribers"""
     tenant_id = get_user_tenant(user)
-    query = tq({}, tenant_id)
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
 
+    sub_query = {}
     if request.target_segment == "active":
-        query["status"] = "active"
+        sub_query["status"] = "active"
     elif request.target_segment == "expired":
-        query["status"] = {"$in": ["expired", "cancelled"]}
+        sub_query["status"] = {"$in": ["expired", "cancelled"]}
     elif request.target_segment == "grace":
-        query["status"] = "grace"
+        sub_query["status"] = "grace"
 
-    subscribers = await db.subscribers.find(query, {"_id": 0}).to_list(50000)
+    subscribers = await subscribers_repo.find_many(tenant_id, sub_query, limit=50000)
     user_ids = list(set(str(sub.get("telegram_user_id")) for sub in subscribers if sub.get("telegram_user_id")))
 
     if request.include_promo:
-        promo_users = await db.bot_users.find(tq({}, tenant_id), {"_id": 0}).to_list(50000)
+        promo_users = await bot_users_repo.find_many(tenant_id, limit=50000)
         for pu in promo_users:
             uid = str(pu.get("telegram_user_id", ""))
             if uid and uid not in user_ids:
@@ -145,11 +159,9 @@ async def send_broadcast(request: BroadcastRequest, background_tasks: Background
         "sent_count": 0,
         "failed_count": 0,
         "status": "in_progress",
-        "tenant_id": tenant_id,
         "created_by": user.get("email", "admin"),
-        "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.broadcasts.insert_one(broadcast_record)
+    await broadcasts_repo.insert_one(tenant_id, broadcast_record)
 
     background_tasks.add_task(
         send_broadcast_messages,
@@ -157,12 +169,13 @@ async def send_broadcast(request: BroadcastRequest, background_tasks: Background
         user_ids,
         request.message,
         request.buttons,
-        bot_token
+        bot_token,
+        tenant_id
     )
 
     return {"broadcast_id": broadcast_id, "total_users": len(user_ids)}
 
-async def send_broadcast_messages(broadcast_id: str, user_ids: list, message: str, buttons: list, bot_token: str):
+async def send_broadcast_messages(broadcast_id: str, user_ids: list, message: str, buttons: list, bot_token: str, tenant_id: str):
     """Background task to send broadcast messages"""
     sent_count = 0
     failed_count = 0
@@ -180,8 +193,8 @@ async def send_broadcast_messages(broadcast_id: str, user_ids: list, message: st
 
         await asyncio.sleep(0.05)
 
-    await db.broadcasts.update_one(
-        {"id": broadcast_id},
+    await broadcasts_repo.update_one(
+        tenant_id, {"id": broadcast_id},
         {"$set": {
             "sent_count": sent_count,
             "failed_count": failed_count,
@@ -194,14 +207,20 @@ async def send_broadcast_messages(broadcast_id: str, user_ids: list, message: st
 async def get_broadcasts(user=Depends(get_current_user)):
     """Get all broadcast history"""
     tenant_id = get_user_tenant(user)
-    broadcasts = await db.broadcasts.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(100)
-    return broadcasts
+    if not tenant_id:
+        broadcasts_list = await broadcasts_repo.find_many_global(sort=[("created_at", -1)], limit=100)
+    else:
+        broadcasts_list = await broadcasts_repo.find_many(tenant_id, sort=[("created_at", -1)], limit=100)
+    return broadcasts_list
 
 @router.get("/broadcasts/{broadcast_id}")
 async def get_broadcast(broadcast_id: str, user=Depends(get_current_user)):
     """Get single broadcast details"""
     tenant_id = get_user_tenant(user)
-    broadcast = await db.broadcasts.find_one(tq({"id": broadcast_id}, tenant_id), {"_id": 0})
+    if not tenant_id:
+        broadcast = await broadcasts_repo.find_one_global({"id": broadcast_id})
+    else:
+        broadcast = await broadcasts_repo.find_one(tenant_id, {"id": broadcast_id})
     if not broadcast:
         raise HTTPException(status_code=404, detail="Broadcast not found")
     return broadcast
@@ -213,7 +232,7 @@ async def get_broadcast(broadcast_id: str, user=Depends(get_current_user)):
 async def broadcast_paid_post(post_id: str, data: dict, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     """Broadcast a paid post preview to all subscribers"""
     tenant_id = get_user_tenant(user)
-    post = await db.paid_posts.find_one(tq({"id": post_id}, tenant_id), {"_id": 0})
+    post = await paid_posts_repo.find_one(tenant_id, {"id": post_id})
     if not post:
         raise HTTPException(status_code=404, detail="Paid post not found")
 
@@ -222,15 +241,12 @@ async def broadcast_paid_post(post_id: str, data: dict, background_tasks: Backgr
     bot_username = await get_bot_username(bot_token)
 
     target = data.get("target", "all")
-    query = tq({}, tenant_id)
-    if target == "active":
-        query["status"] = "active"
-
-    subscribers = await db.subscribers.find(query, {"_id": 0}).to_list(50000)
+    sub_query = {} if target == "all" else {"status": "active"}
+    subscribers = await subscribers_repo.find_many(tenant_id, sub_query, limit=50000)
     user_ids = list(set(str(sub.get("telegram_user_id")) for sub in subscribers if sub.get("telegram_user_id")))
 
     if data.get("include_non_subscribers"):
-        all_users = await db.bot_users.find(tq({}, tenant_id), {"_id": 0}).to_list(50000)
+        all_users = await bot_users_repo.find_many(tenant_id, limit=50000)
         for u in all_users:
             uid = str(u.get("telegram_user_id", ""))
             if uid and uid not in user_ids:
@@ -248,20 +264,18 @@ async def broadcast_paid_post(post_id: str, data: dict, background_tasks: Backgr
         "sent_count": 0,
         "failed_count": 0,
         "status": "in_progress",
-        "tenant_id": tenant_id,
-        "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.broadcasts.insert_one(broadcast_record)
+    await broadcasts_repo.insert_one(tenant_id, broadcast_record)
 
-    background_tasks.add_task(send_paid_post_broadcast, broadcast_id, post_id, user_ids, bot_token)
+    background_tasks.add_task(send_paid_post_broadcast, broadcast_id, post_id, user_ids, bot_token, tenant_id)
 
     return {"broadcast_id": broadcast_id, "total_users": len(user_ids)}
 
-async def send_paid_post_broadcast(broadcast_id: str, post_id: str, user_ids: list, bot_token: str):
+async def send_paid_post_broadcast(broadcast_id: str, post_id: str, user_ids: list, bot_token: str, tenant_id: str):
     """Background task to send paid post broadcasts"""
     from services.telegram import send_telegram_photo, send_telegram_video
 
-    post = await db.paid_posts.find_one({"id": post_id}, {"_id": 0})
+    post = await paid_posts_repo.find_one(tenant_id, {"id": post_id})
     if not post:
         return
 
@@ -272,7 +286,7 @@ async def send_paid_post_broadcast(broadcast_id: str, post_id: str, user_ids: li
     for user_id in user_ids:
         try:
             if post.get("content_type") == "photo" and post.get("blurred_file_id"):
-                caption = f"<b>Premium Content</b>\n\n"
+                caption = "<b>Premium Content</b>\n\n"
                 if post.get("caption"):
                     caption += f"{post['caption']}\n\n"
                 caption += f"Price: Rs.{int(post.get('price', 0))}\n"
@@ -280,7 +294,7 @@ async def send_paid_post_broadcast(broadcast_id: str, post_id: str, user_ids: li
 
                 await send_telegram_photo(user_id, post["blurred_file_id"], caption, bot_token)
             elif post.get("content_type") == "video":
-                msg = f"<b>Premium Video Content</b>\n\n"
+                msg = "<b>Premium Video Content</b>\n\n"
                 if post.get("caption"):
                     msg += f"{post['caption']}\n\n"
                 msg += f"Price: Rs.{int(post.get('price', 0))}\n"
@@ -292,7 +306,7 @@ async def send_paid_post_broadcast(broadcast_id: str, post_id: str, user_ids: li
                 }]]
                 await send_telegram_message_with_buttons(user_id, msg, buttons, bot_token)
             else:
-                msg = f"<b>Premium Content Available!</b>\n\n"
+                msg = "<b>Premium Content Available!</b>\n\n"
                 msg += f"Price: Rs.{int(post.get('price', 0))}\n"
                 msg += "Pay to unlock!"
 
@@ -309,8 +323,8 @@ async def send_paid_post_broadcast(broadcast_id: str, post_id: str, user_ids: li
 
         await asyncio.sleep(0.05)
 
-    await db.broadcasts.update_one(
-        {"id": broadcast_id},
+    await broadcasts_repo.update_one(
+        tenant_id, {"id": broadcast_id},
         {"$set": {
             "sent_count": sent_count,
             "failed_count": failed_count,
@@ -326,13 +340,18 @@ async def send_paid_post_broadcast(broadcast_id: str, post_id: str, user_ids: li
 async def get_scheduled_broadcasts(user=Depends(get_current_user)):
     """Get all scheduled broadcasts"""
     tenant_id = get_user_tenant(user)
-    broadcasts = await db.scheduled_broadcasts.find(tq({}, tenant_id), {"_id": 0}).sort("scheduled_at", 1).to_list(1000)
-    return broadcasts
+    if not tenant_id:
+        broadcasts_list = await scheduled_broadcasts_repo.find_many_global(sort=[("scheduled_at", 1)])
+    else:
+        broadcasts_list = await scheduled_broadcasts_repo.find_many(tenant_id, sort=[("scheduled_at", 1)])
+    return broadcasts_list
 
 @router.post("/scheduled-broadcasts")
 async def create_scheduled_broadcast(data: dict, user=Depends(get_current_user)):
     """Create a scheduled broadcast"""
     tenant_id = get_user_tenant(user)
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
     broadcast_data = {
         "id": str(uuid.uuid4()),
         "message": data.get("message", ""),
@@ -340,19 +359,19 @@ async def create_scheduled_broadcast(data: dict, user=Depends(get_current_user))
         "scheduled_at": data.get("scheduled_at"),
         "status": "pending",
         "sent_count": 0,
-        "tenant_id": tenant_id,
         "created_by": user.get("email", "admin"),
-        "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.scheduled_broadcasts.insert_one(broadcast_data)
+    await scheduled_broadcasts_repo.insert_one(tenant_id, broadcast_data)
     return {"message": "Broadcast scheduled", "broadcast": broadcast_data}
 
 @router.delete("/scheduled-broadcasts/{broadcast_id}")
 async def cancel_scheduled_broadcast(broadcast_id: str, user=Depends(get_current_user)):
     """Cancel a scheduled broadcast"""
     tenant_id = get_user_tenant(user)
-    await db.scheduled_broadcasts.update_one(
-        tq({"id": broadcast_id}, tenant_id),
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
+    await scheduled_broadcasts_repo.update_one(
+        tenant_id, {"id": broadcast_id},
         {"$set": {"status": "cancelled"}}
     )
     return {"message": "Broadcast cancelled"}
@@ -379,20 +398,14 @@ async def send_renewal_broadcast(data: dict, background_tasks: BackgroundTasks, 
     user_ids = set()
 
     if target in ["expired", "all"]:
-        expired = await db.subscribers.find(
-            tq({"status": {"$in": ["expired", "cancelled"]}}, tenant_id),
-            {"_id": 0}
-        ).to_list(10000)
+        expired = await subscribers_repo.find_many(tenant_id, {"status": {"$in": ["expired", "cancelled"]}}, limit=10000)
         for sub in expired:
             if sub.get("telegram_user_id"):
                 user_ids.add(str(sub["telegram_user_id"]))
 
     if target in ["expiring_soon", "all"]:
         three_days_later = (now + timedelta(days=3)).isoformat()
-        expiring = await db.subscribers.find(
-            tq({"status": "active", "end_time": {"$lte": three_days_later}}, tenant_id),
-            {"_id": 0}
-        ).to_list(10000)
+        expiring = await subscribers_repo.find_many(tenant_id, {"status": "active", "end_time": {"$lte": three_days_later}}, limit=10000)
         for sub in expiring:
             if sub.get("telegram_user_id"):
                 user_ids.add(str(sub["telegram_user_id"]))
@@ -412,7 +425,7 @@ async def send_renewal_broadcast(data: dict, background_tasks: BackgroundTasks, 
         "status": "in_progress",
         "created_at": now.isoformat()
     }
-    await db.broadcasts.insert_one(broadcast_record)
+    await broadcasts_repo.insert_one(tenant_id, broadcast_record)
 
     background_tasks.add_task(
         send_renewal_messages,
@@ -421,12 +434,13 @@ async def send_renewal_broadcast(data: dict, background_tasks: BackgroundTasks, 
         message,
         discount_percent,
         video_note_file_id,
-        bot_token
+        bot_token,
+        tenant_id
     )
 
     return {"broadcast_id": broadcast_id, "total_users": len(user_ids)}
 
-async def send_renewal_messages(broadcast_id: str, user_ids: list, message: str, discount_percent: int, video_note_file_id: str, bot_token: str):
+async def send_renewal_messages(broadcast_id: str, user_ids: list, message: str, discount_percent: int, video_note_file_id: str, bot_token: str, tenant_id: str):
     """Background task to send renewal messages"""
     bot_username = await get_bot_username(bot_token)
 
@@ -470,8 +484,8 @@ async def send_renewal_messages(broadcast_id: str, user_ids: list, message: str,
 
         await asyncio.sleep(0.1)
 
-    await db.broadcasts.update_one(
-        {"id": broadcast_id},
+    await broadcasts_repo.update_one(
+        tenant_id, {"id": broadcast_id},
         {"$set": {
             "sent_count": sent_count,
             "failed_count": failed_count,

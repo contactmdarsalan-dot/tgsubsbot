@@ -1,6 +1,10 @@
 """Scheduler worker — manages all periodic/cron jobs.
-Cleanly separated from the API process for future horizontal scaling.
-Uses MongoDB-based distributed lock to prevent duplicate execution."""
+Can be run EITHER:
+  1. Embedded in FastAPI (default, for single-instance deployments)
+  2. As a standalone worker process via `python -m workers.scheduler`
+
+Uses MongoDB-based distributed lock to prevent duplicate execution
+when scaling horizontally."""
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from database import db
 from config import logger
@@ -10,6 +14,10 @@ from services.background_tasks import (
     check_upcoming_live_sessions
 )
 from services.chat_pool import check_expired_chat_sessions
+import os
+
+
+SCHEDULER_MODE = os.environ.get("SCHEDULER_MODE", "embedded")  # "embedded" or "standalone"
 
 
 # MongoDB-based distributed lock for leader election
@@ -37,7 +45,6 @@ async def acquire_lock(lock_name: str, ttl_seconds: int = 300) -> bool:
         )
         return result is not None
     except Exception:
-        # Duplicate key = another worker got the lock first
         return False
 
 
@@ -92,22 +99,36 @@ def create_scheduler() -> AsyncIOScheduler:
     Returns scheduler instance — caller is responsible for starting it."""
     scheduler = AsyncIOScheduler()
 
-    # Subscription health check — every 6 hours
     scheduler.add_job(locked_check_subscriptions, 'interval', hours=6, id='check_subscriptions')
-
-    # Follow-up messages — Mon & Thu at 10:00 UTC
     scheduler.add_job(locked_send_followups, 'cron', day_of_week='mon,thu', hour=10, id='send_followups')
-
-    # Chat session expiry — every 30 seconds
     scheduler.add_job(locked_check_expired_chats, 'interval', seconds=30, id='check_expired_chats')
-
-    # Daily reminders — 3 times a day
     scheduler.add_job(locked_send_daily_reminders, 'cron', hour=9, minute=0, id='daily_reminder_9am')
     scheduler.add_job(locked_send_daily_reminders, 'cron', hour=14, minute=30, id='daily_reminder_2pm')
     scheduler.add_job(locked_send_daily_reminders, 'cron', hour=20, minute=0, id='daily_reminder_8pm')
-
-    # Live session checks — every 5 minutes
     scheduler.add_job(locked_check_live_sessions, 'interval', minutes=5, id='check_live_sessions')
 
     logger.info("Scheduler configured with 7 jobs (all with distributed locking)")
     return scheduler
+
+
+# Standalone entry point — run as: SCHEDULER_MODE=standalone python -m workers.scheduler
+if __name__ == "__main__":
+    import asyncio
+    import signal
+
+    async def run_standalone():
+        logger.info("Starting scheduler in STANDALONE worker mode...")
+        scheduler = create_scheduler()
+        scheduler.start()
+        logger.info("Scheduler worker running. Press Ctrl+C to stop.")
+
+        stop_event = asyncio.Event()
+        loop = asyncio.get_event_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, stop_event.set)
+
+        await stop_event.wait()
+        scheduler.shutdown()
+        logger.info("Scheduler worker stopped.")
+
+    asyncio.run(run_standalone())

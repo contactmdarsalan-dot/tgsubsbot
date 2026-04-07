@@ -180,7 +180,7 @@ async def get_bot_checkout(order_id: str):
 
 @router.post("/bot-checkout/verify")
 async def verify_bot_checkout(data: dict, background_tasks: BackgroundTasks):
-    """Verify Razorpay payment and activate subscription"""
+    """Verify Razorpay payment and activate subscription — idempotent"""
     if not razorpay_client:
         raise HTTPException(status_code=400, detail="Razorpay not configured")
 
@@ -197,6 +197,10 @@ async def verify_bot_checkout(data: dict, background_tasks: BackgroundTasks):
     order = await db.bot_orders.find_one({"razorpay_order_id": data['razorpay_order_id']}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    # Idempotency: if already paid, return success without re-processing
+    if order.get("status") == "paid":
+        return {"success": True, "message": "Subscription already activated"}
 
     await db.bot_orders.update_one(
         {"razorpay_order_id": data['razorpay_order_id']},
@@ -304,6 +308,7 @@ async def create_razorpay_order(payment: PaymentCreate, user=Depends(get_current
 
 @router.post("/payments/verify")
 async def verify_razorpay_payment(data: dict, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
+    """Verify Razorpay payment — idempotent"""
     if not razorpay_client:
         raise HTTPException(status_code=400, detail="Razorpay not configured")
 
@@ -319,6 +324,10 @@ async def verify_razorpay_payment(data: dict, background_tasks: BackgroundTasks,
     payment = await db.payments.find_one({"razorpay_order_id": data['razorpay_order_id']}, {"_id": 0})
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
+
+    # Idempotency: already verified
+    if payment.get("status") == "verified":
+        return {"message": "Payment already verified"}
 
     await db.payments.update_one(
         {"razorpay_order_id": data['razorpay_order_id']},

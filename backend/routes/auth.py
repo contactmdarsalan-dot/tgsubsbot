@@ -1,7 +1,7 @@
 """Authentication, OTP, Support ticket routes"""
 from fastapi import APIRouter, HTTPException, Depends, Request
 from database import db
-from services.auth import get_current_user, hash_password, verify_password, create_token
+from services.auth import get_current_user, hash_password, verify_password, create_token, create_refresh_token, decode_token
 from services.permissions import is_super_admin, is_any_admin
 from config import logger, twilio_client, TWILIO_PHONE_NUMBER
 from rate_limiter import limiter
@@ -58,8 +58,10 @@ async def register(request: Request, user: UserCreate):
     
     await db.users.insert_one(doc)
     token = create_token(user_obj.id, role="tenant_owner", tenant_id=tenant_id)
+    refresh = create_refresh_token(user_obj.id)
     return {
-        "token": token, 
+        "token": token,
+        "refresh_token": refresh,
         "user": {
             "id": user_obj.id, 
             "email": user_obj.email, 
@@ -98,9 +100,11 @@ async def login(request: Request, user: UserLogin):
         sub_status = "expired"
         await db.users.update_one({"id": existing["id"]}, {"$set": {"dashboard_subscription_status": "expired"}})
     
-    token = create_token(existing["id"], role=user_role, tenant_id=existing.get("tenant_id", ""))
+    token = create_token(existing["id"], role=user_role, tenant_id=existing.get("tenant_id", ""), token_version=existing.get("token_version", 0))
+    refresh = create_refresh_token(existing["id"])
     return {
-        "token": token, 
+        "token": token,
+        "refresh_token": refresh,
         "user": {
             "id": existing["id"], 
             "email": existing["email"], 
@@ -194,7 +198,9 @@ async def process_google_session(data: dict):
     # Create JWT token — include role and tenant context
     _g_role = existing.get("role", "tenant_owner") if existing else "tenant_owner"
     _g_tid = existing.get("tenant_id", "") if existing else tenant_id
-    token = create_token(user_id, role=_g_role, tenant_id=_g_tid)
+    _g_tv = existing.get("token_version", 0) if existing else 0
+    token = create_token(user_id, role=_g_role, tenant_id=_g_tid, token_version=_g_tv)
+    refresh = create_refresh_token(user_id)
     
     # Check if sub expired
     if sub_end and isinstance(sub_end, str):
@@ -205,6 +211,7 @@ async def process_google_session(data: dict):
     
     return {
         "token": token,
+        "refresh_token": refresh,
         "user": {
             "id": user_id,
             "email": email,
@@ -243,6 +250,61 @@ async def get_me(user = Depends(get_current_user)):
         "dashboard_subscription_end": sub_end.isoformat() if sub_end else None,
         "is_admin": user.get("is_admin", False) or user_role in ["admin", "super_admin", "tenant_admin"]
     }
+
+
+# ============== TOKEN REFRESH & FORCE LOGOUT ==============
+
+@router.post("/auth/refresh")
+async def refresh_access_token(data: dict):
+    """Exchange a valid refresh token for a new access token."""
+    refresh_token = data.get("refresh_token", "")
+    if not refresh_token:
+        raise HTTPException(status_code=400, detail="Refresh token required")
+    try:
+        payload = decode_token(refresh_token)
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+        user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        # Issue new access token
+        new_access = create_token(
+            user["id"],
+            role=user.get("role", ""),
+            tenant_id=user.get("tenant_id", ""),
+            token_version=user.get("token_version", 0)
+        )
+        return {"token": new_access}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+
+@router.post("/auth/force-logout/{user_id}")
+async def force_logout_user(user_id: str, user=Depends(get_current_user)):
+    """Force logout a user by incrementing their token_version.
+    All existing tokens become invalid. Super Admin only."""
+    from services.permissions import ensure_super_admin
+    ensure_super_admin(user)
+    result = await db.users.update_one(
+        {"id": user_id},
+        {"$inc": {"token_version": 1}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": "User forcefully logged out. All active sessions invalidated."}
+
+
+@router.post("/auth/logout")
+async def logout_self(user=Depends(get_current_user)):
+    """Logout current user by incrementing their own token_version."""
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$inc": {"token_version": 1}}
+    )
+    return {"message": "Logged out successfully. All sessions invalidated."}
+
 
 # ============== TWILIO OTP ROUTES ==============
 
@@ -381,7 +443,9 @@ async def verify_otp(data: dict):
     # Create JWT token — include role and tenant context
     _otp_role = existing.get("role", "tenant_owner") if existing else "tenant_owner"
     _otp_tid = existing.get("tenant_id", "") if existing else tenant_id
-    token = create_token(user_id, role=_otp_role, tenant_id=_otp_tid)
+    _otp_tv = existing.get("token_version", 0) if existing else 0
+    token = create_token(user_id, role=_otp_role, tenant_id=_otp_tid, token_version=_otp_tv)
+    refresh = create_refresh_token(user_id)
     
     # Format subscription end date
     if sub_end and isinstance(sub_end, str):
@@ -389,6 +453,7 @@ async def verify_otp(data: dict):
     
     return {
         "token": token,
+        "refresh_token": refresh,
         "user": {
             "id": user_id,
             "email": user_email,

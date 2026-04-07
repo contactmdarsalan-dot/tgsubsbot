@@ -81,6 +81,10 @@ async def ensure_indexes():
         await db.audit_logs.create_index([("actor_user_id", 1), ("created_at", -1)])
         await db.audit_logs.create_index("request_id", sparse=True)
 
+        # Idempotency keys — unique key for dedup
+        await db.idempotency_keys.create_index("key", unique=True)
+        await db.idempotency_keys.create_index("expires_at")
+
         # Global App indexes
         for coll_name in ["wallets", "wallet_transactions", "coin_payments", "coin_packages",
                           "creator_profiles", "global_content", "content_unlocks",

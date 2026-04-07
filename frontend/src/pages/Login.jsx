@@ -43,9 +43,10 @@ export default function Login() {
         : { email: form.email, password: form.password, name: form.name, phone: form.phone };
 
       const response = await axios.post(`${API}${endpoint}`, payload);
-      const { token, user } = response.data;
+      const { token, refresh_token: rt, user } = response.data;
 
       localStorage.setItem("token", token);
+      if (rt) localStorage.setItem("refresh_token", rt);
       
       try {
         const adminCheck = await axios.get(`${API}/auth/check-admin`, {
@@ -161,9 +162,10 @@ export default function Login() {
         otp: form.otp,
         name: form.name,
       });
-      const { token, user } = response.data;
+      const { token, refresh_token: rt2, user } = response.data;
 
       localStorage.setItem("token", token);
+      if (rt2) localStorage.setItem("refresh_token", rt2);
       localStorage.setItem("user", JSON.stringify(user));
       
       try {

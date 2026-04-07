@@ -4,6 +4,10 @@ from database import db
 from services.auth import get_current_user
 from services.telegram import get_bot_settings, send_telegram_message
 from services.permissions import get_user_tenant, tq
+from repositories.base import (
+    coupons_repo, user_notes_repo, user_tags_repo, blocked_users_repo,
+    referrals_repo, faqs_repo, video_call_bookings_repo, subscribers_repo
+)
 from config import logger
 from datetime import datetime, timezone
 import uuid
@@ -17,12 +21,18 @@ router = APIRouter()
 async def get_coupons(user=Depends(get_current_user)):
     """Get all coupons"""
     tenant_id = get_user_tenant(user)
-    coupons = await db.coupons.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
+    if not tenant_id:
+        coupons = await coupons_repo.find_many_global()
+    else:
+        coupons = await coupons_repo.find_many(tenant_id)
     return coupons
 
 @router.post("/coupons")
 async def create_coupon(coupon: dict, user=Depends(get_current_user)):
     """Create a new coupon"""
+    tenant_id = get_user_tenant(user)
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
     coupon_data = {
         "id": str(uuid.uuid4()),
         "code": coupon.get("code", "").upper().strip(),
@@ -35,16 +45,16 @@ async def create_coupon(coupon: dict, user=Depends(get_current_user)):
         "valid_until": coupon.get("valid_until"),
         "applicable_plans": coupon.get("applicable_plans", []),
         "is_active": coupon.get("is_active", True),
-        "tenant_id": user.get("tenant_id", ""),
-        "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.coupons.insert_one(coupon_data)
+    await coupons_repo.insert_one(tenant_id, coupon_data)
     return {"message": "Coupon created", "id": coupon_data["id"]}
 
 @router.put("/coupons/{coupon_id}")
 async def update_coupon(coupon_id: str, coupon: dict, user=Depends(get_current_user)):
     """Update a coupon"""
     tenant_id = get_user_tenant(user)
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
     update_data = {}
     for key in ["code", "discount_type", "discount_value", "min_purchase", "max_uses", "valid_from", "valid_until", "applicable_plans", "is_active"]:
         if key in coupon:
@@ -54,14 +64,16 @@ async def update_coupon(coupon_id: str, coupon: dict, user=Depends(get_current_u
     if "discount_value" in update_data:
         update_data["discount_value"] = float(update_data["discount_value"])
 
-    await db.coupons.update_one(tq({"id": coupon_id}, tenant_id), {"$set": update_data})
+    await coupons_repo.update_one(tenant_id, {"id": coupon_id}, {"$set": update_data})
     return {"message": "Coupon updated"}
 
 @router.delete("/coupons/{coupon_id}")
 async def delete_coupon(coupon_id: str, user=Depends(get_current_user)):
     """Delete a coupon"""
     tenant_id = get_user_tenant(user)
-    await db.coupons.delete_one(tq({"id": coupon_id}, tenant_id))
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
+    await coupons_repo.delete_one(tenant_id, {"id": coupon_id})
     return {"message": "Coupon deleted"}
 
 @router.post("/coupons/validate")
@@ -108,27 +120,32 @@ async def validate_coupon(data: dict):
 @router.get("/users/{user_id}/notes")
 async def get_user_notes(user_id: str, user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
-    notes = await db.user_notes.find(tq({"user_id": user_id}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(100)
+    if not tenant_id:
+        notes = await user_notes_repo.find_many_global({"user_id": user_id}, sort=[("created_at", -1)])
+    else:
+        notes = await user_notes_repo.find_many(tenant_id, {"user_id": user_id}, sort=[("created_at", -1)])
     return notes
 
 @router.post("/users/{user_id}/notes")
 async def add_user_note(user_id: str, data: dict, user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
     note = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
         "note": data.get("note", ""),
         "added_by": user.get("email", "admin"),
-        "tenant_id": tenant_id,
-        "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.user_notes.insert_one(note)
+    await user_notes_repo.insert_one(tenant_id, note)
     return {"message": "Note added", "id": note["id"]}
 
 @router.delete("/users/{user_id}/notes/{note_id}")
 async def delete_user_note(user_id: str, note_id: str, user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
-    await db.user_notes.delete_one(tq({"id": note_id, "user_id": user_id}, tenant_id))
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
+    await user_notes_repo.delete_one(tenant_id, {"id": note_id, "user_id": user_id})
     return {"message": "Note deleted"}
 
 
@@ -137,35 +154,42 @@ async def delete_user_note(user_id: str, note_id: str, user=Depends(get_current_
 @router.get("/tags")
 async def get_tags(user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
-    tags = await db.user_tags.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
+    if not tenant_id:
+        tags = await user_tags_repo.find_many_global()
+    else:
+        tags = await user_tags_repo.find_many(tenant_id)
     return tags
 
 @router.post("/tags")
 async def create_tag(data: dict, user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
     tag = {
         "id": str(uuid.uuid4()),
         "name": data.get("name", ""),
         "color": data.get("color", "blue"),
-        "tenant_id": tenant_id,
-        "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.user_tags.insert_one(tag)
+    await user_tags_repo.insert_one(tenant_id, tag)
     return {"message": "Tag created", "id": tag["id"]}
 
 @router.delete("/tags/{tag_id}")
 async def delete_tag(tag_id: str, user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
-    await db.user_tags.delete_one(tq({"id": tag_id}, tenant_id))
-    await db.subscribers.update_many(tq({}, tenant_id), {"$pull": {"tags": tag_id}})
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
+    await user_tags_repo.delete_one(tenant_id, {"id": tag_id})
+    await subscribers_repo.update_many(tenant_id, {}, {"$pull": {"tags": tag_id}})
     return {"message": "Tag deleted"}
 
 @router.post("/users/{user_id}/tags")
 async def add_tag_to_user(user_id: str, data: dict, user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
     tag_id = data.get("tag_id")
-    await db.subscribers.update_one(
-        tq({"telegram_user_id": user_id}, tenant_id),
+    await subscribers_repo.collection.update_one(
+        {"telegram_user_id": user_id, "tenant_id": tenant_id},
         {"$addToSet": {"tags": tag_id}}
     )
     return {"message": "Tag added to user"}
@@ -173,8 +197,10 @@ async def add_tag_to_user(user_id: str, data: dict, user=Depends(get_current_use
 @router.delete("/users/{user_id}/tags/{tag_id}")
 async def remove_tag_from_user(user_id: str, tag_id: str, user=Depends(get_current_user)):
     tenant_id = get_user_tenant(user)
-    await db.subscribers.update_one(
-        tq({"telegram_user_id": user_id}, tenant_id),
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
+    await subscribers_repo.collection.update_one(
+        {"telegram_user_id": user_id, "tenant_id": tenant_id},
         {"$pull": {"tags": tag_id}}
     )
     return {"message": "Tag removed from user"}
@@ -186,14 +212,19 @@ async def remove_tag_from_user(user_id: str, tag_id: str, user=Depends(get_curre
 async def get_blocked_users(user=Depends(get_current_user)):
     """Get all blocked users"""
     tenant_id = get_user_tenant(user)
-    blocked = await db.blocked_users.find(tq({}, tenant_id), {"_id": 0}).sort("blocked_at", -1).to_list(1000)
+    if not tenant_id:
+        blocked = await blocked_users_repo.find_many_global(sort=[("blocked_at", -1)])
+    else:
+        blocked = await blocked_users_repo.find_many(tenant_id, sort=[("blocked_at", -1)])
     return blocked
 
 @router.post("/users/{user_id}/block")
 async def block_user(user_id: str, data: dict, user=Depends(get_current_user)):
     """Block a user"""
     tenant_id = get_user_tenant(user)
-    existing = await db.blocked_users.find_one(tq({"telegram_user_id": user_id}, tenant_id))
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
+    existing = await blocked_users_repo.find_one(tenant_id, {"telegram_user_id": user_id})
     if existing:
         raise HTTPException(status_code=400, detail="User already blocked")
 
@@ -203,17 +234,18 @@ async def block_user(user_id: str, data: dict, user=Depends(get_current_user)):
         "telegram_username": data.get("telegram_username", ""),
         "reason": data.get("reason", ""),
         "blocked_by": user.get("email", "admin"),
-        "tenant_id": tenant_id,
         "blocked_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.blocked_users.insert_one(block_doc)
+    await blocked_users_repo.insert_one(tenant_id, block_doc)
     return {"message": "User blocked"}
 
 @router.delete("/users/{user_id}/block")
 async def unblock_user(user_id: str, user=Depends(get_current_user)):
     """Unblock a user"""
     tenant_id = get_user_tenant(user)
-    await db.blocked_users.delete_one(tq({"telegram_user_id": user_id}, tenant_id))
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
+    await blocked_users_repo.delete_one(tenant_id, {"telegram_user_id": user_id})
     return {"message": "User unblocked"}
 
 
@@ -223,8 +255,11 @@ async def unblock_user(user_id: str, user=Depends(get_current_user)):
 async def get_referrals(user=Depends(get_current_user)):
     """Get all referrals"""
     tenant_id = get_user_tenant(user)
-    referrals = await db.referrals.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(1000)
-    return referrals
+    if not tenant_id:
+        referral_list = await referrals_repo.find_many_global(sort=[("created_at", -1)])
+    else:
+        referral_list = await referrals_repo.find_many(tenant_id, sort=[("created_at", -1)])
+    return referral_list
 
 @router.get("/referrals/settings")
 async def get_referral_settings(user=Depends(get_current_user)):
@@ -296,31 +331,36 @@ async def validate_referral(data: dict):
 async def get_faqs(user=Depends(get_current_user)):
     """Get all FAQs"""
     tenant_id = get_user_tenant(user)
-    faqs = await db.faqs.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(1000)
-    return faqs
+    if not tenant_id:
+        faq_list = await faqs_repo.find_many_global(sort=[("created_at", -1)])
+    else:
+        faq_list = await faqs_repo.find_many(tenant_id, sort=[("created_at", -1)])
+    return faq_list
 
 @router.post("/faqs")
 async def create_faq(data: dict, user=Depends(get_current_user)):
     """Create a new FAQ"""
     tenant_id = get_user_tenant(user)
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
     faq_data = {
         "id": str(uuid.uuid4()),
         "keywords": [k.strip().lower() for k in data.get("keywords", "").split(",") if k.strip()],
         "response": data.get("response", ""),
         "is_active": data.get("is_active", True),
         "usage_count": 0,
-        "tenant_id": tenant_id,
-        "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.faqs.insert_one(faq_data)
+    await faqs_repo.insert_one(tenant_id, faq_data)
     return {"message": "FAQ created", "faq": faq_data}
 
 @router.put("/faqs/{faq_id}")
 async def update_faq(faq_id: str, data: dict, user=Depends(get_current_user)):
     """Update a FAQ"""
     tenant_id = get_user_tenant(user)
-    await db.faqs.update_one(
-        tq({"id": faq_id}, tenant_id),
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
+    await faqs_repo.update_one(
+        tenant_id, {"id": faq_id},
         {"$set": {
             "keywords": [k.strip().lower() for k in data.get("keywords", "").split(",") if k.strip()],
             "response": data.get("response", ""),
@@ -333,7 +373,9 @@ async def update_faq(faq_id: str, data: dict, user=Depends(get_current_user)):
 async def delete_faq(faq_id: str, user=Depends(get_current_user)):
     """Delete a FAQ"""
     tenant_id = get_user_tenant(user)
-    await db.faqs.delete_one(tq({"id": faq_id}, tenant_id))
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
+    await faqs_repo.delete_one(tenant_id, {"id": faq_id})
     return {"message": "FAQ deleted"}
 
 
@@ -343,7 +385,10 @@ async def delete_faq(faq_id: str, user=Depends(get_current_user)):
 async def get_video_call_bookings(user=Depends(get_current_user)):
     """Get all video call bookings"""
     tenant_id = get_user_tenant(user)
-    bookings = await db.video_call_bookings.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).to_list(1000)
+    if not tenant_id:
+        bookings = await video_call_bookings_repo.find_many_global(sort=[("created_at", -1)])
+    else:
+        bookings = await video_call_bookings_repo.find_many(tenant_id, sort=[("created_at", -1)])
     return bookings
 
 @router.put("/video-calls/{booking_id}")
@@ -359,10 +404,16 @@ async def update_video_call_booking(booking_id: str, data: dict, user=Depends(ge
         update_data["notes"] = data["notes"]
 
     if update_data:
-        await db.video_call_bookings.update_one(tq({"id": booking_id}, tenant_id), {"$set": update_data})
+        if tenant_id:
+            await video_call_bookings_repo.update_one(tenant_id, {"id": booking_id}, {"$set": update_data})
+        else:
+            await db.video_call_bookings.update_one({"id": booking_id}, {"$set": update_data})
 
         if data.get("status") == "confirmed":
-            booking = await db.video_call_bookings.find_one(tq({"id": booking_id}, tenant_id), {"_id": 0})
+            if tenant_id:
+                booking = await video_call_bookings_repo.find_one(tenant_id, {"id": booking_id})
+            else:
+                booking = await db.video_call_bookings.find_one({"id": booking_id}, {"_id": 0})
             if booking:
                 settings = await get_bot_settings()
                 bot_token = settings.get("telegram_bot_token", "")
@@ -383,22 +434,27 @@ async def update_video_call_booking(booking_id: str, data: dict, user=Depends(ge
 async def delete_video_call_booking(booking_id: str, user=Depends(get_current_user)):
     """Delete a video call booking"""
     tenant_id = get_user_tenant(user)
-    await db.video_call_bookings.delete_one(tq({"id": booking_id}, tenant_id))
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
+    await video_call_bookings_repo.delete_one(tenant_id, {"id": booking_id})
     return {"message": "Booking deleted"}
 
 @router.get("/video-calls/queue")
 async def get_video_call_queue(user=Depends(get_current_user)):
     """Get video call queue"""
     tenant_id = get_user_tenant(user)
-    queue = await db.video_call_bookings.find(
-        tq({"status": {"$in": ["pending", "paid", "waiting"]}}, tenant_id),
-        {"_id": 0}
-    ).sort("created_at", 1).to_list(100)
-
-    active_call = await db.video_call_bookings.find_one(
-        tq({"status": "in_progress"}, tenant_id),
-        {"_id": 0}
-    )
+    if tenant_id:
+        queue = await video_call_bookings_repo.find_many(
+            tenant_id, {"status": {"$in": ["pending", "paid", "waiting"]}},
+            sort=[("created_at", 1)], limit=100
+        )
+        active_call = await video_call_bookings_repo.find_one(tenant_id, {"status": "in_progress"})
+    else:
+        queue = await video_call_bookings_repo.find_many_global(
+            {"status": {"$in": ["pending", "paid", "waiting"]}},
+            sort=[("created_at", 1)], limit=100
+        )
+        active_call = await video_call_bookings_repo.find_one_global({"status": "in_progress"})
 
     return {
         "queue": queue,
@@ -410,18 +466,30 @@ async def get_video_call_queue(user=Depends(get_current_user)):
 async def start_video_call(booking_id: str, user=Depends(get_current_user)):
     """Start a video call"""
     tenant_id = get_user_tenant(user)
-    booking = await db.video_call_bookings.find_one(tq({"id": booking_id}, tenant_id), {"_id": 0})
+    if tenant_id:
+        booking = await video_call_bookings_repo.find_one(tenant_id, {"id": booking_id})
+    else:
+        booking = await video_call_bookings_repo.find_one_global({"id": booking_id})
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    active = await db.video_call_bookings.find_one(tq({"status": "in_progress"}, tenant_id), {"_id": 0})
+    if tenant_id:
+        active = await video_call_bookings_repo.find_one(tenant_id, {"status": "in_progress"})
+    else:
+        active = await video_call_bookings_repo.find_one_global({"status": "in_progress"})
     if active:
         raise HTTPException(status_code=400, detail="Another call is already in progress")
 
-    await db.video_call_bookings.update_one(
-        tq({"id": booking_id}, tenant_id),
-        {"$set": {"status": "in_progress", "started_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    if tenant_id:
+        await video_call_bookings_repo.update_one(
+            tenant_id, {"id": booking_id},
+            {"$set": {"status": "in_progress", "started_at": datetime.now(timezone.utc).isoformat()}}
+        )
+    else:
+        await db.video_call_bookings.update_one(
+            {"id": booking_id},
+            {"$set": {"status": "in_progress", "started_at": datetime.now(timezone.utc).isoformat()}}
+        )
 
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
@@ -434,19 +502,28 @@ async def start_video_call(booking_id: str, user=Depends(get_current_user)):
 async def end_video_call(booking_id: str, user=Depends(get_current_user)):
     """End a video call and notify next in queue"""
     tenant_id = get_user_tenant(user)
-    await db.video_call_bookings.update_one(
-        tq({"id": booking_id}, tenant_id),
-        {"$set": {"status": "completed", "ended_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    if tenant_id:
+        await video_call_bookings_repo.update_one(
+            tenant_id, {"id": booking_id},
+            {"$set": {"status": "completed", "ended_at": datetime.now(timezone.utc).isoformat()}}
+        )
+    else:
+        await db.video_call_bookings.update_one(
+            {"id": booking_id},
+            {"$set": {"status": "completed", "ended_at": datetime.now(timezone.utc).isoformat()}}
+        )
 
     settings = await get_bot_settings()
     bot_token = settings.get("telegram_bot_token", "")
 
-    next_in_queue = await db.video_call_bookings.find_one(
-        tq({"status": {"$in": ["pending", "paid", "waiting"]}}, tenant_id),
-        {"_id": 0},
-        sort=[("created_at", 1)]
-    )
+    if tenant_id:
+        next_in_queue = await video_call_bookings_repo.find_one(
+            tenant_id, {"status": {"$in": ["pending", "paid", "waiting"]}}
+        )
+    else:
+        next_in_queue = await video_call_bookings_repo.find_one_global(
+            {"status": {"$in": ["pending", "paid", "waiting"]}}
+        )
 
     if next_in_queue:
         msg = "<b>You're Next!</b>\n\nGet ready! Your video call will start soon.\nMake sure you have good internet connection."

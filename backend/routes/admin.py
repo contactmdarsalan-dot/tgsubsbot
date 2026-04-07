@@ -251,7 +251,8 @@ async def impersonate_tenant(tenant_id: str, user: dict = Depends(get_current_us
     token = create_token(
         user_id=tenant_user["id"],
         role=tenant_user.get("role", "tenant_admin"),
-        tenant_id=tenant_id
+        tenant_id=tenant_id,
+        token_version=tenant_user.get("token_version", 0)
     )
     
     # Audit log

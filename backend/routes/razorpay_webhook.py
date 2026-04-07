@@ -1,4 +1,4 @@
-"""Razorpay Payment Link callback handler - auto-verify bot payments"""
+"""Razorpay Payment Link callback handler - auto-verify bot payments with idempotency"""
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from database import db
@@ -12,6 +12,55 @@ import uuid
 import asyncio
 
 router = APIRouter()
+
+
+async def acquire_idempotency_lock(key: str, ttl_seconds: int = 300) -> bool:
+    """Acquire an idempotency lock to prevent double-processing.
+    Returns True if this is the FIRST call with this key."""
+    now = datetime.now(timezone.utc)
+    try:
+        result = await db.idempotency_keys.find_one_and_update(
+            {
+                "key": key,
+                "$or": [
+                    {"expires_at": {"$lt": now.isoformat()}},
+                    {"expires_at": {"$exists": False}},
+                ]
+            },
+            {
+                "$setOnInsert": {
+                    "key": key,
+                    "created_at": now.isoformat(),
+                },
+                "$set": {
+                    "expires_at": (now + timedelta(seconds=ttl_seconds)).isoformat(),
+                    "status": "processing",
+                }
+            },
+            upsert=True,
+            return_document=False,  # Returns the doc BEFORE update (None if new)
+        )
+        # If result is None, this was an insert (first call) → lock acquired
+        # If result exists but expired, we got the update → lock acquired
+        return True
+    except Exception as e:
+        # DuplicateKeyError means another worker got there first
+        if "duplicate" in str(e).lower() or "E11000" in str(e):
+            return False
+        logger.error(f"Idempotency lock error: {e}")
+        return False
+
+
+async def mark_idempotency_complete(key: str, result_data: dict = None):
+    """Mark an idempotency key as complete with optional result data."""
+    await db.idempotency_keys.update_one(
+        {"key": key},
+        {"$set": {
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "result": result_data or {},
+        }}
+    )
 
 
 def verify_razorpay_signature(params: dict) -> bool:
@@ -43,7 +92,8 @@ def verify_razorpay_signature(params: dict) -> bool:
 
 @router.get("/razorpay/callback")
 async def razorpay_payment_callback(request: Request):
-    """Handle Razorpay payment link callback after successful payment"""
+    """Handle Razorpay payment link callback after successful payment.
+    Protected by idempotency lock to prevent double-crediting."""
     params = dict(request.query_params)
     logger.info(f"Razorpay callback received: {params}")
 
@@ -73,6 +123,12 @@ async def razorpay_payment_callback(request: Request):
     if payment_status != "paid":
         logger.warning(f"Razorpay callback - status not paid: {payment_status}")
         return HTMLResponse(content=_error_html("Payment not completed. Try again."), status_code=400)
+
+    # Idempotency lock — prevents double-crediting on retry/duplicate callbacks
+    idempotency_key = f"razorpay_callback_{payment_link_id}_{razorpay_payment_id}"
+    if not await acquire_idempotency_lock(idempotency_key, ttl_seconds=600):
+        logger.warning(f"Razorpay callback duplicate detected: {idempotency_key}")
+        return HTMLResponse(content=_success_html(order.get("plan_name", "Plan")))
 
     # Payment verified! Process subscription
     chat_id = order.get("chat_id", "")
@@ -172,6 +228,7 @@ async def razorpay_payment_callback(request: Request):
         ))
 
         logger.info(f"Razorpay payment processed: user={chat_id}, plan={plan_name}, amount=₹{amount}")
+        await mark_idempotency_complete(idempotency_key, {"payment_id": payment_id, "plan": plan_name})
         return HTMLResponse(content=_success_html(plan_name))
 
     except Exception as e:

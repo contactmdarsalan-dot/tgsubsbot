@@ -5,6 +5,10 @@ from services.auth import get_current_user
 from services.telegram import get_bot_settings
 from services.permissions import is_super_admin, get_user_tenant, tq
 from services.chat_pool import release_chat_group
+from repositories.base import (
+    channels_repo, chat_groups_repo, chat_sessions_repo,
+    plans_repo, subscribers_repo, payments_repo
+)
 from config import logger
 from models import BotSettings
 from pydantic import BaseModel
@@ -29,7 +33,10 @@ class AddChatGroupRequest(BaseModel):
 async def get_chat_groups(user=Depends(get_current_user)):
     """Get all chat groups in the pool"""
     tenant_id = get_user_tenant(user)
-    groups = await db.chat_groups_pool.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
+    if not tenant_id:
+        groups = await chat_groups_repo.find_many_global(sort=[("created_at", -1)])
+    else:
+        groups = await chat_groups_repo.find_many(tenant_id)
     return groups
 
 
@@ -67,11 +74,13 @@ async def add_chat_group(request: AddChatGroupRequest, user=Depends(get_current_
         logger.error(f"Error verifying group: {e}")
         raise HTTPException(status_code=400, detail=f"Error verifying group: {str(e)}")
 
-    existing = await db.chat_groups_pool.find_one(tq({"group_id": group_id}, get_user_tenant(user)))
+    tenant_id = get_user_tenant(user)
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
+    existing = await chat_groups_repo.find_one(tenant_id, {"group_id": group_id})
     if existing:
         raise HTTPException(status_code=400, detail="Group already in pool")
 
-    tenant_id = get_user_tenant(user)
     group_doc = {
         "id": str(uuid.uuid4()),
         "group_id": group_id,
@@ -82,10 +91,8 @@ async def add_chat_group(request: AddChatGroupRequest, user=Depends(get_current_
         "plan_type": "",
         "session_start": None,
         "session_end": None,
-        "tenant_id": tenant_id,
-        "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.chat_groups_pool.insert_one(group_doc)
+    await chat_groups_repo.insert_one(tenant_id, group_doc)
 
     return {"message": "Group added to pool", "group": group_doc}
 
@@ -94,7 +101,9 @@ async def add_chat_group(request: AddChatGroupRequest, user=Depends(get_current_
 async def remove_chat_group(group_id: str, user=Depends(get_current_user)):
     """Remove a group from the pool"""
     tenant_id = get_user_tenant(user)
-    result = await db.chat_groups_pool.delete_one(tq({"group_id": group_id}, tenant_id))
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
+    result = await chat_groups_repo.delete_one(tenant_id, {"group_id": group_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Group not found in pool")
     return {"message": "Group removed from pool"}
@@ -104,10 +113,13 @@ async def remove_chat_group(group_id: str, user=Depends(get_current_user)):
 async def get_chat_sessions(status: Optional[str] = None, user=Depends(get_current_user)):
     """Get all chat sessions"""
     tenant_id = get_user_tenant(user)
-    query = tq({}, tenant_id)
+    query = {}
     if status:
         query["status"] = status
-    sessions = await db.chat_sessions.find(query, {"_id": 0}).to_list(100)
+    if not tenant_id:
+        sessions = await chat_sessions_repo.find_many_global(query)
+    else:
+        sessions = await chat_sessions_repo.find_many(tenant_id, query)
     return sessions
 
 
@@ -115,7 +127,10 @@ async def get_chat_sessions(status: Optional[str] = None, user=Depends(get_curre
 async def force_release_group(group_id: str, user=Depends(get_current_user)):
     """Force release a group back to pool"""
     tenant_id = get_user_tenant(user)
-    group = await db.chat_groups_pool.find_one(tq({"group_id": group_id}, tenant_id), {"_id": 0})
+    if not tenant_id:
+        group = await chat_groups_repo.find_one_global({"group_id": group_id})
+    else:
+        group = await chat_groups_repo.find_one(tenant_id, {"group_id": group_id})
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
 
@@ -129,13 +144,19 @@ async def force_release_group(group_id: str, user=Depends(get_current_user)):
 async def get_channels(user=Depends(get_current_user)):
     """Get all managed Telegram channels"""
     tenant_id = get_user_tenant(user)
-    channels = await db.channels.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
+    if not tenant_id:
+        channels = await channels_repo.find_many_global()
+    else:
+        channels = await channels_repo.find_many(tenant_id)
     return channels
 
 
 @router.post("/channels")
 async def add_channel(data: dict, user=Depends(get_current_user)):
     """Add a new Telegram channel to manage"""
+    tenant_id = get_user_tenant(user)
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
     channel_id = data.get("channel_id", "").strip()
     channel_name = data.get("channel_name", "").strip()
     channel_type = data.get("channel_type", "private")
@@ -147,7 +168,7 @@ async def add_channel(data: dict, user=Depends(get_current_user)):
     if not channel_id.startswith("-"):
         channel_id = f"-{channel_id}"
 
-    existing = await db.channels.find_one(tq({"channel_id": channel_id}, get_user_tenant(user)))
+    existing = await channels_repo.find_one(tenant_id, {"channel_id": channel_id})
     if existing:
         raise HTTPException(status_code=400, detail="Channel already exists")
 
@@ -165,7 +186,6 @@ async def add_channel(data: dict, user=Depends(get_current_user)):
     except Exception as e:
         logger.warning(f"Could not fetch channel member count: {e}")
 
-    tenant_id = get_user_tenant(user)
     channel_doc = {
         "id": str(uuid.uuid4()),
         "channel_id": channel_id,
@@ -174,17 +194,17 @@ async def add_channel(data: dict, user=Depends(get_current_user)):
         "description": description,
         "member_count": member_count,
         "status": "active",
-        "tenant_id": tenant_id,
-        "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.channels.insert_one(channel_doc)
-    channel_doc.pop("_id", None)
+    await channels_repo.insert_one(tenant_id, channel_doc)
     return channel_doc
 
 
 @router.put("/channels/{channel_id}")
 async def update_channel(channel_id: str, data: dict, user=Depends(get_current_user)):
     """Update channel details"""
+    tenant_id = get_user_tenant(user)
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
     update_data = {}
     if "channel_name" in data:
         update_data["channel_name"] = data["channel_name"].strip()
@@ -198,7 +218,7 @@ async def update_channel(channel_id: str, data: dict, user=Depends(get_current_u
     if not update_data:
         raise HTTPException(status_code=400, detail="No update data provided")
 
-    result = await db.channels.update_one(tq({"channel_id": channel_id}, get_user_tenant(user)), {"$set": update_data})
+    result = await channels_repo.update_one(tenant_id, {"channel_id": channel_id}, {"$set": update_data})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Channel not found")
     return {"message": "Channel updated"}
@@ -208,7 +228,10 @@ async def update_channel(channel_id: str, data: dict, user=Depends(get_current_u
 async def refresh_channel_info(channel_id: str, user=Depends(get_current_user)):
     """Refresh channel member count from Telegram"""
     tenant_id = get_user_tenant(user)
-    channel = await db.channels.find_one(tq({"channel_id": channel_id}, tenant_id), {"_id": 0})
+    if not tenant_id:
+        channel = await channels_repo.find_one_global({"channel_id": channel_id})
+    else:
+        channel = await channels_repo.find_one(tenant_id, {"channel_id": channel_id})
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
 
@@ -231,10 +254,11 @@ async def refresh_channel_info(channel_id: str, user=Depends(get_current_user)):
     except Exception as e:
         logger.warning(f"Could not refresh channel info: {e}")
 
-    await db.channels.update_one(
-        tq({"channel_id": channel_id}, tenant_id),
-        {"$set": {"member_count": member_count, "channel_name": channel_title, "last_refreshed": datetime.now(timezone.utc).isoformat()}}
-    )
+    update_data = {"member_count": member_count, "channel_name": channel_title, "last_refreshed": datetime.now(timezone.utc).isoformat()}
+    if tenant_id:
+        await channels_repo.update_one(tenant_id, {"channel_id": channel_id}, {"$set": update_data})
+    else:
+        await db.channels.update_one({"channel_id": channel_id}, {"$set": update_data})
     return {"member_count": member_count, "channel_name": channel_title}
 
 
@@ -242,7 +266,9 @@ async def refresh_channel_info(channel_id: str, user=Depends(get_current_user)):
 async def delete_channel(channel_id: str, user=Depends(get_current_user)):
     """Remove a channel"""
     tenant_id = get_user_tenant(user)
-    result = await db.channels.delete_one(tq({"channel_id": channel_id}, tenant_id))
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant associated")
+    result = await channels_repo.delete_one(tenant_id, {"channel_id": channel_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Channel not found")
     return {"message": "Channel removed"}
@@ -350,34 +376,54 @@ async def get_analytics(user=Depends(get_current_user)):
     now = datetime.now(timezone.utc)
     tenant_id = get_user_tenant(user)
 
-    total_subscribers = await db.subscribers.count_documents(tq({}, tenant_id))
-    active_subscribers = await db.subscribers.count_documents(tq({"status": "active"}, tenant_id))
-    expired_subscribers = await db.subscribers.count_documents(tq({"status": "expired"}, tenant_id))
-    grace_subscribers = await db.subscribers.count_documents(tq({"status": "grace"}, tenant_id))
+    if not tenant_id:
+        total_subscribers = await subscribers_repo.collection.count_documents({})
+        active_subscribers = await subscribers_repo.collection.count_documents({"status": "active"})
+        expired_subscribers = await subscribers_repo.collection.count_documents({"status": "expired"})
+        grace_subscribers = await subscribers_repo.collection.count_documents({"status": "grace"})
+        rev_pipeline = [
+            {"$match": {"status": {"$in": ["verified", "approved"]}}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+        ]
+        rev_result = await payments_repo.aggregate_global(rev_pipeline)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        monthly_pipeline = [
+            {"$match": {"status": {"$in": ["verified", "approved"]}, "created_at": {"$gte": month_start.isoformat()}}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+        ]
+        monthly_result = await payments_repo.aggregate_global(monthly_pipeline)
+        recent_subscribers = await subscribers_repo.find_many_global(sort=[("created_at", -1)], limit=5)
+        recent_payments = await payments_repo.find_many_global(sort=[("created_at", -1)], limit=5)
+        plans = await plans_repo.find_many_global()
+    else:
+        total_subscribers = await subscribers_repo.count(tenant_id)
+        active_subscribers = await subscribers_repo.count(tenant_id, {"status": "active"})
+        expired_subscribers = await subscribers_repo.count(tenant_id, {"status": "expired"})
+        grace_subscribers = await subscribers_repo.count(tenant_id, {"status": "grace"})
+        rev_pipeline = [
+            {"$match": {"status": {"$in": ["verified", "approved"]}}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+        ]
+        rev_result = await payments_repo.aggregate(tenant_id, rev_pipeline)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        monthly_pipeline = [
+            {"$match": {"status": {"$in": ["verified", "approved"]}, "created_at": {"$gte": month_start.isoformat()}}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+        ]
+        monthly_result = await payments_repo.aggregate(tenant_id, monthly_pipeline)
+        recent_subscribers = await subscribers_repo.find_many(tenant_id, sort=[("created_at", -1)], limit=5)
+        recent_payments = await payments_repo.find_many(tenant_id, sort=[("created_at", -1)], limit=5)
+        plans = await plans_repo.find_many(tenant_id)
 
-    # Revenue via aggregation (efficient for large datasets)
-    rev_pipeline = [
-        {"$match": tq({"status": {"$in": ["verified", "approved"]}}, tenant_id)},
-        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
-    ]
-    rev_result = await db.payments.aggregate(rev_pipeline).to_list(1)
     total_revenue = rev_result[0]["total"] if rev_result else 0
-
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    monthly_pipeline = [
-        {"$match": {**tq({"status": {"$in": ["verified", "approved"]}}, tenant_id), "created_at": {"$gte": month_start.isoformat()}}},
-        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
-    ]
-    monthly_result = await db.payments.aggregate(monthly_pipeline).to_list(1)
     monthly_revenue = monthly_result[0]["total"] if monthly_result else 0
 
-    recent_subscribers = await db.subscribers.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
-    recent_payments = await db.payments.find(tq({}, tenant_id), {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
-
-    plans = await db.plans.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
     plan_stats = []
     for plan in plans:
-        count = await db.subscribers.count_documents(tq({"plan_id": plan["id"], "status": "active"}, tenant_id))
+        if tenant_id:
+            count = await subscribers_repo.count(tenant_id, {"plan_id": plan["id"], "status": "active"})
+        else:
+            count = await subscribers_repo.collection.count_documents({"plan_id": plan["id"], "status": "active"})
         plan_stats.append({"name": plan["name"], "count": count, "price": plan["price"]})
 
     return {
@@ -408,24 +454,37 @@ async def export_revenue_pdf(user=Depends(get_current_user)):
     now = datetime.now(timezone.utc)
     tenant_id = get_user_tenant(user)
 
-    total_subscribers = await db.subscribers.count_documents(tq({}, tenant_id))
-    active_subscribers = await db.subscribers.count_documents(tq({"status": "active"}, tenant_id))
-    expired_subscribers = await db.subscribers.count_documents(tq({"status": "expired"}, tenant_id))
+    if not tenant_id:
+        total_subscribers = await subscribers_repo.collection.count_documents({})
+        active_subscribers = await subscribers_repo.collection.count_documents({"status": "active"})
+        expired_subscribers = await subscribers_repo.collection.count_documents({"status": "expired"})
+        verified_payments = await payments_repo.find_many_global({"status": "verified"}, limit=10000)
+        plans = await plans_repo.find_many_global()
+    else:
+        total_subscribers = await subscribers_repo.count(tenant_id)
+        active_subscribers = await subscribers_repo.count(tenant_id, {"status": "active"})
+        expired_subscribers = await subscribers_repo.count(tenant_id, {"status": "expired"})
+        verified_payments = await payments_repo.find_many(tenant_id, {"status": "verified"}, limit=10000)
+        plans = await plans_repo.find_many(tenant_id)
 
-    verified_payments = await db.payments.find(tq({"status": "verified"}, tenant_id), {"_id": 0}).to_list(10000)
     total_revenue = sum(p.get("amount", 0) for p in verified_payments)
 
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    monthly_payments = [p for p in verified_payments if datetime.fromisoformat(p["created_at"]) >= month_start]
+    monthly_payments = [p for p in verified_payments if p.get("created_at") and datetime.fromisoformat(p["created_at"]) >= month_start]
     monthly_revenue = sum(p.get("amount", 0) for p in monthly_payments)
 
-    plans = await db.plans.find(tq({}, tenant_id), {"_id": 0}).to_list(100)
     plan_stats = []
     for plan in plans:
-        count = await db.subscribers.count_documents(tq({"plan_id": plan["id"], "status": "active"}, tenant_id))
+        if tenant_id:
+            count = await subscribers_repo.count(tenant_id, {"plan_id": plan["id"], "status": "active"})
+        else:
+            count = await subscribers_repo.collection.count_documents({"plan_id": plan["id"], "status": "active"})
         plan_stats.append({"name": plan["name"], "count": count, "price": plan["price"]})
 
-    recent = await db.payments.find(tq({"status": "verified"}, tenant_id), {"_id": 0}).sort("created_at", -1).limit(20).to_list(20)
+    if tenant_id:
+        recent = await payments_repo.find_many(tenant_id, {"status": "verified"}, sort=[("created_at", -1)], limit=20)
+    else:
+        recent = await payments_repo.find_many_global({"status": "verified"}, sort=[("created_at", -1)], limit=20)
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=30, bottomMargin=30)
