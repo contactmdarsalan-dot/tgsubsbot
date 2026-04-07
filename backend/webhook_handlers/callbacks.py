@@ -105,7 +105,8 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                             link_data["callback_url"] = f"{callback_base}/api/razorpay/callback"
                             link_data["callback_method"] = "get"
                         
-                        result = razorpay_client.payment_link.create(link_data)
+                        # Run synchronous Razorpay SDK call in thread pool
+                        result = await asyncio.to_thread(razorpay_client.payment_link.create, link_data)
                         razorpay_link = result.get("short_url", "")
                         payment_link_id = result.get("id", "")
                         
@@ -129,9 +130,13 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                                 upsert=True
                             )
                             logger.info(f"Razorpay payment link created for {chat_id}: {razorpay_link}")
+                        else:
+                            logger.error(f"Razorpay returned empty short_url: {result}")
                     except Exception as rp_err:
-                        logger.error(f"Razorpay payment link creation failed: {rp_err}")
+                        logger.error(f"Razorpay payment link creation failed: {type(rp_err).__name__}: {rp_err}")
                         razorpay_link = None
+                else:
+                    logger.error(f"Razorpay client is None! RAZORPAY_KEY_ID={bool(RAZORPAY_KEY_ID)}")
                 
                 # Add Razorpay button first (if available)
                 if razorpay_link:

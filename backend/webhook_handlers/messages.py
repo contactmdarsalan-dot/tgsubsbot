@@ -1106,7 +1106,7 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                         link_data["callback_url"] = f"{callback_base}/api/razorpay/callback"
                         link_data["callback_method"] = "get"
                     
-                    rp_result = razorpay_client.payment_link.create(link_data)
+                    rp_result = await asyncio.to_thread(razorpay_client.payment_link.create, link_data)
                     rp_link = rp_result.get("short_url", "")
                     if rp_link:
                         await db.razorpay_bot_orders.update_one(
@@ -1247,7 +1247,7 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                     link_data["callback_url"] = f"{callback_base}/api/razorpay/callback"
                     link_data["callback_method"] = "get"
                 
-                rp_result = razorpay_client.payment_link.create(link_data)
+                rp_result = await asyncio.to_thread(razorpay_client.payment_link.create, link_data)
                 rp_link = rp_result.get("short_url", "")
                 if rp_link:
                     await db.razorpay_bot_orders.update_one(
@@ -1388,7 +1388,7 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                             link_data["callback_url"] = f"{callback_base}/api/razorpay/callback"
                             link_data["callback_method"] = "get"
                         
-                        rp_result = razorpay_client.payment_link.create(link_data)
+                        rp_result = await asyncio.to_thread(razorpay_client.payment_link.create, link_data)
                         rp_link = rp_result.get("short_url", "")
                         if rp_link:
                             await db.razorpay_bot_orders.update_one(
