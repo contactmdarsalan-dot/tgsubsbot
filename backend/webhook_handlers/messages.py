@@ -1079,36 +1079,11 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
             buttons = []
             if razorpay_client:
                 try:
-                    callback_base = os.environ.get("RAZORPAY_CALLBACK_URL", "")
-                    if not callback_base:
-                        website_link = settings.get("website_link", "")
-                        if website_link and website_link.startswith("http"):
-                            callback_base = website_link.rstrip("/")
-                    
-                    link_data = {
-                        "amount": int(fallback_price) * 100,
-                        "currency": "INR",
-                        "accept_partial": False,
-                        "description": f"Unlock Premium Content - ₹{int(fallback_price)}",
-                        "customer": {"name": username or f"User_{chat_id}"},
-                        "notify": {"sms": False, "email": False},
-                        "reminder_enable": False,
-                        "notes": {
-                            "chat_id": str(chat_id),
-                            "unlock_post_id": post_id,
-                            "username": username or "",
-                            "tenant_id": bot_tenant_id,
-                            "type": "paid_post_unlock",
-                        },
-                        "expire_by": int((datetime.now(timezone.utc) + timedelta(hours=24)).timestamp()),
-                    }
-                    if callback_base:
-                        link_data["callback_url"] = f"{callback_base}/api/razorpay/callback"
-                        link_data["callback_method"] = "get"
-                    
-                    rp_result = await asyncio.to_thread(razorpay_client.payment_link.create, link_data)
-                    rp_link = rp_result.get("short_url", "")
-                    if rp_link:
+                    order_data = {"amount": int(fallback_price) * 100, "currency": "INR",
+                                  "receipt": f"unlock_{uuid.uuid4().hex[:16]}", "payment_capture": 1}
+                    razor_order = await asyncio.to_thread(razorpay_client.order.create, order_data)
+                    razorpay_order_id = razor_order.get("id", "")
+                    if razorpay_order_id:
                         await db.razorpay_bot_orders.update_one(
                             {"chat_id": str(chat_id), "unlock_post_id": post_id, "status": "created"},
                             {"$set": {
@@ -1116,13 +1091,14 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                                 "unlock_post_id": post_id,
                                 "plan_id": "", "plan_name": "Unlock Content",
                                 "duration_days": 0, "amount": int(fallback_price),
-                                "payment_link_id": rp_result.get("id", ""),
-                                "payment_link_url": rp_link, "status": "created",
-                                "type": "paid_post_unlock",
+                                "razorpay_order_id": razorpay_order_id,
+                                "status": "created", "type": "paid_post_unlock",
                                 "tenant_id": bot_tenant_id,
                                 "created_at": datetime.now(timezone.utc).isoformat()
                             }}, upsert=True
                         )
+                        base_url = os.environ.get("RAZORPAY_CALLBACK_URL", os.environ.get("REACT_APP_BACKEND_URL", ""))
+                        rp_link = f"{base_url}/api/pay/{razorpay_order_id}"
                         buttons.append([{"text": f"💳 Pay ₹{int(fallback_price)} - Unlock Now", "url": rp_link}])
                 except Exception as rp_err:
                     logger.error(f"Razorpay unlock (fallback) failed: {rp_err}")
@@ -1216,40 +1192,15 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
             unlock_msg += "💳 <b>Tap below to pay & unlock!</b>"
             await send_telegram_message(chat_id, unlock_msg, bot_token)
         
-        # Create Razorpay Payment Link
+        # Create Razorpay Order (same as Mini App)
         buttons = []
         if razorpay_client:
             try:
-                callback_base = os.environ.get("RAZORPAY_CALLBACK_URL", "")
-                if not callback_base:
-                    website_link = settings.get("website_link", "")
-                    if website_link and website_link.startswith("http"):
-                        callback_base = website_link.rstrip("/")
-                
-                link_data = {
-                    "amount": int(post_price) * 100,
-                    "currency": "INR",
-                    "accept_partial": False,
-                    "description": f"Unlock {content_label} - ₹{int(post_price)}",
-                    "customer": {"name": username or f"User_{chat_id}"},
-                    "notify": {"sms": False, "email": False},
-                    "reminder_enable": False,
-                    "notes": {
-                        "chat_id": str(chat_id),
-                        "unlock_post_id": post_id,
-                        "username": username or "",
-                        "tenant_id": bot_tenant_id,
-                        "type": "paid_post_unlock",
-                    },
-                    "expire_by": int((datetime.now(timezone.utc) + timedelta(hours=24)).timestamp()),
-                }
-                if callback_base:
-                    link_data["callback_url"] = f"{callback_base}/api/razorpay/callback"
-                    link_data["callback_method"] = "get"
-                
-                rp_result = await asyncio.to_thread(razorpay_client.payment_link.create, link_data)
-                rp_link = rp_result.get("short_url", "")
-                if rp_link:
+                order_data = {"amount": int(post_price) * 100, "currency": "INR",
+                              "receipt": f"unlock_{uuid.uuid4().hex[:16]}", "payment_capture": 1}
+                razor_order = await asyncio.to_thread(razorpay_client.order.create, order_data)
+                razorpay_order_id = razor_order.get("id", "")
+                if razorpay_order_id:
                     await db.razorpay_bot_orders.update_one(
                         {"chat_id": str(chat_id), "unlock_post_id": post_id, "status": "created"},
                         {"$set": {
@@ -1257,16 +1208,17 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                             "unlock_post_id": post_id,
                             "plan_id": "", "plan_name": f"Unlock {content_label}",
                             "duration_days": 0, "amount": int(post_price),
-                            "payment_link_id": rp_result.get("id", ""),
-                            "payment_link_url": rp_link, "status": "created",
-                            "type": "paid_post_unlock",
+                            "razorpay_order_id": razorpay_order_id,
+                            "status": "created", "type": "paid_post_unlock",
                             "tenant_id": bot_tenant_id,
                             "created_at": datetime.now(timezone.utc).isoformat()
                         }}, upsert=True
                     )
+                    base_url = os.environ.get("RAZORPAY_CALLBACK_URL", os.environ.get("REACT_APP_BACKEND_URL", ""))
+                    rp_link = f"{base_url}/api/pay/{razorpay_order_id}"
                     buttons.append([{"text": f"💳 Pay ₹{int(post_price)} - Unlock {content_label}", "url": rp_link}])
             except Exception as rp_err:
-                logger.error(f"Razorpay link creation for unlock failed: {rp_err}")
+                logger.error(f"Razorpay order for unlock failed: {rp_err}")
         
         buttons.append([{"text": "📦 Get Full Subscription", "callback_data": "back_plans"}])
         
@@ -1359,53 +1311,31 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                 
                 buttons = []
                 
-                # Create Razorpay Payment Link
+                # Create Razorpay Order (same as Mini App - proven to work)
                 if razorpay_client:
                     try:
-                        callback_base = os.environ.get("RAZORPAY_CALLBACK_URL", "")
-                        if not callback_base:
-                            website_link = settings.get("website_link", "")
-                            if website_link and website_link.startswith("http"):
-                                callback_base = website_link.rstrip("/")
-                        
-                        link_data = {
-                            "amount": final_price * 100,
-                            "currency": "INR",
-                            "accept_partial": False,
-                            "description": f"{plan.get('name', 'Plan')} - {plan.get('duration_days', 30)} days",
-                            "customer": {"name": username or f"User_{chat_id}"},
-                            "notify": {"sms": False, "email": False},
-                            "reminder_enable": False,
-                            "notes": {
-                                "chat_id": str(chat_id),
-                                "plan_id": plan_id,
-                                "username": username or "",
-                                "tenant_id": bot_tenant_id,
-                            },
-                            "expire_by": int((datetime.now(timezone.utc) + timedelta(hours=24)).timestamp()),
-                        }
-                        if callback_base:
-                            link_data["callback_url"] = f"{callback_base}/api/razorpay/callback"
-                            link_data["callback_method"] = "get"
-                        
-                        rp_result = await asyncio.to_thread(razorpay_client.payment_link.create, link_data)
-                        rp_link = rp_result.get("short_url", "")
-                        if rp_link:
+                        order_data = {"amount": final_price * 100, "currency": "INR",
+                                      "receipt": f"bot_{uuid.uuid4().hex[:16]}", "payment_capture": 1}
+                        razor_order = await asyncio.to_thread(razorpay_client.order.create, order_data)
+                        razorpay_order_id = razor_order.get("id", "")
+                        if razorpay_order_id:
                             await db.razorpay_bot_orders.update_one(
                                 {"chat_id": str(chat_id), "plan_id": plan_id, "status": "created"},
                                 {"$set": {
                                     "chat_id": str(chat_id), "username": username or "",
                                     "plan_id": plan_id, "plan_name": plan.get('name', 'Plan'),
                                     "duration_days": plan.get('duration_days', 30),
-                                    "amount": final_price, "payment_link_id": rp_result.get("id", ""),
-                                    "payment_link_url": rp_link, "status": "created",
+                                    "amount": final_price, "razorpay_order_id": razorpay_order_id,
+                                    "status": "created", "type": "subscription",
                                     "tenant_id": bot_tenant_id,
                                     "created_at": datetime.now(timezone.utc).isoformat()
                                 }}, upsert=True
                             )
+                            base_url = os.environ.get("RAZORPAY_CALLBACK_URL", os.environ.get("REACT_APP_BACKEND_URL", ""))
+                            rp_link = f"{base_url}/api/pay/{razorpay_order_id}"
                             buttons.append([{"text": "💳 Pay with Razorpay", "url": rp_link}])
                     except Exception as rp_err:
-                        logger.error(f"Razorpay link creation failed in deep link: {rp_err}")
+                        logger.error(f"Razorpay order creation failed in deep link: {rp_err}")
                 
                 
                 payment_msg += f"📱 <b>Your ID:</b> <code>{chat_id}</code>"

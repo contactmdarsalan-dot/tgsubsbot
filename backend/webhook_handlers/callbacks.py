@@ -67,51 +67,21 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                 
                 buttons = []
                 
-                # Try to create Razorpay Payment Link
+                # Create Razorpay Order (same as Mini App - proven to work)
                 razorpay_link = None
                 if razorpay_client:
                     try:
-                        # Get callback URL from environment
-                        callback_base = os.environ.get("RAZORPAY_CALLBACK_URL", "")
-                        if not callback_base:
-                            # Try to build from settings
-                            website_link = settings.get("website_link", "")
-                            if website_link and website_link.startswith("http"):
-                                callback_base = website_link.rstrip("/")
-                        
-                        link_data = {
-                            "amount": final_price * 100,  # Razorpay uses paise
+                        order_data = {
+                            "amount": final_price * 100,
                             "currency": "INR",
-                            "accept_partial": False,
-                            "description": f"{plan.get('name', 'Plan')} - {plan.get('duration_days', 30)} days",
-                            "customer": {
-                                "name": username or f"User_{chat_id}",
-                            },
-                            "notify": {
-                                "sms": False,
-                                "email": False
-                            },
-                            "reminder_enable": False,
-                            "notes": {
-                                "chat_id": str(chat_id),
-                                "plan_id": plan_id,
-                                "username": username or "",
-                                "tenant_id": bot_tenant_id,
-                            },
-                            "expire_by": int((datetime.now(timezone.utc) + timedelta(hours=24)).timestamp()),
+                            "receipt": f"bot_{uuid.uuid4().hex[:20]}",
+                            "payment_capture": 1
                         }
+                        razor_order = await asyncio.to_thread(razorpay_client.order.create, order_data)
+                        razorpay_order_id = razor_order.get("id", "")
                         
-                        if callback_base:
-                            link_data["callback_url"] = f"{callback_base}/api/razorpay/callback"
-                            link_data["callback_method"] = "get"
-                        
-                        # Run synchronous Razorpay SDK call in thread pool
-                        result = await asyncio.to_thread(razorpay_client.payment_link.create, link_data)
-                        razorpay_link = result.get("short_url", "")
-                        payment_link_id = result.get("id", "")
-                        
-                        if razorpay_link:
-                            # Save order in DB for callback verification
+                        if razorpay_order_id:
+                            # Save order in DB
                             await db.razorpay_bot_orders.update_one(
                                 {"chat_id": str(chat_id), "plan_id": plan_id, "status": "created"},
                                 {"$set": {
@@ -121,19 +91,30 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                                     "plan_name": plan.get('name', 'Plan'),
                                     "duration_days": plan.get('duration_days', 30),
                                     "amount": final_price,
-                                    "payment_link_id": payment_link_id,
-                                    "payment_link_url": razorpay_link,
+                                    "razorpay_order_id": razorpay_order_id,
                                     "status": "created",
+                                    "type": "subscription",
                                     "tenant_id": bot_tenant_id,
                                     "created_at": datetime.now(timezone.utc).isoformat()
                                 }},
                                 upsert=True
                             )
-                            logger.info(f"Razorpay payment link created for {chat_id}: {razorpay_link}")
+                            
+                            # Build payment page URL
+                            base_url = os.environ.get("RAZORPAY_CALLBACK_URL", "")
+                            if not base_url:
+                                website_link = settings.get("website_link", "")
+                                if website_link and website_link.startswith("http"):
+                                    base_url = website_link.rstrip("/")
+                            if not base_url:
+                                base_url = os.environ.get("REACT_APP_BACKEND_URL", "")
+                            
+                            razorpay_link = f"{base_url}/api/pay/{razorpay_order_id}"
+                            logger.info(f"Razorpay order created for {chat_id}: {razorpay_order_id}")
                         else:
-                            logger.error(f"Razorpay returned empty short_url: {result}")
+                            logger.error(f"Razorpay returned empty order_id: {razor_order}")
                     except Exception as rp_err:
-                        logger.error(f"Razorpay payment link creation failed: {type(rp_err).__name__}: {rp_err}")
+                        logger.error(f"Razorpay order creation failed: {type(rp_err).__name__}: {rp_err}")
                         razorpay_link = None
                 else:
                     logger.error(f"Razorpay client is None! RAZORPAY_KEY_ID={bool(RAZORPAY_KEY_ID)}")

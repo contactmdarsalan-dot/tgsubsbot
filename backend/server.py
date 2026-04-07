@@ -17,14 +17,15 @@ Architecture:
   workers/       → Background jobs (scheduler)
   webhook_handlers/ → Telegram bot message handlers
 """
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import os
 import logging
-import uuid as _uuid
+import uuid
+from datetime import datetime, timezone, timedelta
 
 from fastapi.responses import Response
 from core.config import logger, SUPER_ADMIN_EMAILS
@@ -73,7 +74,7 @@ from workers.scheduler import create_scheduler
 class RequestContextMiddleware(BaseHTTPMiddleware):
     """Attach request_id to every request for traceability."""
     async def dispatch(self, request: Request, call_next):
-        request.state.request_id = str(_uuid.uuid4())
+        request.state.request_id = str(uuid.uuid4())
         response = await call_next(request)
         response.headers["X-Request-ID"] = request.state.request_id
         return response
@@ -127,6 +128,210 @@ async def razorpay_debug():
         "razorpay_key_prefix": RAZORPAY_KEY_ID[:8] + "..." if RAZORPAY_KEY_ID else "NOT_SET",
         "razorpay_client_initialized": razorpay_client is not None,
     }
+
+@app.get("/api/pay/{order_id}")
+async def bot_payment_page(order_id: str):
+    """Payment page for Telegram bot — uses Razorpay Checkout JS"""
+    from core.config import RAZORPAY_KEY_ID
+    from fastapi.responses import HTMLResponse
+
+    order = await db.razorpay_bot_orders.find_one({"razorpay_order_id": order_id, "status": "created"}, {"_id": 0})
+    if not order:
+        return HTMLResponse("<h2>Order not found or already paid</h2>", status_code=404)
+
+    amount = order.get("amount", 0)
+    plan_name = order.get("plan_name", "Plan")
+    chat_id = order.get("chat_id", "")
+    username = order.get("username", "")
+    tenant_id = order.get("tenant_id", "")
+    callback_url = os.environ.get("RAZORPAY_CALLBACK_URL", os.environ.get("REACT_APP_BACKEND_URL", ""))
+
+    html = f"""<!DOCTYPE html>
+<html><head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pay ₹{amount} - {plan_name}</title>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<style>
+  body {{ font-family: -apple-system, sans-serif; background: #0a0a0a; color: #fff;
+    display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }}
+  .card {{ background: #1a1a1a; border-radius: 16px; padding: 32px; text-align: center; max-width: 400px; width: 90%; }}
+  .price {{ font-size: 2.5rem; font-weight: 700; color: #BFFF00; margin: 16px 0; }}
+  .plan {{ font-size: 1.2rem; color: #ccc; margin-bottom: 24px; }}
+  .btn {{ background: #BFFF00; color: #000; border: none; padding: 16px 32px; font-size: 1.1rem;
+    font-weight: 700; border-radius: 12px; cursor: pointer; width: 100%; }}
+  .btn:hover {{ background: #d4ff33; }}
+  .success {{ color: #BFFF00; font-size: 1.3rem; display: none; }}
+  .loading {{ display: none; }}
+</style>
+</head><body>
+<div class="card">
+  <div id="pay-section">
+    <h2>💳 Complete Payment</h2>
+    <div class="plan">{plan_name}</div>
+    <div class="price">₹{amount}</div>
+    <button class="btn" onclick="startPayment()">Pay Now</button>
+  </div>
+  <div id="success-section" class="success">
+    <h2>✅ Payment Successful!</h2>
+    <p>Your subscription is now active.</p>
+    <p>Go back to Telegram to continue.</p>
+  </div>
+  <div id="loading-section" class="loading">
+    <h2>⏳ Verifying payment...</h2>
+  </div>
+</div>
+<script>
+function startPayment() {{
+  var options = {{
+    key: "{RAZORPAY_KEY_ID}",
+    amount: {amount * 100},
+    currency: "INR",
+    name: "TGSubsBot",
+    description: "{plan_name}",
+    order_id: "{order_id}",
+    handler: function(response) {{
+      document.getElementById("pay-section").style.display = "none";
+      document.getElementById("loading-section").style.display = "block";
+      fetch("{callback_url}/api/bot-payment/verify", {{
+        method: "POST",
+        headers: {{"Content-Type": "application/json"}},
+        body: JSON.stringify({{
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_signature: response.razorpay_signature,
+          chat_id: "{chat_id}",
+          tenant_id: "{tenant_id}"
+        }})
+      }}).then(function(r) {{ return r.json(); }}).then(function(d) {{
+        document.getElementById("loading-section").style.display = "none";
+        document.getElementById("success-section").style.display = "block";
+      }}).catch(function() {{
+        document.getElementById("loading-section").style.display = "none";
+        document.getElementById("success-section").style.display = "block";
+      }});
+    }},
+    prefill: {{ name: "{username}" }},
+    theme: {{ color: "#BFFF00" }},
+  }};
+  var rzp = new Razorpay(options);
+  rzp.open();
+}}
+</script>
+</body></html>"""
+    return HTMLResponse(html)
+
+@app.post("/api/bot-payment/verify")
+async def bot_payment_verify(data: dict):
+    """Verify Razorpay payment from bot payment page"""
+    from core.config import razorpay_client
+    from services.telegram import get_bot_settings, send_telegram_message, add_to_channel
+
+    if not razorpay_client:
+        raise HTTPException(status_code=400, detail="Razorpay not configured")
+
+    try:
+        razorpay_client.utility.verify_payment_signature({
+            'razorpay_order_id': data['razorpay_order_id'],
+            'razorpay_payment_id': data['razorpay_payment_id'],
+            'razorpay_signature': data['razorpay_signature']
+        })
+    except Exception as e:
+        logger.error(f"Bot payment verification failed: {e}")
+        raise HTTPException(status_code=400, detail="Payment verification failed")
+
+    order = await db.razorpay_bot_orders.find_one({"razorpay_order_id": data['razorpay_order_id']}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # Mark order as paid
+    await db.razorpay_bot_orders.update_one(
+        {"razorpay_order_id": data['razorpay_order_id']},
+        {"$set": {"status": "paid", "razorpay_payment_id": data['razorpay_payment_id'], "paid_at": datetime.now(timezone.utc).isoformat()}}
+    )
+
+    chat_id = order.get("chat_id", data.get("chat_id", ""))
+    tenant_id = order.get("tenant_id", data.get("tenant_id", ""))
+    plan_name = order.get("plan_name", "Plan")
+    duration_days = order.get("duration_days", 30)
+    amount = order.get("amount", 0)
+    username = order.get("username", "")
+    plan_id = order.get("plan_id", "")
+    unlock_post_id = order.get("unlock_post_id", "")
+    order_type = order.get("type", "subscription")
+
+    now = datetime.now(timezone.utc)
+
+    # Handle paid post unlock
+    if order_type == "paid_post_unlock" and unlock_post_id:
+        paid_post = await db.paid_posts.find_one({"id": unlock_post_id, "tenant_id": tenant_id}, {"_id": 0})
+        payment_id = str(uuid.uuid4())[:8]
+        await db.payments.insert_one({
+            "id": payment_id, "telegram_user_id": chat_id, "telegram_username": username,
+            "amount": amount, "payment_method": "razorpay", "razorpay_payment_id": data['razorpay_payment_id'],
+            "status": "verified", "type": "paid_post_unlock", "unlock_post_id": unlock_post_id,
+            "verified_at": now.isoformat(), "tenant_id": tenant_id, "created_at": now.isoformat()
+        })
+        await db.paid_post_unlocks.insert_one({
+            "id": str(uuid.uuid4()), "post_id": unlock_post_id, "telegram_user_id": chat_id,
+            "payment_id": payment_id, "amount": amount, "tenant_id": tenant_id, "unlocked_at": now.isoformat()
+        })
+        await db.paid_posts.update_one({"id": unlock_post_id, "tenant_id": tenant_id}, {"$inc": {"unlock_count": 1}})
+
+        settings = await get_bot_settings()
+        bot_token = settings.get("telegram_bot_token", "")
+        if bot_token and paid_post:
+            from services.telegram import send_telegram_photo, send_telegram_video
+            await send_telegram_message(chat_id, "✅ <b>Payment Successful!</b>\n\n🔓 Unlocking content...", bot_token)
+            if paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
+                await send_telegram_photo(chat_id, paid_post["original_file_id"], f"🔓 <b>Unlocked!</b>\n\n{paid_post.get('caption', '')}", bot_token)
+            elif paid_post.get("content_type") == "video" and paid_post.get("original_file_id"):
+                await send_telegram_video(chat_id, paid_post["original_file_id"], f"🔓 <b>Unlocked!</b>\n\n{paid_post.get('caption', '')}", bot_token)
+
+        return {"success": True, "type": "unlock"}
+
+    # Handle subscription payment
+    payment_id = str(uuid.uuid4())[:8]
+    end_date = now + timedelta(days=duration_days)
+
+    payment_record = {
+        "id": payment_id, "subscriber_id": None, "telegram_user_id": chat_id,
+        "telegram_username": username, "amount": amount, "plan_id": plan_id,
+        "plan_name": plan_name, "payment_method": "razorpay",
+        "razorpay_payment_id": data['razorpay_payment_id'],
+        "status": "verified", "source": "telegram_bot", "tenant_id": tenant_id,
+        "created_at": now.isoformat()
+    }
+    await db.payments.insert_one(payment_record)
+
+    await db.subscribers.update_one(
+        {"telegram_user_id": chat_id, "tenant_id": tenant_id},
+        {"$set": {
+            "telegram_user_id": chat_id, "telegram_username": username,
+            "plan_id": plan_id, "plan_name": plan_name,
+            "amount_paid": amount, "subscription_start": now.isoformat(),
+            "subscription_end": end_date.isoformat(), "is_active": True,
+            "payment_method": "razorpay", "tenant_id": tenant_id,
+            "updated_at": now.isoformat()
+        }, "$setOnInsert": {"created_at": now.isoformat()}},
+        upsert=True
+    )
+
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    if bot_token:
+        success_msg = f"✅ <b>Payment Verified!</b>\n\n"
+        success_msg += f"📦 Plan: {plan_name}\n💰 Amount: ₹{amount}\n📅 Valid till: {end_date.strftime('%d %B %Y')}\n\n"
+        success_msg += "🎉 Welcome! You now have full access."
+        await send_telegram_message(chat_id, success_msg, bot_token)
+
+        channel_id = settings.get("telegram_channel_id", os.environ.get("TELEGRAM_CHANNEL_ID", ""))
+        if channel_id:
+            try:
+                await add_to_channel(chat_id, channel_id, bot_token)
+            except:
+                pass
+
+    return {"success": True, "type": "subscription"}
 
 
 # CORS middleware — strict allowlist
