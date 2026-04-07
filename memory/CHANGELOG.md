@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 2026-04-07 — Telegram Bot /start Command Fix
+- **Root cause**: `settings` collection had placeholder token `123:VALID_BOT_TOKEN`, `get_bot_settings()` never fell through to real token
+- **Fix**: `get_bot_settings()` now resolves token from `tenants` collection via `tenant_id` (Priority: tenant token > env var > settings)
+- **DB**: Updated `settings.telegram_bot_token` with real token
+- **Imports**: Fixed missing `urgency_timer_task`, `send_screenshot_reminders`, `get_bot_username` in `callbacks.py`; Added `LlmChat` import in `messages.py`
+- **Webhook**: Set to preview URL for live testing — verified with real user traffic (200 OK)
+
 ## 2026-04-07 — Wallet System (Iteration 42)
 - **Full Wallet System implemented**: Central payment collection, commission management, tenant withdrawal workflow
 - **Backend**: 7 API endpoints — config CRUD, platform revenue overview, tenant balance, withdrawal request/approve/reject/complete

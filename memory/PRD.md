@@ -29,6 +29,7 @@ Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS prod
 - Auth: `/api/auth/login`, `/api/auth/register`, `/api/auth/refresh`, `/api/auth/logout`
 - Wallet: `/api/wallet/config`, `/api/wallet/platform-revenue`, `/api/wallet/balance`, `/api/wallet/withdraw`, `/api/wallet/all-withdrawals`, `/api/wallet/withdrawals/{id}/approve|reject|complete`
 - Admin: `/api/admin/impersonate`, `/api/admin/risk-alerts`, `/api/saas/tenants`
+- Webhook: `/api/telegram/webhook`
 
 ## 3rd Party Integrations
 - Telegram WebApp SDK & Bot API
@@ -37,7 +38,13 @@ Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS prod
 - OpenAI GPT-5.2 Vision (Emergent LLM Key)
 
 ## Remaining Backlog
+- (P1) Strict Tenant Enforcement — run backfill script, remove "default" fallback
+- (P1) Phase out legacy routes/ wrapper files
 - (P2) Object Storage migration (S3/R2)
 - (P2) Analytics Dashboard (Razorpay vs QR comparison)
 - (P3) WhatsApp integration
 - (P3) Multi-language bot support
+
+## Known Issues
+- QR Code URL in settings (`https://NEW-QR.com/new.png`) returns invalid content type for Telegram
+- Webhook currently pointing to preview URL (needs production deployment)

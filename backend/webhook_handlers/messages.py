@@ -12,6 +12,7 @@ from services.payment import detect_payment_screenshot, create_blurred_image, an
 from services.chat_pool import get_available_chat_group, assign_chat_group
 from services.bot_activity import log_bot_activity
 from config import logger, EMERGENT_LLM_KEY
+from emergentintegrations.llm.chat import LlmChat
 from datetime import datetime, timezone, timedelta
 import uuid
 import httpx
@@ -2183,7 +2184,7 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
     Always be polite and use emojis sparingly."""
 
                 llm = LlmChat(
-                    api_key=os.environ.get("EMERGENT_LLM_KEY", ""),
+                    api_key=EMERGENT_LLM_KEY,
                     model="gpt-4o-mini"
                 )
                 llm.add_message("system", system_prompt)

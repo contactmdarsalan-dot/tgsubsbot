@@ -15,7 +15,7 @@ _bot_username_cache = {}
 
 
 async def get_bot_settings():
-    """Get bot settings from database, with Redis cache and environment variable fallback"""
+    """Get bot settings from database, cross-referencing tenant's real bot token."""
     cached = await cache_get("bot_settings")
     if cached:
         return cached
@@ -23,6 +23,18 @@ async def get_bot_settings():
     settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0})
     settings = settings or {}
 
+    # Priority 1: Resolve real token from tenants collection (most reliable source)
+    tenant_id = settings.get("tenant_id")
+    if tenant_id:
+        tenant = await db.tenants.find_one(
+            {"tenant_id": tenant_id},
+            {"_id": 0, "bot_token": 1}
+        )
+        if tenant and tenant.get("bot_token"):
+            settings["telegram_bot_token"] = tenant["bot_token"]
+            logger.debug(f"Using bot_token from tenants collection for {tenant_id}")
+
+    # Priority 2: Environment variable fallback
     if not settings.get("telegram_bot_token"):
         env_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
         if env_token:
