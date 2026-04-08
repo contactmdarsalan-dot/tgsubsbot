@@ -297,13 +297,13 @@ async def razorpay_payment_callback(request: Request):
             buttons = [[{"text": "📊 Check My Status", "callback_data": "check_status"}]]
             await send_telegram_message_with_buttons(chat_id, success_msg, buttons, bot_token)
 
-            # Try to add user to channel
-            channel_id = settings.get("telegram_channel_id", "")
-            if channel_id:
-                try:
-                    await add_to_channel(chat_id, bot_token)
-                except Exception as e:
-                    logger.error(f"Failed to add user to channel after Razorpay payment: {e}")
+            # Try to add user to plan-specific channel
+            plan_data = await db.plans.find_one({"id": plan_id, "tenant_id": tenant_id}, {"_id": 0, "channel_id": 1})
+            plan_channel_id = plan_data.get("channel_id", "") if plan_data else ""
+            try:
+                await add_to_channel(chat_id, plan_channel_id=plan_channel_id, plan_name=plan_name)
+            except Exception as e:
+                logger.error(f"Failed to add user to channel after Razorpay payment: {e}")
 
         # Log activity
         asyncio.create_task(log_bot_activity(
