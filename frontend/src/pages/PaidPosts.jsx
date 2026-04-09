@@ -21,6 +21,8 @@ import {
   RefreshCcw,
   IndianRupee,
   ShieldCheck,
+  Layers,
+  SlidersHorizontal,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -34,6 +36,7 @@ export default function PaidPosts() {
   const [unlockRequests, setUnlockRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingPost, setEditingPost] = useState(null);
+  const [reblurring, setReblurring] = useState(null);
   const [activeTab, setActiveTab] = useState("posts"); // posts, requests, unlocked
 
   useEffect(() => {
@@ -77,6 +80,19 @@ export default function PaidPosts() {
       fetchData();
     } catch (error) {
       toast.error("Failed to deactivate post");
+    }
+  };
+
+  const handleReblur = async (postId, blurLevel) => {
+    setReblurring(postId);
+    try {
+      await axios.post(`${API}/paid-posts/${postId}/reblur`, { blur_level: blurLevel }, getAuthHeaders());
+      toast.success(`Re-blurred with level ${blurLevel}!`);
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to re-blur");
+    } finally {
+      setReblurring(null);
     }
   };
 
@@ -282,27 +298,40 @@ export default function PaidPosts() {
                   <CardContent className="p-4">
                     <div className="flex items-start gap-4">
                       {/* Content Type Icon */}
-                      <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center">
+                      <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center relative">
                         {post.content_type === "video" ? (
                           <Video className="w-8 h-8 text-muted-foreground" />
+                        ) : post.content_type === "media_group" ? (
+                          <Layers className="w-8 h-8 text-muted-foreground" />
                         ) : (
                           <Image className="w-8 h-8 text-muted-foreground" />
+                        )}
+                        {(post.media_count || 0) > 1 && (
+                          <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                            {post.media_count}
+                          </span>
                         )}
                       </div>
 
                       {/* Post Details */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <Badge variant={post.is_active ? "default" : "secondary"}>
                             {post.is_active ? "Active" : "Inactive"}
                           </Badge>
-                          <Badge variant="outline">{post.content_type}</Badge>
+                          <Badge variant="outline">
+                            {post.content_type === "media_group" ? `${post.media_count} items` : post.content_type}
+                          </Badge>
                           {post.price > 0 && (
                             <Badge variant="secondary" className="flex items-center gap-1">
                               <IndianRupee className="w-3 h-3" />
                               {post.price}
                             </Badge>
                           )}
+                          <Badge variant="outline" className="text-xs flex items-center gap-1">
+                            <SlidersHorizontal className="w-3 h-3" />
+                            Blur: {post.blur_level || 25}
+                          </Badge>
                         </div>
                         
                         <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
@@ -322,9 +351,9 @@ export default function PaidPosts() {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap justify-end">
                         {editingPost === post.id ? (
-                          <div className="flex flex-col gap-2 min-w-[200px]">
+                          <div className="flex flex-col gap-2 min-w-[240px]">
                             <div>
                               <Label className="text-xs">Price (₹)</Label>
                               <Input
@@ -334,15 +363,52 @@ export default function PaidPosts() {
                                 className="h-8 text-sm"
                               />
                             </div>
+                            <div>
+                              <Label className="text-xs flex items-center gap-1">
+                                <SlidersHorizontal className="w-3 h-3" />
+                                Blur Level: <span id={`blur-val-${post.id}`}>{post.blur_level || 25}</span>
+                              </Label>
+                              <input
+                                type="range"
+                                min="1"
+                                max="100"
+                                defaultValue={post.blur_level || 25}
+                                id={`blur-${post.id}`}
+                                className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                                onChange={(e) => {
+                                  const el = document.getElementById(`blur-val-${post.id}`);
+                                  if (el) el.textContent = e.target.value;
+                                }}
+                              />
+                              <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+                                <span>Low</span><span>Medium</span><span>High</span><span>Max</span>
+                              </div>
+                            </div>
                             <div className="flex gap-2">
                               <Button
                                 size="sm"
                                 onClick={() => {
                                   const price = document.getElementById(`price-${post.id}`).value;
-                                  handleUpdatePost(post.id, { price: parseFloat(price) || 0 });
+                                  const blur = document.getElementById(`blur-${post.id}`).value;
+                                  handleUpdatePost(post.id, { 
+                                    price: parseFloat(price) || 0, 
+                                    blur_level: parseInt(blur) || 25 
+                                  });
                                 }}
                               >
                                 Save
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={reblurring === post.id}
+                                onClick={() => {
+                                  const blur = document.getElementById(`blur-${post.id}`).value;
+                                  handleReblur(post.id, parseInt(blur) || 25);
+                                }}
+                                data-testid={`reblur-${post.id}`}
+                              >
+                                {reblurring === post.id ? "Blurring..." : "Re-Blur"}
                               </Button>
                               <Button
                                 size="sm"
@@ -623,16 +689,17 @@ export default function PaidPosts() {
           </div>
           <div className="flex gap-3">
             <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">3</div>
-            <p>Users click unlock, pay via QR, send screenshot</p>
+            <p>Users click unlock, pay via Razorpay or QR, and content is delivered</p>
           </div>
-          <div className="flex gap-3">
-            <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">4</div>
-            <p>Payment verified → Original content sent to user's DM</p>
-          </div>
-          <div className="mt-4 p-3 bg-primary/10 border border-primary/20 rounded-lg">
+          <div className="mt-4 p-3 bg-primary/10 border border-primary/20 rounded-lg space-y-2">
             <p className="text-primary/80">
-              <strong>Tip:</strong> Add price in caption like <code className="bg-primary/10 px-1 rounded">/paid 99</code> for Rs.99 unlock. 
-              Active subscribers can unlock for free!
+              <strong>Price:</strong> <code className="bg-primary/10 px-1 rounded">/paid 99</code> for Rs.99 unlock
+            </p>
+            <p className="text-primary/80">
+              <strong>Blur Control:</strong> <code className="bg-primary/10 px-1 rounded">/paid 99 blur:high</code> — options: low, medium, high, extreme, max or 1-100
+            </p>
+            <p className="text-primary/80">
+              <strong>Multiple Media:</strong> Select multiple photos/videos together as album, add <code className="bg-primary/10 px-1 rounded">/paid 99</code> in caption
             </p>
           </div>
         </CardContent>

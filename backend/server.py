@@ -282,10 +282,21 @@ async def bot_payment_verify(data: dict):
         if bot_token and paid_post:
             from services.telegram import send_telegram_photo, send_telegram_video
             await send_telegram_message(chat_id, "✅ <b>Payment Successful!</b>\n\n🔓 Unlocking content...", bot_token)
-            if paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
-                await send_telegram_photo(chat_id, paid_post["original_file_id"], f"🔓 <b>Unlocked!</b>\n\n{paid_post.get('caption', '')}", bot_token)
+            
+            # Send ALL media items for media_group posts
+            file_ids = paid_post.get("file_ids", [])
+            caption = f"🔓 <b>Unlocked!</b>\n\n{paid_post.get('caption', '')}"
+            if file_ids and len(file_ids) > 0:
+                for i, item in enumerate(file_ids):
+                    item_caption = caption if i == 0 else ""
+                    if item.get("type") == "video":
+                        await send_telegram_video(chat_id, item["file_id"], item_caption, bot_token)
+                    else:
+                        await send_telegram_photo(chat_id, item["file_id"], item_caption, bot_token)
+            elif paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
+                await send_telegram_photo(chat_id, paid_post["original_file_id"], caption, bot_token)
             elif paid_post.get("content_type") == "video" and paid_post.get("original_file_id"):
-                await send_telegram_video(chat_id, paid_post["original_file_id"], f"🔓 <b>Unlocked!</b>\n\n{paid_post.get('caption', '')}", bot_token)
+                await send_telegram_video(chat_id, paid_post["original_file_id"], caption, bot_token)
 
         return {"success": True, "type": "unlock"}
 

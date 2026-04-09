@@ -56,8 +56,10 @@ def detect_payment_screenshot(image_bytes: bytes) -> dict:
         return {"is_valid": False, "error": str(e), "found_keywords": []}
 
 
-def create_blurred_image(image_bytes: bytes, blur_radius: int = 10, content_type: str = "photo") -> bytes:
-    """Create a blurred version of an image for paid post preview."""
+def create_blurred_image(image_bytes: bytes, blur_radius: int = 25, content_type: str = "photo") -> bytes:
+    """Create a blurred version of an image for paid post preview.
+    blur_radius: 1-100, higher = more blur. Default 25 for photos, 10 for videos.
+    """
     from PIL import ImageFilter
 
     try:
@@ -65,12 +67,14 @@ def create_blurred_image(image_bytes: bytes, blur_radius: int = 10, content_type
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
 
-        if content_type == "photo":
-            actual_blur = blur_radius if blur_radius > 15 else 25
-            overlay_alpha = 80
-        else:
-            actual_blur = blur_radius if blur_radius < 15 else 10
+        # Use the provided blur_radius directly (1-100 scale)
+        actual_blur = max(1, min(blur_radius, 100))
+        
+        if content_type == "video" and blur_radius <= 10:
+            actual_blur = 10
             overlay_alpha = 30
+        else:
+            overlay_alpha = min(80, int(actual_blur * 1.5))
 
         blurred = image.filter(ImageFilter.GaussianBlur(radius=actual_blur))
         overlay = Image.new('RGBA', blurred.size, (0, 0, 0, overlay_alpha))

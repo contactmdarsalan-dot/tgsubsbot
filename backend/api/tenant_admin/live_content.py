@@ -558,17 +558,100 @@ async def get_paid_post(post_id: str, user=Depends(get_current_user)):
 
 @router.put("/paid-posts/{post_id}")
 async def update_paid_post(post_id: str, data: dict, user=Depends(get_current_user)):
-    """Update paid post"""
+    """Update paid post (price, caption, blur_level)"""
     tenant_id = get_user_tenant(user)
+    update_fields = {
+        "price": data.get("price", 0),
+        "is_active": data.get("is_active", True),
+        "caption": data.get("caption", "")
+    }
+    if "blur_level" in data:
+        update_fields["blur_level"] = max(1, min(int(data["blur_level"]), 100))
+    
     await db.paid_posts.update_one(
         tq({"id": post_id}, tenant_id),
-        {"$set": {
-            "price": data.get("price", 0),
-            "is_active": data.get("is_active", True),
-            "caption": data.get("caption", "")
-        }}
+        {"$set": update_fields}
     )
     return {"message": "Post updated"}
+
+
+@router.post("/paid-posts/{post_id}/reblur")
+async def reblur_paid_post(post_id: str, data: dict, user=Depends(get_current_user)):
+    """Re-generate blurred preview with a new blur level"""
+    from services.telegram import download_telegram_photo, send_telegram_photo, delete_telegram_message, get_bot_settings, get_bot_username
+    from services.payment import create_blurred_image
+    
+    tenant_id = get_user_tenant(user)
+    post = await db.paid_posts.find_one(tq({"id": post_id}, tenant_id), {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    new_blur = max(1, min(int(data.get("blur_level", 25)), 100))
+    
+    # Get the first photo file_id
+    file_id = post.get("original_file_id", "")
+    if not file_id and post.get("file_ids"):
+        first_photo = next((f for f in post["file_ids"] if f.get("type") == "photo"), None)
+        if first_photo:
+            file_id = first_photo.get("file_id", "")
+    
+    if not file_id:
+        raise HTTPException(status_code=400, detail="No photo to re-blur")
+    
+    settings = await get_bot_settings()
+    bot_token = settings.get("telegram_bot_token", "")
+    if not bot_token:
+        raise HTTPException(status_code=500, detail="Bot token not configured")
+    
+    # Download original photo
+    image_bytes = await download_telegram_photo(file_id, bot_token)
+    if not image_bytes:
+        raise HTTPException(status_code=500, detail="Failed to download original photo")
+    
+    # Create new blurred image
+    blurred_bytes = create_blurred_image(image_bytes, blur_radius=new_blur, content_type="photo")
+    if not blurred_bytes:
+        raise HTTPException(status_code=500, detail="Failed to create blurred image")
+    
+    # Delete old blurred message and post new one
+    channel_id = post.get("channel_id", "")
+    old_blurred_msg_id = post.get("blurred_message_id")
+    
+    bot_username = await get_bot_username(bot_token)
+    media_count = post.get("media_count", 1)
+    price_text = f"₹{int(post.get('price', 0))}" if post.get('price', 0) > 0 else "Premium"
+    
+    blur_caption = f"🔒 <b>Paid Content</b>\n\n"
+    blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+    if post.get("caption"):
+        blur_caption += f"📝 {post['caption']}\n\n"
+    if media_count > 1:
+        blur_caption += f"📦 {media_count} items inside\n\n"
+    blur_caption += "👆 Tap 'Unlock' to view!"
+    
+    unlock_text = f"🔓 Unlock Post" if media_count <= 1 else f"🔓 Unlock {media_count} Items"
+    unlock_button = {
+        "inline_keyboard": [[{
+            "text": unlock_text,
+            "url": f"https://t.me/{bot_username}?start=unlock_{post_id}"
+        }]]
+    }
+    
+    result = await send_telegram_photo(channel_id, blurred_bytes, blur_caption, bot_token, unlock_button)
+    
+    if result and result.get("ok"):
+        new_msg_id = result.get("result", {}).get("message_id", 0)
+        await db.paid_posts.update_one(
+            tq({"id": post_id}, tenant_id),
+            {"$set": {"blur_level": new_blur, "blurred_message_id": new_msg_id}}
+        )
+        # Delete old blurred message
+        if old_blurred_msg_id and channel_id:
+            await delete_telegram_message(channel_id, old_blurred_msg_id, bot_token)
+        
+        return {"message": f"Re-blurred with level {new_blur}", "new_message_id": new_msg_id}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to send blurred image to channel")
 
 @router.delete("/paid-posts/{post_id}")
 async def delete_paid_post(post_id: str, user=Depends(get_current_user)):
@@ -618,7 +701,17 @@ async def approve_unlock_request(request_id: str, user=Depends(get_current_user)
         success_msg = "<b>Payment Approved!</b>\n\nHere's your unlocked content:"
         await send_telegram_message(chat_id, success_msg, bot_token)
 
-        if paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
+        # Send ALL media items for media_group posts
+        file_ids = paid_post.get("file_ids", [])
+        if file_ids and len(file_ids) > 0:
+            caption = f"<b>Unlocked!</b>\n\n{paid_post.get('caption', '')}"
+            for i, item in enumerate(file_ids):
+                item_caption = caption if i == 0 else ""
+                if item.get("type") == "video":
+                    await send_telegram_video(chat_id, item["file_id"], item_caption, bot_token)
+                else:
+                    await send_telegram_photo(chat_id, item["file_id"], item_caption, bot_token)
+        elif paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
             caption = f"<b>Unlocked!</b>\n\n{paid_post.get('caption', '')}"
             await send_telegram_photo(chat_id, paid_post["original_file_id"], caption, bot_token)
         elif paid_post.get("content_type") == "video" and paid_post.get("original_file_id"):

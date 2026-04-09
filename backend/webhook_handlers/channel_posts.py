@@ -12,6 +12,134 @@ from datetime import datetime, timezone
 import httpx
 import asyncio
 import uuid
+import os
+
+# In-memory buffer for media groups (cleared after processing)
+_media_group_tasks = {}
+
+
+async def _process_media_group(media_group_id: str, bot_token: str, bot_tenant_id: str, settings: dict):
+    """Process buffered media group items as a single paid post after delay."""
+    await asyncio.sleep(2.5)  # Wait for all items to arrive
+    
+    try:
+        items = await db.media_group_buffer.find(
+            {"media_group_id": media_group_id, "tenant_id": bot_tenant_id},
+            {"_id": 0}
+        ).sort("message_id", 1).to_list(20)
+        
+        if not items:
+            return
+        
+        # Clean up buffer
+        await db.media_group_buffer.delete_many({"media_group_id": media_group_id, "tenant_id": bot_tenant_id})
+        _media_group_tasks.pop(media_group_id, None)
+        
+        first_item = items[0]
+        post_chat_id = first_item["channel_id"]
+        caption = first_item.get("caption", "") or ""
+        blur_level = first_item.get("blur_level", 25)
+        post_price = first_item.get("price", 99)
+        
+        # Collect all file_ids
+        file_ids = []
+        for item in items:
+            file_ids.append({
+                "type": item.get("content_type", "photo"),
+                "file_id": item.get("file_id", ""),
+                "message_id": item.get("message_id", 0)
+            })
+        
+        # Download first photo for blur preview
+        first_photo = next((f for f in file_ids if f["type"] == "photo" and f["file_id"]), None)
+        blurred_bytes = None
+        if first_photo:
+            image_bytes = await download_telegram_photo(first_photo["file_id"], bot_token)
+            if image_bytes:
+                blurred_bytes = create_blurred_image(image_bytes, blur_radius=blur_level, content_type="photo")
+        
+        # Create paid post record with all file_ids
+        paid_post_id = str(uuid.uuid4())
+        
+        # Clean caption
+        import re as re_module
+        clean_caption = re_module.sub(r'/paid[-_]?\s*', '', caption, flags=re_module.IGNORECASE).strip()
+        price_match = re_module.search(r'^[₹]?(\d+)[-_\s]*', clean_caption)
+        if price_match:
+            clean_caption = clean_caption[price_match.end():].strip()
+            clean_caption = re_module.sub(r'^[-_\s]+', '', clean_caption)
+        # Remove blur param from caption
+        clean_caption = re_module.sub(r'\s*blur:\s*\d+', '', clean_caption, flags=re_module.IGNORECASE).strip()
+        
+        paid_post = {
+            "id": paid_post_id,
+            "channel_id": post_chat_id,
+            "original_message_id": first_item.get("message_id", 0),
+            "content_type": "media_group",
+            "original_file_id": first_photo["file_id"] if first_photo else (file_ids[0]["file_id"] if file_ids else ""),
+            "file_ids": file_ids,
+            "media_count": len(file_ids),
+            "caption": clean_caption,
+            "price": post_price,
+            "blur_level": blur_level,
+            "unlock_count": 0,
+            "is_active": True,
+            "tenant_id": bot_tenant_id,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.paid_posts.insert_one(paid_post)
+        
+        # Post blurred preview
+        bot_username = await get_bot_username(bot_token)
+        unlock_button = {
+            "inline_keyboard": [[{
+                "text": f"🔓 Unlock {len(file_ids)} Items - ₹{int(post_price)}",
+                "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
+            }]]
+        }
+        
+        price_text = f"₹{int(post_price)}" if post_price > 0 else "Premium"
+        photo_count = sum(1 for f in file_ids if f["type"] == "photo")
+        video_count = sum(1 for f in file_ids if f["type"] == "video")
+        media_desc = []
+        if photo_count: media_desc.append(f"{photo_count} Photo{'s' if photo_count > 1 else ''}")
+        if video_count: media_desc.append(f"{video_count} Video{'s' if video_count > 1 else ''}")
+        
+        blur_caption = f"🔒 <b>Paid Content ({' + '.join(media_desc)})</b>\n\n"
+        blur_caption += f"💰 Price: <b>{price_text}</b>\n\n"
+        if clean_caption:
+            blur_caption += f"📝 {clean_caption}\n\n"
+        blur_caption += "👆 Tap 'Unlock' to view all content!"
+        
+        blurred_posted = False
+        if blurred_bytes:
+            result = await send_telegram_photo(post_chat_id, blurred_bytes, blur_caption, bot_token, unlock_button)
+            if result and result.get("ok"):
+                blurred_message_id = result.get("result", {}).get("message_id", 0)
+                await db.paid_posts.update_one({"id": paid_post_id}, {"$set": {"blurred_message_id": blurred_message_id}})
+                blurred_posted = True
+        
+        if not blurred_posted:
+            result = await send_telegram_message_with_buttons(post_chat_id, blur_caption, [[{
+                "text": f"🔓 Unlock {len(file_ids)} Items - ₹{int(post_price)}",
+                "url": f"https://t.me/{bot_username}?start=unlock_{paid_post_id}"
+            }]], bot_token)
+            if result:
+                blurred_posted = True
+        
+        # Delete all original messages
+        if blurred_posted:
+            for item in items:
+                msg_id = item.get("message_id")
+                if msg_id:
+                    await delete_telegram_message(post_chat_id, msg_id, bot_token)
+        
+        logger.info(f"Media group paid post created: {paid_post_id} with {len(file_ids)} items")
+    
+    except Exception as e:
+        logger.error(f"Error processing media group: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 
 async def handle_channel_post(data, bot_token, bot_tenant_id, settings):
@@ -58,6 +186,69 @@ async def handle_channel_post(data, bot_token, bot_tenant_id, settings):
                 # Import re module explicitly to avoid scope issues
                 import re as re_module
                 
+                # Parse blur level from caption: blur:30 or blur:high/medium/low
+                blur_level = 25  # default
+                blur_match = re_module.search(r'blur:\s*(\w+)', caption, re_module.IGNORECASE)
+                if blur_match:
+                    blur_val = blur_match.group(1).lower()
+                    blur_map = {"low": 10, "medium": 25, "high": 50, "extreme": 80, "max": 100}
+                    if blur_val in blur_map:
+                        blur_level = blur_map[blur_val]
+                    elif blur_val.isdigit():
+                        blur_level = max(1, min(int(blur_val), 100))
+                
+                # Extract price
+                clean_caption_temp = re_module.sub(r'^/paid[-_]?\s*', '', caption, flags=re_module.IGNORECASE).strip()
+                price_match = re_module.search(r'^[₹]?(\d+)[-_\s]*', clean_caption_temp)
+                post_price = float(price_match.group(1)) if price_match else 0
+                
+                if post_price <= 0:
+                    s = await get_bot_settings()
+                    post_price = s.get("default_paid_post_price", 0)
+                    if post_price <= 0:
+                        plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).sort("price", 1).to_list(1)
+                        post_price = plans[0].get("price", 99) if plans else 99
+                
+                # Check if this is part of a media group
+                media_group_id = channel_post.get("media_group_id")
+                
+                if media_group_id:
+                    # Buffer this item for media group processing
+                    photo = channel_post.get("photo")
+                    video = channel_post.get("video")
+                    file_id = ""
+                    content_type = "photo"
+                    
+                    if photo:
+                        file_id = photo[-1].get("file_id", "")
+                        content_type = "photo"
+                    elif video:
+                        file_id = video.get("file_id", "")
+                        content_type = "video"
+                    
+                    await db.media_group_buffer.insert_one({
+                        "media_group_id": media_group_id,
+                        "channel_id": post_chat_id,
+                        "message_id": message_id,
+                        "content_type": content_type,
+                        "file_id": file_id,
+                        "caption": caption if caption.lower().startswith("/paid") else "",
+                        "price": post_price,
+                        "blur_level": blur_level,
+                        "tenant_id": bot_tenant_id,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    })
+                    
+                    # Start delayed processing task (only once per group)
+                    if media_group_id not in _media_group_tasks:
+                        _media_group_tasks[media_group_id] = True
+                        asyncio.create_task(_process_media_group(media_group_id, bot_token, bot_tenant_id, settings))
+                    
+                    logger.info(f"Buffered media group item: {media_group_id}, file_id: {file_id[:20] if file_id else 'none'}")
+                    return {"ok": True, "media_group_buffered": True}
+                
+                # Single item paid post (not media group)
+                
                 # Get content type and file_id FIRST (before deleting)
                 photo = channel_post.get("photo")
                 video = channel_post.get("video")
@@ -78,8 +269,8 @@ async def handle_channel_post(data, bot_token, bot_tenant_id, settings):
                     logger.info(f"Downloading original photo...")
                     image_bytes = await download_telegram_photo(original_file_id, bot_token)
                     if image_bytes:
-                        logger.info(f"Downloaded {len(image_bytes)} bytes, creating blur...")
-                        blurred_bytes = create_blurred_image(image_bytes, content_type="photo")
+                        logger.info(f"Downloaded {len(image_bytes)} bytes, creating blur with level {blur_level}...")
+                        blurred_bytes = create_blurred_image(image_bytes, blur_radius=blur_level, content_type="photo")
                         if blurred_bytes:
                             logger.info(f"Created blurred image: {len(blurred_bytes)} bytes")
                         else:
@@ -90,27 +281,14 @@ async def handle_channel_post(data, bot_token, bot_tenant_id, settings):
                 # Clean caption (remove /paid command and variations)
                 clean_caption = re_module.sub(r'^/paid[-_]?\s*', '', caption, flags=re_module.IGNORECASE).strip()
                 
-                # Extract price if mentioned (e.g., /paid-999, /paid 99, /paid₹99, 999 at start)
-                price_match = re_module.search(r'^[₹]?(\d+)[-_\s]*', clean_caption)
-                post_price = float(price_match.group(1)) if price_match else 0
-                logger.info(f"Extracted price: {post_price} from caption: {clean_caption[:30]}")
-                
-                # Remove price from caption if found at the beginning
-                if price_match:
-                    clean_caption = clean_caption[price_match.end():].strip()
-                    # Also remove leading - or _ if present
+                # Extract price if mentioned (e.g., /paid-999, /paid 99)
+                price_match_single = re_module.search(r'^[₹]?(\d+)[-_\s]*', clean_caption)
+                if price_match_single:
+                    clean_caption = clean_caption[price_match_single.end():].strip()
                     clean_caption = re_module.sub(r'^[-_\s]+', '', clean_caption)
                 
-                # If no price specified, get default from settings or plans
-                if post_price <= 0:
-                    settings = await get_bot_settings()
-                    post_price = settings.get("default_paid_post_price", 0)
-                    if post_price <= 0:
-                        plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).sort("price", 1).to_list(1)
-                        if plans:
-                            post_price = plans[0].get("price", 99)
-                        else:
-                            post_price = 99
+                # Remove blur param from clean caption
+                clean_caption = re_module.sub(r'\s*blur:\s*\w+', '', clean_caption, flags=re_module.IGNORECASE).strip()
                 
                 # Create paid post record
                 paid_post_id = str(uuid.uuid4())
@@ -120,15 +298,18 @@ async def handle_channel_post(data, bot_token, bot_tenant_id, settings):
                     "original_message_id": message_id,
                     "content_type": content_type,
                     "original_file_id": original_file_id,
+                    "file_ids": [{"type": content_type, "file_id": original_file_id}] if original_file_id else [],
+                    "media_count": 1,
                     "caption": clean_caption,
                     "price": post_price,
+                    "blur_level": blur_level,
                     "unlock_count": 0,
                     "is_active": True,
                     "tenant_id": bot_tenant_id,
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 await db.paid_posts.insert_one(paid_post)
-                logger.info(f"Created paid post record: {paid_post_id} with price {post_price}")
+                logger.info(f"Created paid post record: {paid_post_id} with price {post_price}, blur {blur_level}")
                 
                 # Prepare Unlock button
                 bot_username = await get_bot_username(bot_token)
@@ -188,7 +369,7 @@ async def handle_channel_post(data, bot_token, bot_tenant_id, settings):
                             logger.info(f"Downloading video thumbnail...")
                             thumb_bytes = await download_telegram_photo(thumb_file_id, bot_token)
                             if thumb_bytes:
-                                blurred_thumb = create_blurred_image(thumb_bytes, content_type="video")
+                                blurred_thumb = create_blurred_image(thumb_bytes, blur_radius=blur_level, content_type="video")
                                 if blurred_thumb:
                                     video_caption = f"🎬 <b>Paid Video Content</b>\n\n"
                                     video_caption += f"💰 Price: <b>{price_text}</b>\n\n"

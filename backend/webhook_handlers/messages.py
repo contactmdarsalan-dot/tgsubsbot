@@ -340,12 +340,20 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
                         # Remove pending status
                         await db.pending_screenshots.delete_one({"telegram_user_id": chat_id, "tenant_id": bot_tenant_id})
                         
-                        # Send unlocked content
+                        # Send unlocked content (supports media groups)
                         success_msg = "✅ <b>Payment Verified!</b>\n\n🔓 Unlocking your content..."
                         await send_telegram_message(chat_id, success_msg, bot_token)
                         
-                        if paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
-                            caption = f"🔓 <b>Unlocked!</b>\n\n{paid_post.get('caption', '')}"
+                        file_ids = paid_post.get("file_ids", [])
+                        caption = f"🔓 <b>Unlocked!</b>\n\n{paid_post.get('caption', '')}"
+                        if file_ids and len(file_ids) > 0:
+                            for i, item in enumerate(file_ids):
+                                item_caption = caption if i == 0 else ""
+                                if item.get("type") == "video":
+                                    await send_telegram_video(chat_id, item["file_id"], item_caption, bot_token)
+                                else:
+                                    await send_telegram_photo(chat_id, item["file_id"], item_caption, bot_token)
+                        elif paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
                             await send_telegram_photo(chat_id, paid_post["original_file_id"], caption, bot_token)
                         elif paid_post.get("content_type") == "video" and paid_post.get("original_file_id"):
                             caption = f"🔓 <b>Unlocked Video!</b>\n\n{paid_post.get('caption', '')}"
@@ -1117,11 +1125,19 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
         }, {"_id": 0})
         
         if existing_unlock:
-            # User already unlocked - send content again
+            # User already unlocked - send ALL content again (supports media groups)
             logger.info(f"User {chat_id} already unlocked post {post_id}, resending content")
             
-            if paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
-                caption = f"🔓 <b>Unlocked Content</b>\n\n{paid_post.get('caption', '')}"
+            file_ids = paid_post.get("file_ids", [])
+            caption = f"🔓 <b>Unlocked Content</b>\n\n{paid_post.get('caption', '')}"
+            if file_ids and len(file_ids) > 0:
+                for i, item in enumerate(file_ids):
+                    item_caption = caption if i == 0 else ""
+                    if item.get("type") == "video":
+                        await send_telegram_video(chat_id, item["file_id"], item_caption, bot_token)
+                    else:
+                        await send_telegram_photo(chat_id, item["file_id"], item_caption, bot_token)
+            elif paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
                 await send_telegram_photo(chat_id, paid_post["original_file_id"], caption, bot_token)
             elif paid_post.get("content_type") == "video" and paid_post.get("original_file_id"):
                 caption = f"🔓 <b>Unlocked Video</b>\n\n{paid_post.get('caption', '')}"
@@ -1140,38 +1156,30 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
             post_price = plans[0].get("price", 99) if plans else 99
         
         content_type = paid_post.get("content_type", "photo")
-        content_label = "Video" if content_type == "video" else "Post"
+        media_count = paid_post.get("media_count", 1) or 1
+        content_label = "Video" if content_type == "video" else ("Media Group" if content_type == "media_group" else "Post")
         original_file_id = paid_post.get("original_file_id", "")
+        blur_level = paid_post.get("blur_level", 25)
         
         # Try to send blurred preview
         blurred_sent = False
         if original_file_id:
             try:
-                if content_type == "photo":
+                if content_type in ("photo", "media_group"):
                     image_bytes = await download_telegram_photo(original_file_id, bot_token)
                     if image_bytes:
-                        blurred_bytes = create_blurred_image(image_bytes, content_type="photo")
+                        blurred_bytes = create_blurred_image(image_bytes, blur_radius=blur_level, content_type="photo")
                         if blurred_bytes:
                             blur_caption = f"🔒 <b>Paid {content_label}</b>\n\n"
                             blur_caption += f"💰 Price: <b>₹{int(post_price)}</b>\n"
+                            if media_count > 1:
+                                blur_caption += f"📦 <b>{media_count} items inside</b>\n"
                             if paid_post.get("caption"):
                                 blur_caption += f"\n📝 {paid_post['caption']}\n"
                             blur_caption += "\n👆 <b>Pay below to unlock this content!</b>"
                             await send_telegram_photo(chat_id, blurred_bytes, blur_caption, bot_token)
                             blurred_sent = True
                 elif content_type == "video":
-                    # For video, try to get a thumbnail and blur it
-                    # We need to get file info first
-                    async with httpx.AsyncClient(timeout=30.0) as http_client:
-                        file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={original_file_id}"
-                        resp = await http_client.get(file_info_url)
-                        if resp.status_code == 200:
-                            file_data = resp.json()
-                            # Video files can't easily be thumbnailed from file_id
-                            # Send a styled text message instead with play icon
-                            pass
-                    
-                    # Send video preview message
                     blur_caption = f"🎬 <b>Paid Video Content</b>\n\n"
                     blur_caption += f"💰 Price: <b>₹{int(post_price)}</b>\n"
                     if paid_post.get("caption"):
@@ -1186,6 +1194,8 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
         if not blurred_sent:
             unlock_msg = f"🔒 <b>Paid {content_label}</b>\n\n"
             unlock_msg += f"💰 Price: <b>₹{int(post_price)}</b>\n"
+            if media_count > 1:
+                unlock_msg += f"📦 <b>{media_count} items inside</b>\n"
             if paid_post.get("caption"):
                 unlock_msg += f"\n📝 {paid_post['caption']}\n"
             unlock_msg += "\n━━━━━━━━━━━━━━━\n"

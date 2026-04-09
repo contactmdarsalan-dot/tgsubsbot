@@ -1116,8 +1116,17 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                     "post_id": post_id, "telegram_user_id": chat_id, "tenant_id": bot_tenant_id
                 }, {"_id": 0})
                 if existing:
-                    # Already unlocked - resend content
-                    if paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
+                    # Already unlocked - resend ALL content
+                    file_ids = paid_post.get("file_ids", [])
+                    if file_ids and len(file_ids) > 0:
+                        caption = f"🔓 <b>Already Unlocked!</b>\n\n{paid_post.get('caption', '')}"
+                        for i, item in enumerate(file_ids):
+                            item_caption = caption if i == 0 else ""
+                            if item.get("type") == "video":
+                                await send_telegram_video(chat_id, item["file_id"], item_caption, bot_token)
+                            else:
+                                await send_telegram_photo(chat_id, item["file_id"], item_caption, bot_token)
+                    elif paid_post.get("content_type") == "photo" and paid_post.get("original_file_id"):
                         caption = f"🔓 <b>Already Unlocked!</b>\n\n{paid_post.get('caption', '')}"
                         await send_telegram_photo(chat_id, paid_post["original_file_id"], caption, bot_token)
                     elif paid_post.get("content_type") == "video" and paid_post.get("original_file_id"):
