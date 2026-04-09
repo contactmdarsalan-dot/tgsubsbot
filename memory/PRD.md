@@ -70,3 +70,12 @@ Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS prod
 - QR flow: User clicks QR button → Bot sends QR image → User pays and sends screenshot → Auto-verify (OCR+AI) or Admin review
 - Fixed: QR upload path bug (dashboard.py was saving to wrong directory)
 - Fixed: send_telegram_photo now handles full URLs, local paths, and adds fallback when photo fails
+- Added Manual Blur Control for Paid Posts:
+  - Caption parsing: /paid 99 blur:50 or blur:high/medium/low/extreme/max
+  - Dashboard slider (1-100) with Re-Blur button to regenerate channel preview
+  - create_blurred_image uses dynamic blur_radius parameter
+- Added Multiple Media Support (Media Groups):
+  - Telegram media groups (multiple photos/videos) handled as single paid post
+  - Buffer system collects all items before processing (2.5s delay)
+  - All items stored as file_ids array, sent together on unlock
+  - Dashboard shows media count badge per post
