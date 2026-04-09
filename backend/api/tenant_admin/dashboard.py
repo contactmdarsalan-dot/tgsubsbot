@@ -340,7 +340,7 @@ async def upload_qr_code(file: UploadFile = File(...), user=Depends(get_current_
 
     ext = file.filename.split(".")[-1] if "." in file.filename else "png"
     filename = f"qr_code_{uuid.uuid4().hex[:8]}.{ext}"
-    uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+    uploads_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
     os.makedirs(uploads_path, exist_ok=True)
     with open(os.path.join(uploads_path, filename), "wb") as f:
         f.write(contents)
@@ -361,7 +361,7 @@ async def upload_image(file: UploadFile = File(...), user=Depends(get_current_us
 
     ext = file.filename.split(".")[-1] if "." in file.filename else "png"
     filename = f"img_{uuid.uuid4().hex[:8]}.{ext}"
-    uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+    uploads_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
     os.makedirs(uploads_path, exist_ok=True)
     with open(os.path.join(uploads_path, filename), "wb") as f:
         f.write(contents)

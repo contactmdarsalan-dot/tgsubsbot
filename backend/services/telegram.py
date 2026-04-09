@@ -257,9 +257,15 @@ async def send_telegram_photo(chat_id: str, photo_url_or_bytes, caption: str, bo
                 data["reply_markup"] = json.dumps(reply_markup)
 
             if isinstance(photo_url_or_bytes, str):
+                # Normalize: extract /api/uploads/filename from full URLs
+                local_path = photo_url_or_bytes
+                if "/api/uploads/" in local_path and not local_path.startswith("/api/uploads/"):
+                    # Full URL like https://domain.com/api/uploads/file.png → extract local part
+                    local_path = "/api/uploads/" + local_path.split("/api/uploads/")[-1]
+                
                 # Check if it's a local /api/uploads/ path - read file and upload directly
-                if photo_url_or_bytes.startswith("/api/uploads/"):
-                    filename = photo_url_or_bytes.split("/")[-1]
+                if local_path.startswith("/api/uploads/"):
+                    filename = local_path.split("/")[-1]
                     uploads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
                     filepath = os.path.join(uploads_dir, filename)
                     if os.path.exists(filepath):
@@ -268,8 +274,10 @@ async def send_telegram_photo(chat_id: str, photo_url_or_bytes, caption: str, bo
                         files = {"photo": (filename, file_bytes, "image/png")}
                         response = await http_client.post(url, data=data, files=files)
                     else:
-                        logger.error(f"Local QR file not found: {filepath}")
-                        return None
+                        logger.error(f"Local file not found: {filepath}, trying as URL")
+                        # Fallback: try sending the original URL directly
+                        data["photo"] = photo_url_or_bytes
+                        response = await http_client.post(url, data=data)
                 else:
                     data["photo"] = photo_url_or_bytes
                     response = await http_client.post(url, data=data)

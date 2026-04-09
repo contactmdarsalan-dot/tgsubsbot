@@ -68,3 +68,5 @@ Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS prod
   - Video Call Booking: QR option for video call payments
   - Live Tickets: QR code shown with Razorpay option
 - QR flow: User clicks QR button → Bot sends QR image → User pays and sends screenshot → Auto-verify (OCR+AI) or Admin review
+- Fixed: QR upload path bug (dashboard.py was saving to wrong directory)
+- Fixed: send_telegram_photo now handles full URLs, local paths, and adds fallback when photo fails

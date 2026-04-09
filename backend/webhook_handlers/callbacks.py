@@ -188,7 +188,9 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                 cancel_btn = [[{"text": "❌ Cancel", "callback_data": "cancel_payment"}]]
                 
                 if qr_code_url:
-                    await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token, {"inline_keyboard": cancel_btn})
+                    result = await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token, {"inline_keyboard": cancel_btn})
+                    if not result:
+                        await send_telegram_message_with_buttons(chat_id, qr_msg, cancel_btn, bot_token)
                 else:
                     await send_telegram_message_with_buttons(chat_id, qr_msg, cancel_btn, bot_token)
             else:
@@ -229,7 +231,9 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
             cancel_btn = [[{"text": "❌ Cancel", "callback_data": "cancel_payment"}]]
             
             if qr_code_url:
-                await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token, {"inline_keyboard": cancel_btn})
+                result = await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token, {"inline_keyboard": cancel_btn})
+                if not result:
+                    await send_telegram_message_with_buttons(chat_id, qr_msg, cancel_btn, bot_token)
             else:
                 await send_telegram_message_with_buttons(chat_id, qr_msg, cancel_btn, bot_token)
         
@@ -281,7 +285,10 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                 cancel_btn = [[{"text": "❌ Cancel", "callback_data": "cancel_payment"}]]
                 
                 if qr_code_url:
-                    await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token, {"inline_keyboard": cancel_btn})
+                    result = await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token, {"inline_keyboard": cancel_btn})
+                    if not result:
+                        # Photo send failed, send text message instead
+                        await send_telegram_message_with_buttons(chat_id, qr_msg, cancel_btn, bot_token)
                 else:
                     await send_telegram_message_with_buttons(chat_id, qr_msg, cancel_btn, bot_token)
             else:
