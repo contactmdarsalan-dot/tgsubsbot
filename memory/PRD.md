@@ -58,3 +58,7 @@ Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS prod
 ## Known Issues
 - Webhook currently pointing to preview URL (needs production deployment)
 - Some Telegram channels return 403 (bot can't initiate conversation with users who haven't started the bot)
+
+## Recent Changes (April 2026)
+- Fixed Plans.jsx: Removed conflicting Select dropdown for Channel ID, replaced with clean manual input field
+- Channel ID can now be manually typed without being overridden by dropdown state

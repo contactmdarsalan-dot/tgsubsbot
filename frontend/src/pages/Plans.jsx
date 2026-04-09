@@ -36,7 +36,6 @@ export default function Plans() {
   const [promoteDialogOpen, setPromoteDialogOpen] = useState(false);
   const [promotePlan, setPromotePlan] = useState(null);
   const [groups, setGroups] = useState([]);
-  const [channels, setChannels] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState("");
   const [form, setForm] = useState({
     name: "",
@@ -53,7 +52,6 @@ export default function Plans() {
   useEffect(() => {
     fetchPlans();
     fetchGroups();
-    fetchChannels();
   }, []);
 
   const fetchGroups = async () => {
@@ -62,15 +60,6 @@ export default function Plans() {
       setGroups(response.data);
     } catch (error) {
       console.error("Failed to fetch groups");
-    }
-  };
-
-  const fetchChannels = async () => {
-    try {
-      const response = await axios.get(`${API}/channels`, getAuthHeaders());
-      setChannels(response.data || []);
-    } catch (error) {
-      console.error("Failed to fetch channels");
     }
   };
 
@@ -307,49 +296,18 @@ export default function Plans() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="channel_id" className="text-primary font-semibold">Channel / Group (for access after payment)</Label>
-              {channels.length > 0 || groups.length > 0 ? (
-                <Select
-                  value={form.channel_id || "__none__"}
-                  onValueChange={(val) => setForm({ ...form, channel_id: val === "__none__" ? "" : val })}
-                >
-                  <SelectTrigger data-testid="plan-channel-select" className="bg-muted/50 border-primary/30">
-                    <SelectValue placeholder="Select channel for this plan..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">-- No Channel (use default) --</SelectItem>
-                    {channels.filter(ch => (ch.telegram_channel_id || ch.channel_id)).map((ch) => (
-                      <SelectItem key={ch.id || ch.channel_id} value={ch.telegram_channel_id || ch.channel_id || ch.id}>
-                        {ch.channel_name || ch.name || "Channel"} ({ch.telegram_channel_id || ch.channel_id})
-                      </SelectItem>
-                    ))}
-                    {groups.filter(g => g.group_id && g.group_id !== "0").map((g) => (
-                      <SelectItem key={g.id || g.group_id} value={g.group_id}>
-                        {g.group_name || g.name || "Group"} ({g.group_id})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input
-                  id="channel_id"
-                  value={form.channel_id}
-                  onChange={(e) => setForm({ ...form, channel_id: e.target.value })}
-                  placeholder="-1001234567890 (Telegram channel/group ID)"
-                  data-testid="plan-channel-input"
-                  className="bg-muted/50 border-primary/30 focus:border-primary font-mono text-sm"
-                />
-              )}
-              <div className="space-y-1 mt-1">
-                <Label className="text-xs text-muted-foreground">Or enter Channel ID manually:</Label>
-                <Input
-                  value={form.channel_id}
-                  onChange={(e) => setForm({ ...form, channel_id: e.target.value })}
-                  placeholder="-1001234567890"
-                  data-testid="plan-channel-manual-input"
-                  className="bg-muted/50 border-transparent focus:border-primary font-mono text-sm"
-                />
-              </div>
+              <Label htmlFor="channel_id" className="text-primary font-semibold">Channel / Group ID (for access after payment)</Label>
+              <Input
+                id="channel_id"
+                value={form.channel_id}
+                onChange={(e) => setForm({ ...form, channel_id: e.target.value })}
+                placeholder="-1001234567890"
+                data-testid="plan-channel-input"
+                className="bg-muted/50 border-primary/30 focus:border-primary font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Telegram channel/group ID enter karo (e.g. -1001234567890)
+              </p>
               {!form.channel_id && (
                 <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-md">
                   <p className="text-xs text-amber-400 font-medium">
