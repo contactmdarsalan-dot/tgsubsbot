@@ -54,6 +54,7 @@ from api.tenant_admin.live_content import router as live_content_router
 from api.tenant_admin.analytics_exports import router as analytics_exports_router
 from api.tenant_admin.tenant import router as tenant_router
 from api.tenant_admin.miniapp_admin import router as miniapp_admin_router
+from api.tenant_admin.content import router as content_router
 
 # Customer routes (end-user facing)
 from api.customer.miniapp_user import router as miniapp_user_router
@@ -108,6 +109,7 @@ app.include_router(analytics_exports_router, prefix="/api")
 app.include_router(webhook_router, prefix="/api")
 app.include_router(miniapp_user_router, prefix="/api")
 app.include_router(miniapp_admin_router, prefix="/api")
+app.include_router(content_router, prefix="/api")
 app.include_router(miniapp_calls_router, prefix="/api")
 app.include_router(miniapp_chat_router, prefix="/api")
 app.include_router(tenant_router, prefix="/api")

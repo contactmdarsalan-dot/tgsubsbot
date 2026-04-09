@@ -23,7 +23,24 @@ import {
   ShieldCheck,
   Layers,
   SlidersHorizontal,
+  Plus,
+  Upload,
+  Calendar,
+  Send,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -37,10 +54,29 @@ export default function PaidPosts() {
   const [loading, setLoading] = useState(true);
   const [editingPost, setEditingPost] = useState(null);
   const [reblurring, setReblurring] = useState(null);
-  const [activeTab, setActiveTab] = useState("posts"); // posts, requests, unlocked
+  const [activeTab, setActiveTab] = useState("posts"); // posts, requests, unlocked, create, scheduled
+  
+  // Create post form
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    channel_id: "",
+    price: 99,
+    blur_level: 25,
+    caption: "",
+    scheduled_at: "",
+    isScheduled: false,
+  });
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [blurPreview, setBlurPreview] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [channels, setChannels] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [scheduledPosts, setScheduledPosts] = useState([]);
 
   useEffect(() => {
     fetchData();
+    fetchChannels();
+    fetchScheduled();
   }, []);
 
   const fetchData = async () => {
@@ -57,6 +93,86 @@ export default function PaidPosts() {
       toast.error("Failed to load paid posts data");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchChannels = async () => {
+    try {
+      const [chRes, grRes] = await Promise.all([
+        axios.get(`${API}/channels`, getAuthHeaders()),
+        axios.get(`${API}/chat-groups`, getAuthHeaders()),
+      ]);
+      setChannels(chRes.data || []);
+      setGroups(grRes.data || []);
+    } catch {}
+  };
+
+  const fetchScheduled = async () => {
+    try {
+      const res = await axios.get(`${API}/scheduled-posts`, getAuthHeaders());
+      setScheduledPosts(res.data || []);
+    } catch {}
+  };
+
+  const handlePreviewBlur = async () => {
+    if (!selectedFiles.length) return;
+    const firstPhoto = selectedFiles.find(f => f.type.startsWith("image/"));
+    if (!firstPhoto) return toast.error("Photo chahiye preview ke liye");
+    
+    const formData = new FormData();
+    formData.append("file", firstPhoto);
+    formData.append("blur_level", createForm.blur_level);
+    
+    try {
+      const res = await axios.post(`${API}/paid-posts/preview-blur`, formData, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}`, "Content-Type": "multipart/form-data" },
+      });
+      setBlurPreview(res.data.preview_url);
+    } catch (err) {
+      toast.error("Preview failed");
+    }
+  };
+
+  const handleCreatePost = async () => {
+    if (!createForm.channel_id) return toast.error("Channel select karo");
+    if (!selectedFiles.length) return toast.error("Files upload karo");
+    
+    setCreating(true);
+    const formData = new FormData();
+    formData.append("channel_id", createForm.channel_id);
+    formData.append("price", createForm.price);
+    formData.append("blur_level", createForm.blur_level);
+    formData.append("caption", createForm.caption);
+    if (createForm.isScheduled && createForm.scheduled_at) {
+      formData.append("scheduled_at", new Date(createForm.scheduled_at).toISOString());
+    }
+    selectedFiles.forEach((f) => formData.append("files", f));
+    
+    try {
+      const res = await axios.post(`${API}/paid-posts/create`, formData, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}`, "Content-Type": "multipart/form-data" },
+      });
+      toast.success(createForm.isScheduled ? "Post scheduled!" : "Paid post created!");
+      setCreateOpen(false);
+      setSelectedFiles([]);
+      setBlurPreview(null);
+      setCreateForm({ channel_id: "", price: 99, blur_level: 25, caption: "", scheduled_at: "", isScheduled: false });
+      fetchData();
+      fetchScheduled();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to create post");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleCancelScheduled = async (id) => {
+    try {
+      await axios.delete(`${API}/scheduled-posts/${id}`, getAuthHeaders());
+      toast.success("Scheduled post cancelled");
+      fetchScheduled();
+    } catch {
+      toast.error("Failed to cancel");
     }
   };
 
@@ -153,10 +269,16 @@ export default function PaidPosts() {
             Manage paid content and unlock requests
           </p>
         </div>
-        <Button onClick={fetchData} variant="outline" data-testid="refresh-btn">
-          <RefreshCcw className="w-4 h-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setCreateOpen(true)} data-testid="create-paid-post-btn">
+            <Plus className="w-4 h-4 mr-2" />
+            Create Post
+          </Button>
+          <Button onClick={fetchData} variant="outline" data-testid="refresh-btn">
+            <RefreshCcw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -271,6 +393,22 @@ export default function PaidPosts() {
           Unlocked Success
           {approvedRequests.length > 0 && (
             <Badge className="ml-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">{approvedRequests.length}</Badge>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab("scheduled")}
+          data-testid="tab-scheduled"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === "scheduled"
+              ? "border-amber-500 text-amber-500"
+              : "border-transparent text-muted-foreground hover:text-white"
+          }`}
+        >
+          Scheduled
+          {scheduledPosts.filter(s => s.status === "scheduled").length > 0 && (
+            <Badge className="ml-2 bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              {scheduledPosts.filter(s => s.status === "scheduled").length}
+            </Badge>
           )}
         </button>
       </div>
@@ -704,6 +842,202 @@ export default function PaidPosts() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Scheduled Posts Tab */}
+      {activeTab === "scheduled" && (
+        <div className="space-y-3">
+          {scheduledPosts.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <Calendar className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                <p className="text-muted-foreground">No scheduled posts. Create one with the "Create Post" button!</p>
+              </CardContent>
+            </Card>
+          ) : (
+            scheduledPosts.map((sp) => (
+              <Card key={sp.id} data-testid={`scheduled-${sp.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant={sp.status === "scheduled" ? "default" : sp.status === "published" ? "secondary" : "destructive"}>
+                          {sp.status}
+                        </Badge>
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <IndianRupee className="w-3 h-3" />
+                          {sp.price}
+                        </Badge>
+                        <Badge variant="outline">
+                          {sp.saved_files?.length || 0} file(s)
+                        </Badge>
+                      </div>
+                      <p className="text-sm mb-1">{sp.caption || "No caption"}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        Scheduled: {new Date(sp.scheduled_at).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      {sp.blurred_preview_path && (
+                        <img
+                          src={`${process.env.REACT_APP_BACKEND_URL?.replace(/\/api\/?$/, "")}${sp.blurred_preview_path}`}
+                          alt="Preview"
+                          className="w-16 h-16 rounded-lg object-cover border"
+                        />
+                      )}
+                      {sp.status === "scheduled" && (
+                        <Button size="sm" variant="outline" className="text-red-500" onClick={() => handleCancelScheduled(sp.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Create Post Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create Paid Post</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* File Upload */}
+            <div>
+              <Label>Upload Photos / Videos</Label>
+              <div className="border-2 border-dashed border-primary/30 rounded-lg p-6 text-center mt-2 cursor-pointer hover:border-primary/60 transition-colors"
+                onClick={() => document.getElementById("file-upload-input").click()}>
+                <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Click to upload photos/videos</p>
+                <p className="text-xs text-muted-foreground mt-1">Multiple files allowed</p>
+              </div>
+              <input
+                id="file-upload-input"
+                type="file"
+                multiple
+                accept="image/*,video/*"
+                className="hidden"
+                onChange={(e) => {
+                  setSelectedFiles(Array.from(e.target.files));
+                  setBlurPreview(null);
+                }}
+              />
+              {selectedFiles.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {selectedFiles.map((f, i) => (
+                    <div key={i} className="text-xs flex items-center gap-2 bg-muted p-2 rounded">
+                      {f.type.startsWith("video/") ? <Video className="w-3 h-3" /> : <Image className="w-3 h-3" />}
+                      <span className="truncate flex-1">{f.name}</span>
+                      <span className="text-muted-foreground">{(f.size / 1024 / 1024).toFixed(1)}MB</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Channel ID */}
+            <div>
+              <Label>Channel / Group ID</Label>
+              <Input
+                value={createForm.channel_id}
+                onChange={(e) => setCreateForm({ ...createForm, channel_id: e.target.value })}
+                placeholder="-1001234567890"
+                className="font-mono text-sm"
+                data-testid="create-channel-input"
+              />
+            </div>
+
+            {/* Price */}
+            <div>
+              <Label>Price (₹)</Label>
+              <Input
+                type="number"
+                value={createForm.price}
+                onChange={(e) => setCreateForm({ ...createForm, price: parseFloat(e.target.value) || 0 })}
+                data-testid="create-price-input"
+              />
+            </div>
+
+            {/* Blur Level */}
+            <div>
+              <Label className="flex items-center gap-1">
+                <SlidersHorizontal className="w-3 h-3" />
+                Blur Level: {createForm.blur_level}
+              </Label>
+              <input
+                type="range"
+                min="1"
+                max="100"
+                value={createForm.blur_level}
+                onChange={(e) => { setCreateForm({ ...createForm, blur_level: parseInt(e.target.value) }); setBlurPreview(null); }}
+                className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary mt-2"
+                data-testid="create-blur-slider"
+              />
+              <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+                <span>Low</span><span>Medium</span><span>High</span><span>Max</span>
+              </div>
+              {selectedFiles.some(f => f.type.startsWith("image/")) && (
+                <Button size="sm" variant="outline" className="mt-2" onClick={handlePreviewBlur} data-testid="preview-blur-btn">
+                  <Eye className="w-3 h-3 mr-1" /> Preview Blur
+                </Button>
+              )}
+              {blurPreview && (
+                <div className="mt-2 border rounded-lg overflow-hidden">
+                  <img
+                    src={`${process.env.REACT_APP_BACKEND_URL?.replace(/\/api\/?$/, "")}${blurPreview}`}
+                    alt="Blur Preview"
+                    className="w-full h-48 object-cover"
+                    data-testid="blur-preview-image"
+                  />
+                  <p className="text-xs text-center text-muted-foreground p-1">Blur preview (Level: {createForm.blur_level})</p>
+                </div>
+              )}
+            </div>
+
+            {/* Caption */}
+            <div>
+              <Label>Caption (optional)</Label>
+              <Input
+                value={createForm.caption}
+                onChange={(e) => setCreateForm({ ...createForm, caption: e.target.value })}
+                placeholder="Exclusive content..."
+                data-testid="create-caption-input"
+              />
+            </div>
+
+            {/* Schedule Toggle */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={createForm.isScheduled}
+                  onChange={(e) => setCreateForm({ ...createForm, isScheduled: e.target.checked })}
+                  className="rounded"
+                />
+                <Calendar className="w-4 h-4" />
+                <span className="text-sm">Schedule for later</span>
+              </label>
+              {createForm.isScheduled && (
+                <Input
+                  type="datetime-local"
+                  value={createForm.scheduled_at}
+                  onChange={(e) => setCreateForm({ ...createForm, scheduled_at: e.target.value })}
+                  data-testid="schedule-datetime-input"
+                  className="text-sm"
+                />
+              )}
+            </div>
+
+            <Button className="w-full" onClick={handleCreatePost} disabled={creating} data-testid="submit-create-post-btn">
+              {creating ? "Creating..." : createForm.isScheduled ? "Schedule Post" : "Create & Post Now"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

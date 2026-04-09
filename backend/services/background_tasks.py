@@ -266,3 +266,173 @@ async def check_upcoming_live_sessions():
 
     except Exception as e:
         logger.error(f"Error in check_upcoming_live_sessions: {e}")
+
+
+
+async def process_scheduled_posts():
+    """Process scheduled paid posts that are due."""
+    from services.telegram import (
+        get_bot_username, send_telegram_photo, delete_telegram_message
+    )
+    from services.payment import create_blurred_image
+    import httpx
+    import uuid
+    import os
+
+    now = datetime.now(timezone.utc)
+    
+    # Find scheduled posts that are due
+    due_posts = await db.scheduled_posts.find(
+        {"status": "scheduled", "scheduled_at": {"$lte": now.isoformat()}},
+        {"_id": 0}
+    ).to_list(50)
+    
+    if not due_posts:
+        return
+    
+    logger.info(f"Processing {len(due_posts)} scheduled posts")
+    
+    settings = await db.settings.find_one({"id": "bot_settings"}, {"_id": 0}) or {}
+    bot_token = settings.get("telegram_bot_token", "")
+    if not bot_token:
+        bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    
+    if not bot_token:
+        logger.error("No bot token for scheduled posts")
+        return
+    
+    bot_username = await get_bot_username(bot_token)
+    
+    for sched in due_posts:
+        try:
+            post_id = sched["id"]
+            channel_id = sched["channel_id"]
+            saved_files = sched.get("saved_files", [])
+            price = sched.get("price", 99)
+            blur_level = sched.get("blur_level", 25)
+            caption = sched.get("caption", "")
+            tenant_id = sched.get("tenant_id", "default")
+            
+            uploads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+            
+            # Upload files to channel and collect file_ids
+            file_ids = []
+            first_photo_bytes = None
+            
+            for sf in saved_files:
+                local_fname = sf["local_path"].split("/")[-1]
+                local_fpath = os.path.join(uploads_dir, local_fname)
+                
+                if not os.path.exists(local_fpath):
+                    logger.error(f"Scheduled file not found: {local_fpath}")
+                    continue
+                
+                with open(local_fpath, "rb") as fp:
+                    contents = fp.read()
+                
+                content_type = sf.get("type", "photo")
+                
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    if content_type == "video":
+                        resp = await client.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendVideo",
+                            data={"chat_id": channel_id},
+                            files={"video": (local_fname, contents, "video/mp4")}
+                        )
+                    else:
+                        resp = await client.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendPhoto",
+                            data={"chat_id": channel_id},
+                            files={"photo": (local_fname, contents, "image/jpeg")}
+                        )
+                    
+                    result = resp.json()
+                    if result.get("ok"):
+                        msg = result["result"]
+                        if content_type == "video":
+                            fid = msg.get("video", {}).get("file_id", "")
+                        else:
+                            photos = msg.get("photo", [])
+                            fid = photos[-1].get("file_id", "") if photos else ""
+                        
+                        file_ids.append({
+                            "type": content_type,
+                            "file_id": fid,
+                            "message_id": msg.get("message_id", 0)
+                        })
+                        
+                        if content_type == "photo" and first_photo_bytes is None:
+                            first_photo_bytes = contents
+            
+            if not file_ids:
+                await db.scheduled_posts.update_one({"id": post_id}, {"$set": {"status": "failed", "error": "No files uploaded"}})
+                continue
+            
+            # Create blurred preview
+            blurred_bytes = None
+            if first_photo_bytes:
+                blurred_bytes = create_blurred_image(first_photo_bytes, blur_radius=blur_level, content_type="photo")
+            
+            # Save paid post
+            first_photo = next((f for f in file_ids if f["type"] == "photo"), None)
+            paid_post = {
+                "id": post_id,
+                "channel_id": channel_id,
+                "original_message_id": file_ids[0].get("message_id", 0),
+                "content_type": "media_group" if len(file_ids) > 1 else file_ids[0]["type"],
+                "original_file_id": first_photo["file_id"] if first_photo else file_ids[0]["file_id"],
+                "file_ids": file_ids,
+                "media_count": len(file_ids),
+                "caption": caption,
+                "price": price,
+                "blur_level": blur_level,
+                "unlock_count": 0,
+                "is_active": True,
+                "tenant_id": tenant_id,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.paid_posts.insert_one(paid_post)
+            
+            # Post blurred preview
+            media_count = len(file_ids)
+            price_text = f"₹{int(price)}"
+            blur_caption = f"🔒 <b>Paid Content</b>\n\n💰 Price: <b>{price_text}</b>\n\n"
+            if caption:
+                blur_caption += f"📝 {caption}\n\n"
+            if media_count > 1:
+                blur_caption += f"📦 {media_count} items inside\n\n"
+            blur_caption += "👆 Tap 'Unlock' to view!"
+            
+            unlock_text = f"🔓 Unlock" if media_count <= 1 else f"🔓 Unlock {media_count} Items"
+            unlock_button = {
+                "inline_keyboard": [[{
+                    "text": f"{unlock_text} - {price_text}",
+                    "url": f"https://t.me/{bot_username}?start=unlock_{post_id}"
+                }]]
+            }
+            
+            blurred_msg_id = None
+            if blurred_bytes:
+                result = await send_telegram_photo(channel_id, blurred_bytes, blur_caption, bot_token, unlock_button)
+                if result and result.get("ok"):
+                    blurred_msg_id = result.get("result", {}).get("message_id", 0)
+            
+            if blurred_msg_id:
+                await db.paid_posts.update_one({"id": post_id}, {"$set": {"blurred_message_id": blurred_msg_id}})
+            
+            # Delete original uploaded messages
+            for item in file_ids:
+                msg_id = item.get("message_id")
+                if msg_id:
+                    await delete_telegram_message(channel_id, msg_id, bot_token)
+            
+            # Mark scheduled post as published
+            await db.scheduled_posts.update_one({"id": post_id}, {"$set": {"status": "published"}})
+            logger.info(f"Scheduled post {post_id} published to channel {channel_id}")
+            
+        except Exception as e:
+            logger.error(f"Error processing scheduled post {sched.get('id')}: {e}")
+            await db.scheduled_posts.update_one(
+                {"id": sched.get("id")}, 
+                {"$set": {"status": "failed", "error": str(e)}}
+            )

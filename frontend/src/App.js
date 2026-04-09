@@ -24,6 +24,7 @@ import Analytics from "./pages/Analytics";
 import VideoCalls from "./pages/VideoCalls";
 import LiveStream from "./pages/LiveStream";
 import PaidPosts from "./pages/PaidPosts";
+import Polls from "./pages/Polls";
 import UserManagement from "./pages/UserManagement";
 import Creators from "./pages/Creators";
 import Profile from "./pages/Profile";
@@ -172,6 +173,7 @@ function AppRouter() {
         <Route path="video-calls" element={<TenantRoute><VideoCalls /></TenantRoute>} />
         <Route path="live-stream" element={<TenantRoute><LiveStream /></TenantRoute>} />
         <Route path="paid-posts" element={<TenantRoute><PaidPosts /></TenantRoute>} />
+        <Route path="polls" element={<TenantRoute><Polls /></TenantRoute>} />
         <Route path="user-management" element={<SuperAdminRoute><UserManagement /></SuperAdminRoute>} />
         <Route path="creators" element={<TenantRoute><Creators /></TenantRoute>} />
         <Route path="branding" element={<SuperAdminRoute><Branding /></SuperAdminRoute>} />

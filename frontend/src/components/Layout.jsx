@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
   LayoutDashboard, CreditCard, Users, Package, Settings, LogOut, Menu, X,
-  Shield, Radio, Ticket, Share2, HelpCircle, BarChart3, Video, Lock,
+  Shield, Radio, Ticket, Share2, HelpCircle, BarChart3, Video, Lock, ListChecks,
   Sparkles, IndianRupee, Activity, User, ChevronDown, Building2,
   TrendingUp, AlertTriangle, Headphones, Globe, Search, Plus, Bell,
   ChevronRight, Zap, MessagesSquare, Languages, Smartphone, Crown, Palette,
@@ -31,6 +31,7 @@ const botNav = [
   { path: "/dashboard/payments", label: "Payments", icon: CreditCard },
   { path: "/dashboard/bot-activity", label: "Bot Activity", icon: Activity },
   { path: "/dashboard/paid-posts", label: "Paid Posts", icon: Lock },
+  { path: "/dashboard/polls", label: "Polls", icon: ListChecks },
   { path: "/dashboard/creators", label: "Creators", icon: Sparkles },
   { path: "/dashboard/chat-groups", label: "Groups & Channels", icon: MessagesSquare },
   { path: "/dashboard/automation", label: "Automation", icon: Bell },
