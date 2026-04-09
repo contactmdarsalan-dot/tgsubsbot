@@ -125,6 +125,14 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                     payment_msg += "   Click below to pay instantly!\n\n"
                     buttons.append([{"text": "💳 Pay with Razorpay", "url": razorpay_link}])
                 
+                # Add QR/UPI button if QR code is configured
+                qr_code_url = settings.get("qr_code_url", "")
+                upi_id = settings.get("payment_upi_id", "") or settings.get("upi_id", "")
+                if qr_code_url or upi_id:
+                    payment_msg += "📱 <b>Pay via QR/UPI</b>\n"
+                    payment_msg += "   Scan QR & send screenshot!\n\n"
+                    buttons.append([{"text": "📱 Pay via QR/UPI", "callback_data": f"qr_{plan_id}"}])
+                
                 payment_msg += f"📱 <b>Your ID:</b> <code>{chat_id}</code>"
                 
                 buttons.append([{"text": "◀️ Back to Plans", "callback_data": "back_plans"}])
@@ -138,6 +146,146 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                         urgency_timer_task(chat_id, msg_result, plan, price_display, final_price, buttons, bot_token)
                     )
         
+        
+        elif callback_data.startswith("qr_unlock_"):
+            # QR payment for paid post unlock
+            post_id = callback_data.replace("qr_unlock_", "")
+            paid_post = await db.paid_posts.find_one({"id": post_id, "is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0})
+            
+            if paid_post:
+                post_price = paid_post.get("price", 0)
+                if post_price <= 0:
+                    plans = await db.plans.find({"is_active": True, "tenant_id": bot_tenant_id}, {"_id": 0}).sort("price", 1).to_list(1)
+                    post_price = plans[0].get("price", 99) if plans else 99
+                
+                qr_code_url = settings.get("qr_code_url", "")
+                upi_id = settings.get("payment_upi_id", "") or settings.get("upi_id", "")
+                content_label = "Video" if paid_post.get("content_type") == "video" else "Post"
+                
+                # Set pending screenshot for unlock
+                await db.pending_screenshots.update_one(
+                    {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
+                    {"$set": {
+                        "telegram_user_id": chat_id,
+                        "telegram_username": username,
+                        "unlock_post_id": post_id,
+                        "expected_amount": post_price,
+                        "status": "waiting_unlock",
+                        "tenant_id": bot_tenant_id,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }},
+                    upsert=True
+                )
+                
+                qr_msg = f"📱 <b>Pay via QR/UPI - Unlock {content_label}</b>\n\n"
+                qr_msg += f"💰 Amount: <b>₹{int(post_price)}</b>\n\n"
+                qr_msg += "━━━━━━━━━━━━━━━\n"
+                if upi_id:
+                    qr_msg += f"📱 UPI ID: <code>{upi_id}</code>\n\n"
+                qr_msg += "📸 <b>Payment karne ke baad screenshot bhejo!</b>\n"
+                qr_msg += "✅ Auto-verify ho jayega!"
+                
+                cancel_btn = [[{"text": "❌ Cancel", "callback_data": "cancel_payment"}]]
+                
+                if qr_code_url:
+                    await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token, {"inline_keyboard": cancel_btn})
+                else:
+                    await send_telegram_message_with_buttons(chat_id, qr_msg, cancel_btn, bot_token)
+            else:
+                await send_telegram_message(chat_id, "❌ Post not found or expired.", bot_token)
+        
+        elif callback_data.startswith("qr_vc_"):
+            # QR payment for video call
+            parts = callback_data.replace("qr_vc_", "").rsplit("_", 1)
+            booking_id = parts[0] if parts else ""
+            vc_price = int(parts[1]) if len(parts) > 1 else 0
+            
+            qr_code_url = settings.get("qr_code_url", "")
+            upi_id = settings.get("payment_upi_id", "") or settings.get("upi_id", "")
+            
+            # Set pending screenshot for video call
+            await db.pending_screenshots.update_one(
+                {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
+                {"$set": {
+                    "telegram_user_id": chat_id,
+                    "telegram_username": username,
+                    "booking_id": booking_id,
+                    "expected_amount": vc_price,
+                    "status": "waiting",
+                    "tenant_id": bot_tenant_id,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+            
+            qr_msg = f"📱 <b>Pay via QR/UPI - Video Call</b>\n\n"
+            qr_msg += f"💰 Amount: <b>₹{vc_price}</b>\n\n"
+            qr_msg += "━━━━━━━━━━━━━━━\n"
+            if upi_id:
+                qr_msg += f"📱 UPI ID: <code>{upi_id}</code>\n\n"
+            qr_msg += "📸 <b>Payment karne ke baad screenshot bhejo!</b>\n"
+            qr_msg += "✅ Auto-verify ho jayega!"
+            
+            cancel_btn = [[{"text": "❌ Cancel", "callback_data": "cancel_payment"}]]
+            
+            if qr_code_url:
+                await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token, {"inline_keyboard": cancel_btn})
+            else:
+                await send_telegram_message_with_buttons(chat_id, qr_msg, cancel_btn, bot_token)
+        
+        elif callback_data.startswith("qr_") and not callback_data.startswith("qr_unlock_") and not callback_data.startswith("qr_vc_"):
+            # QR payment for subscription plan
+            plan_id = callback_data.replace("qr_", "")
+            plan = await db.plans.find_one({"id": plan_id, "tenant_id": bot_tenant_id}, {"_id": 0})
+            
+            if plan:
+                qr_code_url = settings.get("qr_code_url", "")
+                upi_id = settings.get("payment_upi_id", "") or settings.get("upi_id", "")
+                
+                # Calculate final price with discount
+                original_price = int(plan.get('price', 0))
+                discount_pct = plan.get('discount_percentage', 0)
+                if discount_pct > 0:
+                    final_price = int(original_price * (100 - discount_pct) / 100)
+                else:
+                    final_price = original_price
+                
+                # Set pending screenshot status
+                await db.pending_screenshots.update_one(
+                    {"telegram_user_id": chat_id, "tenant_id": bot_tenant_id},
+                    {"$set": {
+                        "telegram_user_id": chat_id,
+                        "telegram_username": username,
+                        "plan_id": plan_id,
+                        "plan_name": plan.get("name", ""),
+                        "expected_amount": final_price,
+                        "discounted_price": final_price if discount_pct > 0 else None,
+                        "status": "waiting",
+                        "tenant_id": bot_tenant_id,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }},
+                    upsert=True
+                )
+                
+                qr_msg = f"📱 <b>Pay via QR/UPI</b>\n\n"
+                qr_msg += f"📦 Plan: <b>{plan.get('name', 'Plan')}</b>\n"
+                qr_msg += f"💰 Amount: <b>₹{final_price}</b>\n"
+                if discount_pct > 0:
+                    qr_msg += f"🔥 <s>₹{original_price}</s> → <b>₹{final_price}</b> ({discount_pct}% OFF)\n"
+                qr_msg += f"\n━━━━━━━━━━━━━━━\n"
+                if upi_id:
+                    qr_msg += f"📱 UPI ID: <code>{upi_id}</code>\n\n"
+                qr_msg += "📸 <b>Payment karne ke baad screenshot bhejo!</b>\n"
+                qr_msg += "✅ Auto-verify ho jayega!"
+                
+                cancel_btn = [[{"text": "❌ Cancel", "callback_data": "cancel_payment"}]]
+                
+                if qr_code_url:
+                    await send_telegram_photo(chat_id, qr_code_url, qr_msg, bot_token, {"inline_keyboard": cancel_btn})
+                else:
+                    await send_telegram_message_with_buttons(chat_id, qr_msg, cancel_btn, bot_token)
+            else:
+                await send_telegram_message(chat_id, "❌ Plan not found. /start se try karo.", bot_token)
         
         elif callback_data.startswith("razorpay_"):
             # Create Razorpay payment link
@@ -692,10 +840,46 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
             msg += f"🕐 Time: <b>{selected_time}</b>\n"
             msg += f"💰 Amount: <b>₹{price}</b>\n\n"
             msg += "━━━━━━━━━━━━━━━\n"
-            msg += "💳 <b>Pay via Razorpay and send screenshot</b>\n\n"
-            msg += f"📱 <b>Your ID:</b> <code>{chat_id}</code>"
+            msg += "💳 <b>Payment Options:</b>\n\n"
             
             buttons = []
+            
+            # Add Razorpay button if available
+            if razorpay_client:
+                try:
+                    order_data = {"amount": int(price) * 100, "currency": "INR",
+                                  "receipt": f"vc_{uuid.uuid4().hex[:16]}", "payment_capture": 1}
+                    razor_order = await asyncio.to_thread(razorpay_client.order.create, order_data)
+                    razorpay_order_id = razor_order.get("id", "")
+                    if razorpay_order_id:
+                        await db.razorpay_bot_orders.update_one(
+                            {"chat_id": str(chat_id), "booking_id": booking['id'], "status": "created"},
+                            {"$set": {
+                                "chat_id": str(chat_id), "username": username or "",
+                                "booking_id": booking['id'],
+                                "plan_id": "", "plan_name": "Video Call",
+                                "duration_days": 0, "amount": int(price),
+                                "razorpay_order_id": razorpay_order_id,
+                                "status": "created", "type": "video_call",
+                                "tenant_id": bot_tenant_id,
+                                "created_at": datetime.now(timezone.utc).isoformat()
+                            }}, upsert=True
+                        )
+                        base_url = os.environ.get("RAZORPAY_CALLBACK_URL", "")
+                        if not base_url:
+                            base_url = settings.get("website_link", os.environ.get("REACT_APP_BACKEND_URL", "")).rstrip("/")
+                        rp_link = f"{base_url}/api/pay/{razorpay_order_id}"
+                        buttons.append([{"text": "💳 Pay with Razorpay", "url": rp_link}])
+                except Exception as rp_err:
+                    logger.error(f"Razorpay order for video call failed: {rp_err}")
+            
+            # Add QR/UPI button
+            qr_code_url = settings.get("qr_code_url", "")
+            upi_id = settings.get("payment_upi_id", "") or settings.get("upi_id", "")
+            if qr_code_url or upi_id:
+                buttons.append([{"text": "📱 Pay via QR/UPI", "callback_data": f"qr_vc_{booking['id']}_{price}"}])
+            
+            msg += f"📱 <b>Your ID:</b> <code>{chat_id}</code>"
             buttons.append([{"text": "❌ Cancel Booking", "callback_data": f"vc_cancel_{booking['id']}"}])
             
             await send_telegram_message_with_buttons(chat_id, msg, buttons, bot_token)
@@ -1011,9 +1195,60 @@ async def handle_callback(data, bot_token, bot_tenant_id, settings, background_t
                         
                         msg = f"🎟 <b>Get Ticket: {session.get('title')}</b>\n\n"
                         msg += f"💰 Price: <b>₹{int(price)}</b>\n\n"
-                        msg += "💳 Pay via Razorpay and send screenshot here!\n\n"
-                        msg += "⏳ Waiting for your screenshot..."
-                        await send_telegram_message(chat_id, msg, bot_token)
+                        msg += "━━━━━━━━━━━━━━━\n"
+                        msg += "💳 <b>Payment Options:</b>\n\n"
+                        
+                        ticket_buttons = []
+                        
+                        # Add Razorpay button
+                        if razorpay_client:
+                            try:
+                                order_data = {"amount": int(price) * 100, "currency": "INR",
+                                              "receipt": f"live_{uuid.uuid4().hex[:16]}", "payment_capture": 1}
+                                razor_order = await asyncio.to_thread(razorpay_client.order.create, order_data)
+                                razorpay_order_id = razor_order.get("id", "")
+                                if razorpay_order_id:
+                                    await db.razorpay_bot_orders.update_one(
+                                        {"chat_id": str(chat_id), "live_session_id": session_id, "status": "created"},
+                                        {"$set": {
+                                            "chat_id": str(chat_id), "username": username or "",
+                                            "live_session_id": session_id,
+                                            "plan_id": "", "plan_name": f"Live: {session.get('title', '')}",
+                                            "duration_days": 0, "amount": int(price),
+                                            "razorpay_order_id": razorpay_order_id,
+                                            "status": "created", "type": "live_ticket",
+                                            "tenant_id": bot_tenant_id,
+                                            "created_at": datetime.now(timezone.utc).isoformat()
+                                        }}, upsert=True
+                                    )
+                                    base_url = os.environ.get("RAZORPAY_CALLBACK_URL", "")
+                                    if not base_url:
+                                        base_url = settings.get("website_link", os.environ.get("REACT_APP_BACKEND_URL", "")).rstrip("/")
+                                    rp_link = f"{base_url}/api/pay/{razorpay_order_id}"
+                                    ticket_buttons.append([{"text": "💳 Pay with Razorpay", "url": rp_link}])
+                            except Exception as rp_err:
+                                logger.error(f"Razorpay order for live ticket failed: {rp_err}")
+                        
+                        # Add QR/UPI option - sends QR image when clicked
+                        qr_code_url = settings.get("qr_code_url", "")
+                        upi_id = settings.get("payment_upi_id", "") or settings.get("upi_id", "")
+                        if qr_code_url or upi_id:
+                            msg += "📱 Or pay via QR and send screenshot!\n\n"
+                            # QR image will be sent when pending screenshot is waiting
+                            if qr_code_url:
+                                await send_telegram_photo(chat_id, qr_code_url, msg, bot_token, {"inline_keyboard": ticket_buttons} if ticket_buttons else None)
+                            else:
+                                if upi_id:
+                                    msg += f"📱 UPI ID: <code>{upi_id}</code>\n\n"
+                                msg += "📸 Screenshot bhejo payment ke baad!"
+                                await send_telegram_message_with_buttons(chat_id, msg, ticket_buttons, bot_token) if ticket_buttons else await send_telegram_message(chat_id, msg, bot_token)
+                        else:
+                            msg += "📸 Pay and send screenshot here!\n\n"
+                            msg += "⏳ Waiting for your screenshot..."
+                            if ticket_buttons:
+                                await send_telegram_message_with_buttons(chat_id, msg, ticket_buttons, bot_token)
+                            else:
+                                await send_telegram_message(chat_id, msg, bot_token)
             else:
                 await send_telegram_message(chat_id, "❌ Session not found.", bot_token)
         

@@ -1222,6 +1222,12 @@ async def handle_message(data, bot_token, bot_tenant_id, settings, background_ta
         
         buttons.append([{"text": "📦 Get Full Subscription", "callback_data": "back_plans"}])
         
+        # Add QR/UPI option for paid post unlock
+        qr_code_url = settings.get("qr_code_url", "")
+        upi_id_val = settings.get("payment_upi_id", "") or settings.get("upi_id", "")
+        if qr_code_url or upi_id_val:
+            buttons.insert(-1, [{"text": f"📱 Pay ₹{int(post_price)} via QR/UPI", "callback_data": f"qr_unlock_{post_id}"}])
+        
         # Send Razorpay button as separate message
         pay_msg = f"💳 <b>Pay ₹{int(post_price)} to unlock this {content_label.lower()}!</b>\n\n"
         pay_msg += "✅ Instant access after payment"
