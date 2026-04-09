@@ -79,3 +79,15 @@ Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS prod
   - Buffer system collects all items before processing (2.5s delay)
   - All items stored as file_ids array, sent together on unlock
   - Dashboard shows media count badge per post
+- Added Polls Feature:
+  - Dashboard se Telegram channel mein poll create aur send kar sakte hain
+  - Support: Anonymous voting, multi-select, 2-10 options
+  - New /dashboard/polls page with CRUD operations
+- Added Dashboard Paid Post Creator:
+  - Website se directly photo/video upload → blur preview → channel mein post
+  - Multiple files support (photos + videos together)
+  - Blur slider with live preview before posting
+- Added Paid Post Scheduling:
+  - Create post from dashboard → set date/time → auto-post at scheduled time
+  - Background scheduler processes due posts every minute
+  - Scheduled tab shows pending/published/failed posts
