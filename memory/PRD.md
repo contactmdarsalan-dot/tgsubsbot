@@ -62,3 +62,9 @@ Transforming a Telegram Subscription Bot into a scalable, market-ready SaaS prod
 ## Recent Changes (April 2026)
 - Fixed Plans.jsx: Removed conflicting Select dropdown for Channel ID, replaced with clean manual input field
 - Channel ID can now be manually typed without being overridden by dropdown state
+- Added QR/UPI payment option alongside Razorpay in Telegram bot for ALL services:
+  - Subscription Plans: "Pay via QR/UPI" button next to Razorpay
+  - Paid Post Unlock: QR button for content unlock
+  - Video Call Booking: QR option for video call payments
+  - Live Tickets: QR code shown with Razorpay option
+- QR flow: User clicks QR button → Bot sends QR image → User pays and sends screenshot → Auto-verify (OCR+AI) or Admin review
